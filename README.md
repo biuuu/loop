@@ -65,6 +65,8 @@ LOOP_LIVE_MUSIC=1 LOOP_LIVE_MUSIC_TRACK_ID=3450116895 \
   node --env-file-if-exists=.env --import tsx test/live-music.test.ts
 ```
 
+`identity=anonymous` 表示当前配置未提供网易云账号或游客凭证。两种音质都返回 `songCode=404` 和 `hasUrl=false` 时，可以在服务端 `.env` 配置旧部署使用的同一个网易云 `MUSIC_U`，再用上面的命令对照。已存在的扫码凭证文件优先于 `.env` 中的 `NETEASE_COOKIE`。
+
 需要排查出口差异时，可以测试 `.env` 的 `HTTPS_PROXY` 出站 HTTP 代理配置。旧版的 `NETEASE_MUSIC_API_REALIP` 也是可选项，只设置网易云音乐接口的请求头，实际出口 IP 由服务器网络决定。修改服务端配置后重启服务，在房间里验证浏览器能否实际播放。
 
 ## 开发与测试
