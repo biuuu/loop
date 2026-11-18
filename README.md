@@ -9,7 +9,7 @@ Loop 是一个联机听歌网页。取个昵称就能加入朋友的音乐客厅
 
 ## 本地运行
 
-需要 **Node.js 22.12 或更新版本**和 npm。
+需要 **Node.js 22.12 或更新版本**和 npm。使用 nvm 时，可在项目根目录运行 `nvm install`，按 `.nvmrc` 选择 Node.js 24。
 
 在仓库根目录安装依赖并启动开发服务。
 
@@ -42,6 +42,17 @@ npm start
 | `NETEASE_COOKIE` | 可选的服务端网易云登录凭证。用管理员页面扫码时，也可用 `NETEASE_COOKIE_FILE` 指定凭证文件路径。 |
 
 设置管理员密钥后，可打开 `/admin/emotes` 管理预设表情，或打开 `/admin/netease` 进行网易云扫码登录。扫码凭证默认保存在 `data/netease-cookie`。把 `.env`、数据库和凭证放在私有存储，部署时持久化并备份 `data/`。
+
+### 用 PM2 常驻运行
+
+在服务器安装 PM2（`npm install -g pm2`）后，从项目根目录运行下面两条命令。
+
+```sh
+npm run build
+pm2 start ecosystem.config.cjs
+```
+
+PM2 会启动一个名为 `loop` 的进程并读取项目的 `.env`。更新代码并重新构建后，用 `pm2 restart loop` 重启。需要开机自动恢复时，运行 `pm2 startup` 并按它的提示设置系统服务，再运行 `pm2 save`。
 
 ### 关于音乐播放
 
