@@ -878,7 +878,7 @@ onMounted(() => {
             v-if="menuUser.seat !== null && !confirmingKick"
             @click="moderateMenu('stage:remove')"
           >
-            <LogOut aria-hidden="true" />离开舞台
+            <LogOut aria-hidden="true" />移出舞台
           </button>
           <p v-if="confirmingKick" class="cat-menu-confirm">
             将 {{ menuUser.nickname }} 移出房间？对方之后仍可进入。
