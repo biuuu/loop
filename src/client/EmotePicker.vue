@@ -61,7 +61,7 @@ function select(id: string) {
 function failedImage(id: string) {
   failed.value = new Set(failed.value).add(id);
 }
-function outsidePointer(event: PointerEvent) {
+function dismissOutside(event: PointerEvent | FocusEvent) {
   if (event.target instanceof Node && !wrapper.value?.contains(event.target))
     close();
 }
@@ -70,13 +70,6 @@ function escape(event: KeyboardEvent) {
     event.preventDefault();
     close(true);
   }
-}
-function focusLeaving(event: FocusEvent) {
-  if (
-    !(event.relatedTarget instanceof Node) ||
-    !wrapper.value?.contains(event.relatedTarget)
-  )
-    close();
 }
 watch(
   () => props.disabled || !catalog.value?.enabled,
@@ -96,22 +89,20 @@ watch(
 );
 onMounted(() => {
   void loadEmoteCatalog().catch(() => {});
-  document.addEventListener('pointerdown', outsidePointer, true);
+  document.addEventListener('pointerdown', dismissOutside, true);
+  // Safari can blur a focused button before a different button receives its click.
+  document.addEventListener('focusin', dismissOutside, true);
   document.addEventListener('keydown', escape);
 });
 onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', outsidePointer, true);
+  document.removeEventListener('pointerdown', dismissOutside, true);
+  document.removeEventListener('focusin', dismissOutside, true);
   document.removeEventListener('keydown', escape);
 });
 </script>
 
 <template>
-  <div
-    v-if="catalog?.enabled !== false"
-    ref="wrapper"
-    class="emote-picker"
-    @focusout="focusLeaving"
-  >
+  <div v-if="catalog?.enabled !== false" ref="wrapper" class="emote-picker">
     <button
       ref="trigger"
       type="button"

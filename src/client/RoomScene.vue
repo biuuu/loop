@@ -179,6 +179,7 @@ function changeZoom(value: number) {
 
 const host = ref<HTMLDivElement>();
 const selfMenu = ref<HTMLDivElement>();
+const kickButton = ref<HTMLButtonElement>();
 const menuPosition = ref<{ x: number; y: number } | null>(null);
 const menuTargetId = ref<string | null>(null);
 const confirmingKick = ref(false);
@@ -221,8 +222,9 @@ async function openCatMenu(userId: string, clientX: number, clientY: number) {
     .querySelector<HTMLButtonElement>('button')
     ?.focus({ preventScroll: true });
 }
-function outsideSelfMenu(event: PointerEvent) {
-  if (event.target instanceof Node && !selfMenu.value?.contains(event.target))
+function dismissOnOutsideCatMenu(event: PointerEvent | FocusEvent) {
+  const menu = selfMenu.value;
+  if (menu && event.target instanceof Node && !menu.contains(event.target))
     closeCatMenu();
 }
 function escapeSelfMenu(event: KeyboardEvent) {
@@ -237,6 +239,11 @@ function selfMenuAction(action: 'appearance' | 'leave') {
   if (action === 'appearance') emit('request-appearance');
   else if (room.onStage) emit('request-leave');
 }
+async function setKickConfirmation(confirming: boolean) {
+  confirmingKick.value = confirming;
+  await nextTick();
+  kickButton.value?.focus({ preventScroll: true });
+}
 async function moderateMenu(action: 'stage:remove' | 'member:kick') {
   const target = menuUser.value;
   if (
@@ -250,9 +257,7 @@ async function moderateMenu(action: 'stage:remove' | 'member:kick') {
     return;
   }
   if (action === 'member:kick' && !confirmingKick.value) {
-    confirmingKick.value = true;
-    await nextTick();
-    selfMenu.value?.querySelector<HTMLButtonElement>('.confirm-kick')?.focus();
+    await setKickConfirmation(true);
     return;
   }
   closeCatMenu();
@@ -809,7 +814,8 @@ onMounted(async () => {
   }
 });
 onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', outsideSelfMenu, true);
+  document.removeEventListener('pointerdown', dismissOnOutsideCatMenu, true);
+  document.removeEventListener('focusin', dismissOnOutsideCatMenu, true);
   document.removeEventListener('keydown', escapeSelfMenu);
   disposed = true;
   clearTimeout(zoomControlsTimer);
@@ -826,7 +832,9 @@ onBeforeUnmount(() => {
   clearEmoteImages();
 });
 onMounted(() => {
-  document.addEventListener('pointerdown', outsideSelfMenu, true);
+  document.addEventListener('pointerdown', dismissOnOutsideCatMenu, true);
+  // Safari can blur a focused button before a different button receives its click.
+  document.addEventListener('focusin', dismissOnOutsideCatMenu, true);
   document.addEventListener('keydown', escapeSelfMenu);
 });
 </script>
@@ -855,12 +863,6 @@ onMounted(() => {
         :style="{ left: `${menuPosition.x}px`, top: `${menuPosition.y}px` }"
         @pointerdown.stop
         @click.stop
-        @focusout="
-          (event) => {
-            if (!selfMenu?.contains(event.relatedTarget as Node))
-              closeCatMenu();
-          }
-        "
       >
         <button v-if="menuIsSelf" @click="selfMenuAction('appearance')">
           <Palette aria-hidden="true" />换个花色
@@ -881,15 +883,12 @@ onMounted(() => {
           <p v-if="confirmingKick" class="cat-menu-confirm">
             将 {{ menuUser.nickname }} 移出房间？对方之后仍可进入。
           </p>
-          <button
-            :class="{ 'confirm-kick': confirmingKick }"
-            @click="moderateMenu('member:kick')"
-          >
+          <button ref="kickButton" @click="moderateMenu('member:kick')">
             <UserX aria-hidden="true" />{{
               confirmingKick ? '确认移出' : '移出房间'
             }}
           </button>
-          <button v-if="confirmingKick" @click="confirmingKick = false">
+          <button v-if="confirmingKick" @click="setKickConfirmation(false)">
             取消
           </button>
         </template>
