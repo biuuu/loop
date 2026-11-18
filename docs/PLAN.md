@@ -39,7 +39,7 @@
 - Remember the chosen volume locally in the browser and restore it after refresh or reopening, including a saved volume of zero.
 - Clicking the volume icon mutes audio; clicking it again restores the preceding audible volume. Both desktop volume controls share this state and show a muted icon at zero. Hide the volume controls on mobile and use the device's volume with no additional attenuation; keep the desktop preference stored.
 - New rooms default to five stage seats. Room owners can configure 1–6 stage positions in room settings. The stage artwork, seat markers, hit areas and selection controls adapt together.
-- Fill the available mobile width with the room banner, leaving a gutter on both sides outside the device safe areas. Show one plus button at the first visible vacant stage seat. Seated cats have no circular marker.
+- Fill the available mobile width with the room banner, leaving a gutter on both sides outside the device safe areas. Show one plus button at the first visible vacant stage seat, scaling the full marker with the room camera. Seated cats have no circular marker.
 - Show the 1–6 stage-position choices as a compact radio group in room settings, disabling counts below the current occupied stage count.
 - Show the room's pause-new-visitors setting as a switch control while keeping its existing open/closed save behavior and keyboard accessibility.
 - Use the stage plus button, a vacant part of the stage, or the members panel to join the end of the stage queue when the playlist has songs. Clicking your own cat opens actions at the pointer position: change coat/pattern, plus direct leave-stage while seated. Stage occupants clicking the floor do nothing; remove the floor leave confirmation. Audience cats move freely.

@@ -899,6 +899,7 @@ onMounted(() => {
         :style="{
           left: `${joinControl.x}px`,
           top: `${joinControl.y}px`,
+          '--seat-scale': camera.scale,
         }"
         aria-label="上台"
         :disabled="blocked || room.onStage"
@@ -1037,7 +1038,7 @@ onMounted(() => {
 .scene-seat {
   position: absolute;
   z-index: 1;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(var(--seat-scale));
   width: 48px;
   height: 48px;
   min-height: 0;
