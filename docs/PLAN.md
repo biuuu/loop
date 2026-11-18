@@ -20,6 +20,7 @@
 - Display the header logo as uppercase LOOP, text-only without the cat-head icon. Hide song count/capacity on the "我的歌单" toolbar button and library tab.
 - Use uppercase LOOP in the browser page title. When a staged user returns to the directory or navigates away from the room, show the app's own confirmation dialog instead of `window.confirm`; cancel retains the room, and browser-history navigation must restore the current URL until confirmed. Keep the existing room-leave operation and stage behavior.
 - Keep music search accessible inside the playlist/library panel, but remove its separate room toolbar button. When the local user occupies a stage seat, append a "离开舞台" button after the emote control and reuse the existing stage-leave action and permission checks. This toolbar placement is a user decision; it does not change stage behavior.
+- Keep the “表情” label visible on the mobile room toolbar.
 - Show synchronized lyrics in the room wall area as a single picker-like scrolling track with previous/current/next rows. Always include available translations, without mode controls or pronunciation/ruby. Keep smaller text, compact untranslated rows and soft edge fading; all rows must move together instead of separate enter/leave animations. Remove the idle wall motto entirely, leaving this area blank when no song is playing.
 - Render room lyrics without white glow or text shadow; keep their existing theme colors and scrolling layout.
 - Cat nicknames scale proportionally with the room and cats; do not keep a fixed screen font size to compensate for blur.

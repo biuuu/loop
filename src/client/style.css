@@ -1216,26 +1216,24 @@ h3 {
     width: 85px;
   }
   .room-toolbar {
+    flex-wrap: wrap;
     gap: 5px;
     margin-top: 7px;
   }
+  .room-toolbar > button {
+    flex: 1;
+  }
   .room-toolbar > button,
   .room-toolbar > .emote-picker > .emote-trigger {
-    flex: 1;
+    gap: 4px;
     font-size: 11px;
     white-space: nowrap;
     min-height: 42px;
-    padding: 8px 6px;
+    padding: 8px 4px;
     border-radius: 10px;
   }
   .room-toolbar > .emote-picker {
-    flex: 0 0 42px;
-  }
-  .room-toolbar > .emote-picker > .emote-trigger > span {
-    display: none;
-  }
-  .room-toolbar > .emote-picker > .emote-trigger {
-    font-size: 20px;
+    flex: 0 0 auto;
   }
   .room-dialog {
     width: 100%;
