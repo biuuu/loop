@@ -367,10 +367,9 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <footer>
-          <span class="room-card-population"
-            ><Users aria-hidden="true" /> {{ item.online }} /
-            {{ item.capacity }} 只猫</span
-          >
+          <span class="room-card-population">
+            <Users aria-hidden="true" /> {{ item.online }} / {{ item.capacity }}
+          </span>
           <span
             class="room-card-status"
             :class="{
