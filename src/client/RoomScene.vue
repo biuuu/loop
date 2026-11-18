@@ -48,6 +48,7 @@ import {
   type Participant,
 } from '../shared/contracts';
 import { emoteUrl } from './emote-catalog';
+import { createScenePinchZoom } from './scene-pinch-zoom';
 
 import {
   clampZoom,
@@ -123,7 +124,15 @@ const minimumZoom = computed(() =>
   minZoom(viewport.value.width, viewport.value.height),
 );
 let updateCamera: ((deltaMs?: number) => void) | undefined;
-let removeWheel: (() => void) | undefined;
+let sceneInput: AbortController | undefined;
+const pinch = createScenePinchZoom();
+watch(
+  () => props.interactionDisabled,
+  (disabled) => {
+    if (disabled) pinch.interrupt();
+  },
+  { flush: 'sync' },
+);
 const blocked = computed(
   () =>
     props.interactionDisabled ||
@@ -381,6 +390,7 @@ function makeCat(user: Participant) {
   root.hitArea = new Rectangle(-45, -60, 90, 72);
   root.on('pointertap', (event) => {
     event.stopPropagation();
+    if (pinch.suppressesTap(event)) return;
     void openCatMenu(user.id, event.clientX, event.clientY);
   });
   root.addChild(
@@ -483,7 +493,7 @@ onMounted(async () => {
         x >= 0 && x <= SCENE.width && y >= 0 && y <= SCENE.height,
     };
     world.on('pointertap', (event) => {
-      if (blocked.value) return;
+      if (blocked.value || pinch.suppressesTap(event)) return;
       const p = event.getLocalPosition(world);
       if (p.x < 0 || p.x > SCENE.width || p.y < 0 || p.y > SCENE.height) return;
       const seat = stageSeatAt(p, stageCapacity.value);
@@ -542,7 +552,7 @@ onMounted(async () => {
       world.scale.set(next.scale);
       world.position.set(next.x, next.y);
       // Keep world proportions; rasterize glyphs densely enough for their actual
-      // device-pixel size. Integer tiers avoid rebuilding textures on every wheel step.
+      // device-pixel size. Integer tiers avoid rebuilding textures on every zoom step.
       const textResolution = Math.max(
         1,
         Math.ceil(next.scale * instance.renderer.resolution),
@@ -572,8 +582,38 @@ onMounted(async () => {
         zoom.value * Math.exp(-Math.max(-120, Math.min(120, delta)) * 0.0015),
       );
     };
-    instance.canvas.addEventListener('wheel', wheel, { passive: false });
-    removeWheel = () => instance.canvas.removeEventListener('wheel', wheel);
+    sceneInput = new AbortController();
+    const passive = { passive: true, signal: sceneInput.signal };
+    instance.canvas.addEventListener('wheel', wheel, {
+      passive: false,
+      signal: sceneInput.signal,
+    });
+    instance.canvas.addEventListener(
+      'pointerdown',
+      (event) => pinch.begin(event, Boolean(props.interactionDisabled)),
+      passive,
+    );
+    instance.canvas.addEventListener(
+      'pointermove',
+      (event) => {
+        if (props.interactionDisabled) return;
+        const nextZoom = pinch.move(event, zoom.value);
+        if (nextZoom !== undefined) changeZoom(nextZoom);
+      },
+      passive,
+    );
+    // Pixi dispatches pointertap during window capture, before document capture.
+    const capture = { ...passive, capture: true };
+    document.addEventListener(
+      'pointerup',
+      (event) => pinch.end(event),
+      capture,
+    );
+    document.addEventListener(
+      'pointercancel',
+      (event) => pinch.end(event, true),
+      capture,
+    );
     const resize = () => {
       if (!host.value || disposed) return;
       const width = Math.max(1, host.value.clientWidth);
@@ -756,7 +796,7 @@ onMounted(async () => {
   } catch {
     observer?.disconnect();
     overlayObserver?.disconnect();
-    removeWheel?.();
+    sceneInput?.abort();
     updateCamera = undefined;
     if (app?.renderer) app.destroy(true, { children: true, context: true });
     app = undefined;
@@ -775,7 +815,7 @@ onBeforeUnmount(() => {
   clearTimeout(zoomControlsTimer);
   observer?.disconnect();
   overlayObserver?.disconnect();
-  removeWheel?.();
+  sceneInput?.abort();
   updateCamera = undefined;
   if (app?.renderer) app.destroy(true, { children: true, context: true });
   app = undefined;
@@ -800,7 +840,7 @@ onMounted(() => {
     :data-camera-y="camera.y"
     :data-camera-scale="camera.scale"
     role="group"
-    :aria-label="`共享猫咪${environment.name}。点击自己的小猫换花色或下台；房主可点击其他小猫管理成员。点击地面移动，点击空位上台，使用视野按钮缩放。`"
+    :aria-label="`共享猫咪${environment.name}。点击自己的小猫换花色或下台；房主可点击其他小猫管理成员。点击地面移动，点击空位上台，双指捏合或使用视野按钮缩放。`"
   >
     <template v-if="!unavailable">
       <LyricsPanel :camera="camera" />

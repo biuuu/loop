@@ -7,7 +7,7 @@ import {
 } from 'node:timers/promises';
 import { createPinia, setActivePinia } from 'pinia';
 import { Server, type Socket } from 'socket.io';
-import { createRenderer, h, nextTick } from 'vue';
+import { createRenderer, h, nextTick, ref } from 'vue';
 import { useAudio } from '../src/client/audio';
 import { useRoom } from '../src/client/room';
 import type {
@@ -245,7 +245,7 @@ class FakeAudio extends EventTarget {
   }
 }
 
-test('audio metadata and connection changes do not request sync; foreground restoration does', async (context) => {
+function mountAudio(context: TestContext, useDeviceVolume?: () => boolean) {
   const originalAudio = Object.getOwnPropertyDescriptor(globalThis, 'Audio');
   const originalDocument = Object.getOwnPropertyDescriptor(
     globalThis,
@@ -266,9 +266,6 @@ test('audio metadata and connection changes do not request sync; foreground rest
     configurable: true,
     value: document,
   });
-  setActivePinia(createPinia());
-  const room = useRoom();
-  const sync = context.mock.method(room, 'sync', () => {});
   // A minimal Vue host exercises setup/unmount hooks without a DOM or browser.
   const renderer = createRenderer<object, object>({
     patchProp() {},
@@ -283,18 +280,38 @@ test('audio metadata and connection changes do not request sync; foreground rest
     nextSibling: () => null,
   });
   const root = {};
+  const unmount = () => renderer.render(null, root);
+  context.after(() => {
+    unmount();
+    for (const [key, descriptor] of [
+      ['Audio', originalAudio],
+      ['document', originalDocument],
+    ] as const) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  });
+  let player!: ReturnType<typeof useAudio>;
+  renderer.render(
+    h({
+      setup() {
+        player = useAudio(useDeviceVolume);
+        return () => null;
+      },
+    }),
+    root,
+  );
+  return { audio, document, player, unmount };
+}
+
+test('audio metadata and connection changes do not request sync; foreground restoration does', async (context) => {
+  setActivePinia(createPinia());
+  const room = useRoom();
+  const sync = context.mock.method(room, 'sync', () => {});
+  room.connection = 'connected';
+  room.snapshot = snapshot();
+  const { audio, document, unmount } = mountAudio(context);
   try {
-    room.connection = 'connected';
-    room.snapshot = snapshot();
-    renderer.render(
-      h({
-        setup() {
-          useAudio();
-          return () => null;
-        },
-      }),
-      root,
-    );
     await nextTick();
     assert.equal(
       audio.src,
@@ -330,7 +347,7 @@ test('audio metadata and connection changes do not request sync; foreground rest
       'explicit room cleanup synchronously removes old audio',
     );
     assert.equal(audio.paused, true);
-    renderer.render(null, root);
+    unmount();
     document.dispatchEvent(new Event('visibilitychange'));
     audio.dispatchEvent(new Event('loadedmetadata'));
     assert.equal(
@@ -339,14 +356,45 @@ test('audio metadata and connection changes do not request sync; foreground rest
       'unmount removes media/document listeners',
     );
   } finally {
-    renderer.render(null, root);
+    unmount();
     room.close();
-    for (const [key, descriptor] of [
-      ['Audio', originalAudio],
-      ['document', originalDocument],
-    ] as const) {
-      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
-      else Reflect.deleteProperty(globalThis, key);
-    }
   }
+});
+
+test('using device volume bypasses a saved mute and preserves the desktop preference', (context) => {
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    'localStorage',
+  );
+  const storage = new Map([
+    ['loop:volume', '0'],
+    ['loop:volume:audible', '42'],
+  ]);
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    },
+  });
+  context.after(() => {
+    if (originalStorage)
+      Object.defineProperty(globalThis, 'localStorage', originalStorage);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+  });
+  setActivePinia(createPinia());
+  const deviceVolume = ref(true);
+  const { audio, player } = mountAudio(context, () => deviceVolume.value);
+
+  assert.equal(audio.volume, 1);
+  assert.equal(storage.get('loop:volume'), '0');
+  deviceVolume.value = false;
+  assert.equal(audio.volume, 0);
+  player.toggleMute();
+  assert.equal(audio.volume, 0.42);
+  deviceVolume.value = true;
+  assert.equal(audio.volume, 1);
+  assert.equal(storage.get('loop:volume'), '42');
+  deviceVolume.value = false;
+  assert.equal(audio.volume, 0.42);
 });

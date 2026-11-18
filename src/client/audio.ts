@@ -1,4 +1,4 @@
-import { ref, watch, onBeforeUnmount } from 'vue';
+import { ref, watch, watchSyncEffect, onBeforeUnmount } from 'vue';
 import { useRoom } from './room';
 
 const VOLUME_STORAGE_KEY = 'loop:volume';
@@ -16,7 +16,7 @@ function savedVolume(key = VOLUME_STORAGE_KEY): number {
   return 65;
 }
 
-export function useAudio() {
+export function useAudio(useDeviceVolume = () => false) {
   const room = useRoom();
   const audio = new Audio();
   audio.preload = 'auto';
@@ -33,10 +33,12 @@ export function useAudio() {
   const needsGesture = ref(false);
   let primed = false;
   let priming = false;
+  watchSyncEffect(() => {
+    audio.volume = useDeviceVolume() ? 1 : volume.value / 100;
+  });
   watch(
     volume,
     (value) => {
-      audio.volume = value / 100;
       if (value > 0) audibleVolume = value;
       try {
         localStorage.setItem(VOLUME_STORAGE_KEY, String(value));

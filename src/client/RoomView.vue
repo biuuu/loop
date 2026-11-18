@@ -68,7 +68,14 @@ watch(
   },
   { immediate: true },
 );
-const sound = useAudio();
+const mobileControlsQuery = window.matchMedia(
+  '(max-width: 650px), (hover: none) and (pointer: coarse)',
+);
+const mobileControls = ref(mobileControlsQuery.matches);
+function updateMobileControls(event: MediaQueryListEvent) {
+  mobileControls.value = event.matches;
+}
+const sound = useAudio(() => mobileControls.value);
 const { issue, volume, progress, needsGesture } = sound;
 const booting = ref(false);
 const tab = ref<'playlist' | 'search'>('playlist');
@@ -81,6 +88,14 @@ const searched = ref(false);
 let searchVersion = 0;
 const operation = ref(false);
 const playback = computed(() => room.snapshot?.playback);
+const canSkip = computed(() => {
+  const guestId = room.guest?.id;
+  return !!(
+    guestId &&
+    playback.value &&
+    (playback.value.djId === guestId || room.roomInfo?.ownerId === guestId)
+  );
+});
 const failedCover = ref('');
 const stageCapacity = computed(
   () => room.snapshot?.stageCapacity ?? DEFAULT_STAGE_CAPACITY,
@@ -317,6 +332,7 @@ function keyboardVisibility() {
   if (document.hidden) resetMovement();
 }
 onMounted(() => {
+  mobileControlsQuery.addEventListener('change', updateMobileControls);
   window.addEventListener('keydown', keyboardMove);
   window.addEventListener('keyup', keyboardRelease);
   window.addEventListener('blur', resetMovement);
@@ -325,6 +341,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', keyboardVisibility);
 });
 onBeforeUnmount(() => {
+  mobileControlsQuery.removeEventListener('change', updateMobileControls);
   window.removeEventListener('keydown', keyboardMove);
   window.removeEventListener('keyup', keyboardRelease);
   window.removeEventListener('blur', resetMovement);
@@ -408,7 +425,11 @@ onBeforeUnmount(() => {
         </p>
       </div>
       <div class="room-dock">
-        <section class="now-playing" aria-label="正在共享的音乐">
+        <section
+          class="now-playing"
+          :class="{ 'is-mobile-player': mobileControls }"
+          aria-label="正在共享的音乐"
+        >
           <div
             class="mini-record"
             :class="{
@@ -458,8 +479,11 @@ onBeforeUnmount(() => {
               <span>{{ time(playback?.durationMs || 0) }}</span>
             </div>
           </div>
-          <div class="sound-control">
-            <div class="volume-control">
+          <div
+            v-if="!mobileControls || room.onStage || canSkip"
+            class="sound-control"
+          >
+            <div v-if="!mobileControls" class="volume-control">
               <button
                 type="button"
                 class="text-button volume-toggle"
@@ -482,11 +506,15 @@ onBeforeUnmount(() => {
               /></label>
             </div>
             <button
-              v-if="
-                playback &&
-                (playback.djId === room.guest.id ||
-                  room.roomInfo?.ownerId === room.guest.id)
-              "
+              v-if="mobileControls && room.onStage"
+              class="text-button"
+              :disabled="room.stagePending || room.connection !== 'connected'"
+              @click="requestLeave"
+            >
+              <ArrowDownRight aria-hidden="true" /> 离开舞台
+            </button>
+            <button
+              v-if="canSkip"
               class="text-button skip-button"
               aria-label="下一首"
               @click="room.skip"
@@ -512,11 +540,12 @@ onBeforeUnmount(() => {
             <Users aria-hidden="true" /> 客厅成员</button
           ><EmotePicker
             :disabled="room.connection !== 'connected' || room.stagePending"
+            :icon-only="mobileControls"
             @select="room.emote"
             @open="resetMovement"
           />
           <button
-            v-if="room.onStage"
+            v-if="room.onStage && !mobileControls"
             :disabled="room.stagePending || room.connection !== 'connected'"
             @click="requestLeave"
           >
@@ -814,9 +843,12 @@ onBeforeUnmount(() => {
             >
               {{ stageFull ? '舞台已满' : '上台' }}
             </button>
-            <h3>声音设置</h3>
-            <div class="member-audio sound-control">
-              <div class="volume-control">
+            <h3 v-if="!mobileControls">声音设置</h3>
+            <div
+              v-if="!mobileControls || canSkip"
+              class="member-audio sound-control"
+            >
+              <div v-if="!mobileControls" class="volume-control">
                 <button
                   type="button"
                   class="text-button volume-toggle"
@@ -838,14 +870,7 @@ onBeforeUnmount(() => {
                     aria-label="成员面板播放音量"
                 /></label>
               </div>
-              <button
-                v-if="
-                  playback &&
-                  (playback.djId === room.guest.id ||
-                    room.roomInfo?.ownerId === room.guest.id)
-                "
-                @click="room.skip"
-              >
+              <button v-if="canSkip" @click="room.skip">
                 下一首 <SkipForward aria-hidden="true" />
               </button>
             </div>

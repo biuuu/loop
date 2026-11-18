@@ -1201,19 +1201,10 @@ h3 {
   .track-info p {
     font-size: 10px;
   }
-  .now-playing > .sound-control {
-    grid-column: 1 / -1;
-    justify-content: space-between;
-    padding-top: 7px;
-    border-top: 1px solid #e8e6da;
-  }
   .sound-control button {
     min-height: 34px;
     padding: 6px 10px;
     font-size: 11px;
-  }
-  .sound-control input {
-    width: 85px;
   }
   .room-toolbar {
     flex-wrap: wrap;
@@ -1233,7 +1224,7 @@ h3 {
     border-radius: 10px;
   }
   .room-toolbar > .emote-picker {
-    flex: 0 0 auto;
+    flex: 0 0 42px;
   }
   .room-dialog {
     width: 100%;
@@ -1350,36 +1341,36 @@ h3 {
 }
 @media (max-height: 500px) and (max-width: 650px) {
   .now-playing {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     padding: 8px 10px;
   }
   .mini-record,
-  .track-info p,
-  .now-playing .sound-control label {
+  .track-info p {
     display: none;
   }
   .track-info h2 {
     font-size: 12px;
   }
-  .now-playing > .sound-control {
-    grid-column: auto;
-    gap: 3px;
-    padding-top: 0;
-    border-top: 0;
-  }
-  .sound-control .skip-button {
-    min-width: 36px;
-    font-size: 0;
-    padding: 6px;
-  }
-  .sound-control .skip-button .lucide {
-    width: 16px;
-    height: 16px;
-  }
   .room-toolbar {
     margin-top: 5px;
   }
+}
+.now-playing.is-mobile-player .track-info {
+  grid-column: 2 / -1;
+}
+@media (max-height: 500px) {
+  .now-playing.is-mobile-player .track-info {
+    grid-column: 1 / -1;
+  }
+}
+.now-playing.is-mobile-player > .sound-control {
+  grid-column: 1 / -1;
+  padding-top: 7px;
+  border-top: 1px solid #e8e6da;
+}
+.now-playing.is-mobile-player .skip-button {
+  margin-inline-start: auto;
 }
 
 .lucide {

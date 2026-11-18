@@ -11,7 +11,7 @@ import {
 import { Smile } from '@lucide/vue';
 import { emoteCatalog, loadEmoteCatalog } from './emote-catalog';
 
-const props = defineProps<{ disabled: boolean }>();
+const props = defineProps<{ disabled: boolean; iconOnly?: boolean }>();
 const emit = defineEmits<{ select: [id: string]; open: [] }>();
 const panelId = useId();
 const wrapper = ref<HTMLElement | null>(null);
@@ -123,7 +123,7 @@ onBeforeUnmount(() => {
       :disabled="disabled"
       @click="toggle"
     >
-      <Smile aria-hidden="true" /> <span>表情</span>
+      <Smile aria-hidden="true" /> <span v-if="!iconOnly">表情</span>
     </button>
     <div
       v-if="opened"
