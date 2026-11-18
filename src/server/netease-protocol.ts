@@ -11,6 +11,7 @@ import {
   publicEncrypt,
   randomBytes,
 } from 'node:crypto';
+import { isIP } from 'node:net';
 import {
   EnvHttpProxyAgent,
   fetch,
@@ -100,6 +101,12 @@ export function createNeteaseRequest(
   cookie: string | (() => string) = process.env.NETEASE_COOKIE || '',
   fetcher: NeteaseFetch = upstreamFetch,
 ): NeteaseRequest {
+  const realIp = process.env.NETEASE_MUSIC_API_REALIP?.trim();
+  if (realIp && !isIP(realIp))
+    throw new Error(
+      'NETEASE_MUSIC_API_REALIP must be a valid IPv4 or IPv6 address',
+    );
+
   const parseCredentials = (value: string) => {
     const credentials: Record<string, string> = {};
     for (const part of value.split(';')) {
@@ -160,6 +167,7 @@ export function createNeteaseRequest(
             'Content-Type': 'application/x-www-form-urlencoded',
             'User-Agent': 'NeteaseMusic 9.0.90/5038 (iPhone; iOS 16.2; zh_CN)',
             Referer: 'https://music.163.com/',
+            ...(realIp && { 'X-Real-IP': realIp, 'X-Forwarded-For': realIp }),
             Cookie: Object.entries(header)
               .map(
                 ([key, value]) =>

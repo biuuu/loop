@@ -1,7 +1,7 @@
-import { test } from 'node:test';
+import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDecipheriv } from 'node:crypto';
-import { Response, type RequestInit } from 'undici';
+import { Headers, Response, type RequestInit } from 'undici';
 import {
   createNeteaseRequest,
   createNeteaseQrRequest,
@@ -27,7 +27,19 @@ const reply = (body: unknown, cookie?: string) =>
     headers: cookie ? { 'set-cookie': cookie } : {},
   });
 
-test('QR key and poll use one desktop EAPI device identity', async () => {
+function setRealIp(context: TestContext, value: string | undefined) {
+  const key = 'NETEASE_MUSIC_API_REALIP';
+  const previous = process.env[key];
+  const set = (ip: string | undefined) => {
+    if (ip === undefined) delete process.env[key];
+    else process.env[key] = ip;
+  };
+  context.after(() => set(previous));
+  set(value);
+}
+
+test('QR key and poll use one desktop EAPI device identity without the music request IP headers', async (context) => {
+  setRealIp(context, '203.0.113.20');
   const devices: string[] = [];
   const request = createNeteaseQrRequest(async (url, init) => {
     assert.match(
@@ -35,6 +47,9 @@ test('QR key and poll use one desktop EAPI device identity', async () => {
       /^https:\/\/interfacepc\.music\.163\.com\/eapi\/login\/qrcode\//,
     );
     const headers = init.headers as Record<string, string>;
+    const httpHeaders = new Headers(headers);
+    assert.equal(httpHeaders.has('X-Real-IP'), false);
+    assert.equal(httpHeaders.has('X-Forwarded-For'), false);
     assert.match(headers['User-Agent']!, /NeteaseMusicDesktop/);
     assert.doesNotMatch(headers['User-Agent']!, /iPhone/);
     assert.match(headers.Cookie, /(?:^|; )os=pc(?:;|$)/);
@@ -58,6 +73,60 @@ test('QR key and poll use one desktop EAPI device identity', async () => {
   await request('unikey');
   await request('check', 'qr-key');
   assert.equal(devices[0], devices[1]);
+});
+
+test('configured IP goes to guest registration, EAPI and WEAPI music requests', async (context) => {
+  setRealIp(context, ' 203.0.113.20 ');
+  const requests: { url: string; headers: Headers }[] = [];
+  const request = createNeteaseRequest('', async (url, init) => {
+    requests.push({ url, headers: new Headers(init.headers) });
+    return reply({ code: 200 }, 'MUSIC_A=test-guest-token; Path=/');
+  });
+  await request('/api/song/enhance/player/url/v1', {});
+  await request('/api/user/playlist', {});
+
+  assert.deepEqual(
+    requests.map(({ url }) => url),
+    [
+      'https://music.163.com/weapi/register/anonimous',
+      'https://interface.music.163.com/eapi/song/enhance/player/url/v1',
+      'https://music.163.com/weapi/user/playlist',
+    ],
+  );
+  for (const { headers } of requests) {
+    assert.equal(headers.get('X-Real-IP'), '203.0.113.20');
+    assert.equal(headers.get('X-Forwarded-For'), '203.0.113.20');
+  }
+});
+
+test('music request IP configuration is optional and accepts IPv6', async (context) => {
+  for (const [name, input, expected] of [
+    ['unset', undefined, null],
+    ['blank', '  ', null],
+    ['IPv6', '2001:db8::20', '2001:db8::20'],
+  ] as const) {
+    await context.test(name, async (subtest) => {
+      setRealIp(subtest, input);
+      let headers = new Headers();
+      const request = createNeteaseRequest(
+        'MUSIC_A=test',
+        async (_url, init) => {
+          headers = new Headers(init.headers);
+          return reply({ code: 200 });
+        },
+      );
+      await request('/api/v3/song/detail', {});
+      assert.equal(headers.get('X-Real-IP'), expected);
+      assert.equal(headers.get('X-Forwarded-For'), expected);
+    });
+  }
+});
+
+test('invalid music request IP fails during setup without echoing the configured value', (context) => {
+  setRealIp(context, '203.0.113.20, private-value');
+  assert.throws(() => createNeteaseRequest(), {
+    message: 'NETEASE_MUSIC_API_REALIP must be a valid IPv4 or IPv6 address',
+  });
 });
 
 test('anonymous requests register once, share identity and keep one device for playback', async () => {
