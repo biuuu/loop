@@ -119,13 +119,13 @@ test('nickname cooldown survives a restart, applies to both endpoints, and allow
     };
     assert.deepEqual(changed.json(), { guest: changedProfile });
     const blocked = {
-      error: '两次昵称修改需间隔一小时',
+      error: '两次昵称修改需间隔 7 天',
       nicknameChangeAvailableAt: availableAt,
     };
     const legacyBlocked = await legacy('Bypass');
     assert.equal(legacyBlocked.statusCode, 429);
     assert.deepEqual(legacyBlocked.json(), blocked);
-    assert.equal(legacyBlocked.headers['retry-after'], '3600');
+    assert.equal(legacyBlocked.headers['retry-after'], '604800');
 
     const otherResponse = await server.app.inject({
       method: 'PATCH',

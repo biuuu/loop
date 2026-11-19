@@ -262,13 +262,13 @@ test('a nickname cooldown response updates the private retry time and preserves 
     assert.equal(input, '/api/me/nickname');
     return Response.json(
       {
-        error: '昵称每小时可修改一次',
+        error: '两次昵称修改需间隔 7 天',
         nicknameChangeAvailableAt: availableAt,
       },
       { status: 429 },
     );
   });
-  await assert.rejects(room.setNickname('云朵猫'), /每小时/);
+  await assert.rejects(room.setNickname('云朵猫'), /7 天/);
   assert.deepEqual(room.guest, {
     id: 'cat',
     nickname: '猫',

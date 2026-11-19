@@ -18,7 +18,7 @@ export interface EmoteCatalog {
 }
 export const EMOTE_DURATION_MS = 3000;
 export const EMOTE_COOLDOWN_MS = 2000;
-export const NICKNAME_CHANGE_COOLDOWN_MS = 60 * 60_000;
+export const NICKNAME_CHANGE_COOLDOWN_MS = 7 * 24 * 60 * 60_000;
 export const nicknameSchema = z
   .string()
   .trim()

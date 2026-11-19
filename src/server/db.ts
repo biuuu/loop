@@ -50,7 +50,7 @@ export class EmptyPlaylistImportError extends Error {
 }
 export class NicknameCooldownError extends Error {
   constructor(readonly nicknameChangeAvailableAt: number) {
-    super('两次昵称修改需间隔一小时');
+    super('两次昵称修改需间隔 7 天');
   }
 }
 export class Store {

@@ -214,7 +214,7 @@ function logout(all = false) {
             required
           />
           <small v-if="nicknameWaitUntil === undefined"
-            >昵称每小时可修改一次。</small
+            >两次昵称修改需间隔 7 天。</small
           >
           <div class="account-nickname-actions">
             <button
