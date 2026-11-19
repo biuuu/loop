@@ -3,7 +3,7 @@ import { useTimedMessage } from './timed-message';
 import { onMounted, onBeforeUnmount, ref, computed } from 'vue';
 import { X } from '@lucide/vue';
 import { request, useRoom } from './room';
-import type { RoomInfo, Participant } from '../shared/contracts';
+import type { RoomInfo } from '../shared/contracts';
 import EnvironmentPicker from './EnvironmentPicker.vue';
 const props = defineProps<{ info?: RoomInfo }>();
 const emit = defineEmits<{ close: [] }>();
@@ -17,25 +17,21 @@ onMounted(() => {
       : null;
   dialog.value?.showModal();
   dialog.value?.querySelector<HTMLElement>('input, button')?.focus();
+  void act(reload);
 });
 onBeforeUnmount(() => {
   dialog.value?.close();
   if (returnFocus?.isConnected) returnFocus.focus();
 });
 const info = props.info ?? room.roomInfo!;
-const fetchedMembers = ref<Participant[]>([]);
-const inRoom = computed(
-  () => room.roomId === info.id && room.connection === 'connected',
-);
-const members = computed(() =>
-  inRoom.value ? (room.snapshot?.users ?? []) : fetchedMembers.value,
-);
 const name = ref(info.name);
 const joinPolicy = ref(info.joinPolicy);
 const stageCapacity = ref(info.stageCapacity);
 const environmentId = ref(info.environmentId);
-const occupiedStageCount = computed(
-  () => members.value.filter((user) => user.seat !== null).length,
+const occupiedStageCount = computed(() =>
+  room.roomId === info.id && room.connection === 'connected'
+    ? (room.snapshot?.stage.length ?? 0)
+    : 0,
 );
 const stageCapacityError = computed(() =>
   stageCapacity.value < occupiedStageCount.value
@@ -46,7 +42,6 @@ const revision = ref(info.revision);
 const busy = ref(false);
 const error = useTimedMessage();
 const notice = useTimedMessage();
-const bans = ref<{ userId: string; nickname?: string }[]>([]);
 const base = `/api/rooms/${encodeURIComponent(info.id)}`;
 async function act(task: () => Promise<void>) {
   if (busy.value) return;
@@ -61,27 +56,16 @@ async function act(task: () => Promise<void>) {
     busy.value = false;
   }
 }
-async function loadMembers() {
-  if (!inRoom.value)
-    fetchedMembers.value = (
-      await request<{ users: Participant[] }>(`${base}/members`)
-    ).users;
+function applySettings(settings: RoomInfo) {
+  name.value = settings.name;
+  joinPolicy.value = settings.joinPolicy;
+  stageCapacity.value = settings.stageCapacity;
+  environmentId.value = settings.environmentId;
+  revision.value = settings.revision;
 }
 async function reload() {
   const data = await request<{ room: RoomInfo }>(base);
-  name.value = data.room.name;
-  joinPolicy.value = data.room.joinPolicy;
-  stageCapacity.value = data.room.stageCapacity;
-  environmentId.value = data.room.environmentId;
-  revision.value = data.room.revision;
-  await Promise.all([loadMembers(), loadBans()]);
-}
-async function loadBans() {
-  bans.value = (
-    await request<{ bans: { userId: string; nickname?: string }[] }>(
-      `${base}/bans`,
-    )
-  ).bans;
+  applySettings(data.room);
 }
 function save() {
   if (stageCapacityError.value) {
@@ -100,61 +84,10 @@ function save() {
       }),
     });
     if (room.roomId === info.id) room.roomInfo = data.room;
-    revision.value = data.room.revision;
-    name.value = data.room.name;
-    joinPolicy.value = data.room.joinPolicy;
-    stageCapacity.value = data.room.stageCapacity;
-    environmentId.value = data.room.environmentId;
+    applySettings(data.room);
     notice.value = '房间设置已保存';
   });
 }
-function moderate(event: 'stage:remove' | 'member:kick', userId: string) {
-  if (
-    event === 'member:kick' &&
-    !window.confirm('将这位成员移出房间？对方之后仍可以重新进入。')
-  )
-    return;
-  void act(async () => {
-    if (inRoom.value) {
-      if (!(await room.moderate(event, userId)))
-        throw new Error(room.error || '操作失败');
-    } else {
-      await request(
-        `${base}/members/${encodeURIComponent(userId)}/${event === 'member:kick' ? 'kick' : 'leave-stage'}`,
-        { method: 'POST' },
-      );
-      await loadMembers();
-    }
-    notice.value = event === 'stage:remove' ? '已让该成员下台' : '已移出房间';
-  });
-}
-function ban(userId: string) {
-  if (
-    !window.confirm(
-      '封禁这位成员？对方将被移出，并且无法再次进入本房间，直到你解除封禁。',
-    )
-  )
-    return;
-  void act(async () => {
-    await request(`${base}/bans`, {
-      method: 'POST',
-      body: JSON.stringify({ userId }),
-    });
-    await Promise.all([loadBans(), loadMembers()]);
-    notice.value = '已封禁该成员';
-  });
-}
-function unban(userId: string) {
-  void act(async () => {
-    await request(`${base}/bans/${encodeURIComponent(userId)}`, {
-      method: 'DELETE',
-    });
-    await loadBans();
-  });
-}
-onMounted(() => {
-  void act(reload);
-});
 </script>
 <template>
   <dialog
@@ -211,43 +144,17 @@ onMounted(() => {
           /></span>
         </label>
         <p class="library-hint">已有成员及短时重连不受影响，房主仍可进入。</p>
-        <button class="primary" :disabled="busy || !!stageCapacityError">
+        <button
+          type="submit"
+          class="primary"
+          :disabled="busy || !!stageCapacityError"
+        >
           保存设置
         </button>
+        <button type="button" :disabled="busy" @click="act(reload)">
+          刷新设置
+        </button>
       </form>
-      <div class="panel-heading">
-        <h3>成员管理</h3>
-        <button :disabled="busy" @click="act(reload)">刷新资料与成员</button>
-      </div>
-      <ul class="management-list">
-        <li
-          v-for="user in members.filter((user) => user.id !== room.guest?.id)"
-          :key="user.id"
-        >
-          <span>{{ user.nickname }}{{ !user.connected ? ' · 暂离' : '' }}</span>
-          <div>
-            <button
-              v-if="user.seat !== null"
-              :disabled="busy"
-              @click="moderate('stage:remove', user.id)"
-            >
-              下台</button
-            ><button :disabled="busy" @click="moderate('member:kick', user.id)">
-              移出</button
-            ><button :disabled="busy" @click="ban(user.id)">封禁</button>
-          </div>
-        </li>
-      </ul>
-      <h3>本房间封禁</h3>
-      <p v-if="!bans.length" class="library-hint">暂无封禁成员。</p>
-      <ul class="management-list">
-        <li v-for="user in bans" :key="user.userId">
-          <span>{{ user.nickname || user.userId }}</span
-          ><button :disabled="busy" @click="unban(user.userId)">
-            解除封禁
-          </button>
-        </li>
-      </ul>
       <p v-if="notice" role="status">{{ notice }}</p>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
     </section>

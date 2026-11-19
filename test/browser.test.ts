@@ -417,11 +417,7 @@ test(
       const beforeSecondJoin = room
         .snapshot()
         .users.find((u) => u.nickname === '月亮猫')!;
-      await b.getByRole('button', { name: '客厅成员', exact: true }).click();
-      await b
-        .getByRole('dialog', { name: '客厅成员' })
-        .getByRole('button', { name: '上台', exact: true })
-        .click();
+      await joinStage(b);
       await waitFor(
         () => room.snapshot().stage.length === 2,
         'Both stage seats should be occupied',

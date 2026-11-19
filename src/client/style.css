@@ -178,8 +178,7 @@ input {
   width: 16px;
   height: 16px;
 }
-.live-dot,
-.participant-list i {
+.live-dot {
   display: inline-block;
   width: 6px;
   height: 6px;
@@ -187,8 +186,7 @@ input {
   background: #b9a179;
   margin-right: 6px;
 }
-.live-dot.connected,
-.participant-list i {
+.live-dot.connected {
   background: #82926c;
 }
 .identity-button {
@@ -872,37 +870,10 @@ input {
 .playlist-current .track-list li {
   border-bottom: 0;
 }
-.participant-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 12px 0 24px;
-}
-.participant-list > span {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  font-size: 12px;
-  padding: 10px;
-  border-radius: 9px;
-  background: #efeee3;
-  overflow-wrap: anywhere;
-}
-.participant-list small {
-  color: var(--muted);
-  font-size: 10px;
-}
-.participant-list i.away {
-  background: #bcb6a5;
-}
 h3 {
   font-size: 14px;
   font-weight: 500;
   margin-top: 24px;
-}
-.leave-button {
-  margin-top: 12px;
 }
 .walk-controls {
   display: flex;
@@ -1310,9 +1281,6 @@ h3 {
   }
   .sound-control label {
     display: none;
-  }
-  .member-audio label {
-    display: flex;
   }
   .sound-control button {
     min-height: 32px;
@@ -2265,31 +2233,6 @@ select {
     transition: none;
   }
 }
-.management-list {
-  list-style: none;
-  padding: 0;
-}
-.management-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line);
-}
-.management-list li > span {
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-.management-list li > div {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-.management-list button {
-  padding: 6px 10px;
-  font-size: 12px;
-}
 @media (max-width: 640px) {
   .directory {
     padding: 16px 18px 48px;
@@ -2325,9 +2268,6 @@ select {
   .settings-panel {
     padding: 20px;
     max-height: calc(100dvh - 24px);
-  }
-  .management-list li {
-    flex-wrap: wrap;
   }
   .in-room .site-header {
     flex-wrap: nowrap;

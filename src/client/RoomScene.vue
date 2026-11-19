@@ -948,6 +948,15 @@ onMounted(() => {
       <span><House aria-hidden="true" /></span>
       <h2>欢迎来到{{ environment.name }}</h2>
       <p>此浏览器无法显示动画房间，你仍可使用下方名单、舞台和音乐功能。</p>
+      <button
+        v-if="!room.onStage"
+        type="button"
+        class="outline"
+        :disabled="blocked || stageCount >= stageCapacity"
+        @click="requestJoin"
+      >
+        {{ stageCount >= stageCapacity ? '舞台已满' : '上台' }}
+      </button>
     </div>
   </div>
 </template>

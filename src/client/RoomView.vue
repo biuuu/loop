@@ -12,6 +12,7 @@ import { createKeyboardMovement, movementPosition } from './keyboard-movement';
 import { playlistView } from './playlist-view';
 import { neteaseCover } from './netease-cover';
 import RoomScene from './RoomScene.vue';
+import RoomMembers from './RoomMembers.vue';
 import CatPreview from './CatPreview.vue';
 import NeteasePlaylistSearch from './NeteasePlaylistSearch.vue';
 import NeteaseUserSearch from './NeteaseUserSearch.vue';
@@ -103,11 +104,6 @@ const stageCapacity = computed(
 const stageFull = computed(
   () => (room.snapshot?.stage.length ?? 0) >= stageCapacity.value,
 );
-const participants = computed(() =>
-  [...(room.snapshot?.users ?? [])].sort(
-    (a, b) => (a.seat ?? stageCapacity.value) - (b.seat ?? stageCapacity.value),
-  ),
-);
 const playlistDisplay = computed(() =>
   playlistView(room.playlist, room.guest?.id, playback.value),
 );
@@ -196,12 +192,12 @@ async function requestJoin() {
     openLibrary('search');
     return;
   }
-  if ((await room.joinStage()) && modal.value === 'members') closeModal();
+  await room.joinStage();
 }
 async function requestLeave() {
   if (!room.onStage || room.stagePending || room.connection !== 'connected')
     return;
-  if ((await room.leaveStage()) && modal.value === 'members') closeModal();
+  await room.leaveStage();
 }
 function outsideDialog(event: MouseEvent) {
   if (!dialog.value || event.target !== dialog.value) return;
@@ -799,77 +795,7 @@ onBeforeUnmount(() => {
             /></template>
           </section>
           <section v-else-if="modal === 'members'">
-            <p class="library-hint">
-              {{ room.snapshot?.users.length || 0 }} /
-              {{ room.snapshot?.capacity || 30 }} 只猫 · 每人一首，轮流分享
-            </p>
-            <div class="participant-list">
-              <span v-for="user in participants" :key="user.id"
-                ><i :class="{ away: !user.connected }" />{{ user.nickname
-                }}{{ user.id === room.guest.id ? '（你）' : ''
-                }}<small
-                  >{{
-                    user.id === playback?.djId
-                      ? '正在播放'
-                      : user.seat != null
-                        ? `舞台 ${user.seat + 1}`
-                        : '听众'
-                  }}{{ !user.connected ? ' · 暂离' : '' }}</small
-                ></span
-              >
-            </div>
-            <h3>舞台队列</h3>
-            <p class="library-hint">从左到右轮流播放，上台后加入队尾。</p>
-            <button
-              v-if="room.onStage"
-              class="outline leave-button"
-              :disabled="room.stagePending || room.connection !== 'connected'"
-              @click="requestLeave"
-            >
-              离开舞台 <ArrowDownRight aria-hidden="true" />
-            </button>
-            <button
-              v-else
-              :disabled="
-                room.stagePending ||
-                room.connection !== 'connected' ||
-                stageFull
-              "
-              @click="requestJoin"
-            >
-              {{ stageFull ? '舞台已满' : '上台' }}
-            </button>
-            <h3 v-if="!mobileControls">声音设置</h3>
-            <div
-              v-if="!mobileControls || canSkip"
-              class="member-audio sound-control"
-            >
-              <div v-if="!mobileControls" class="volume-control">
-                <button
-                  type="button"
-                  class="text-button volume-toggle"
-                  :aria-label="volume === 0 ? '恢复音量' : '静音'"
-                  :title="volume === 0 ? '恢复音量' : '静音'"
-                  :aria-pressed="volume === 0"
-                  @click="sound.toggleMute"
-                >
-                  <VolumeX v-if="volume === 0" aria-hidden="true" />
-                  <Volume2 v-else aria-hidden="true" />
-                </button>
-                <label
-                  ><span>音量</span
-                  ><input
-                    v-model.number="volume"
-                    type="range"
-                    min="0"
-                    max="100"
-                    aria-label="成员面板播放音量"
-                /></label>
-              </div>
-              <button v-if="canSkip" @click="room.skip">
-                下一首 <SkipForward aria-hidden="true" />
-              </button>
-            </div>
+            <RoomMembers />
             <h3>移动你的小猫</h3>
             <div class="walk-controls">
               <button
