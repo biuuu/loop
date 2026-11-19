@@ -15,6 +15,7 @@ import { createDirectoryPoller, directoryRoomAccess } from './room-directory';
 import { roomPath } from './navigation';
 import {
   DEFAULT_STAGE_CAPACITY,
+  ROOM_DIRECTORY_PAGE_SIZE as PAGE_SIZE,
   type RoomDirectoryFilter,
   type RoomInfo,
   type RoomSummary,
@@ -33,7 +34,6 @@ const emit = defineEmits<{
   settings: [info: RoomInfo];
 }>();
 const room = useRoom();
-const PAGE_SIZE = 24;
 const filters = [
   { value: 'all', label: '全部' },
   { value: 'playing', label: '播放中' },

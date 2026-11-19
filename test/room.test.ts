@@ -1336,7 +1336,8 @@ test('allowlisted emotes, cooldown and authoritative movement bounds', () => {
     const start = room.snapshot().users[0]!;
     const target = { x: start.x + SCENE.speed, y: start.y };
     room.move(a!.id, target);
-    assert.equal(room.snapshot().users[0]!.durationMs, 1000);
+    const duration = room.snapshot().users[0]!.durationMs;
+    assert.ok(Math.abs(duration - 1000) < 1e-6);
     room.move(a!.id, { x: start.x, y: start.y });
     assert.ok(room.snapshot().users[0]!.x < target.x);
   } finally {

@@ -56,7 +56,7 @@ test('guest appearance has schema defaults, checks enums and persists edits thro
       .run('legacy', 'Legacy', hashToken('legacy-token'));
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 11);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 12);
     assert.deepEqual(
       db.guest('legacy-token')!.appearance,
       DEFAULT_CAT_APPEARANCE,
@@ -123,7 +123,7 @@ test('all black and white coat variants preserve identities and playlists across
       .all();
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 11);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 12);
     assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
     assert.deepEqual(
       db.sql.prepare('SELECT * FROM guests ORDER BY id').all(),
@@ -307,7 +307,7 @@ test('appearance API authenticates, rejects unknown fields and only edits the co
     await app.close();
   }
 });
-test('tokens are hashed and identities and playlists survive reopening at version 11', () => {
+test('tokens are hashed and identities and playlists survive reopening', () => {
   const root = mkdtempSync(join(tmpdir(), 'loop-db-')),
     path = join(root, 'test.sqlite');
   let db = new Store(path);
@@ -335,7 +335,7 @@ test('tokens are hashed and identities and playlists survive reopening at versio
     );
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 11);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 12);
     assert.deepEqual(db.guest(a.token), a.guest);
     assert.equal(db.firstTrack(a.guest.id)!.id, '1');
     assert.equal(db.playlist(a.guest.id).revision, 4);
@@ -410,7 +410,7 @@ test('startup rejects unversioned data and unsupported schema versions without m
       [0, /Unversioned database is not empty/i],
       [1, /Unsupported database version 1; first supported version is 11/i],
       [10, /Unsupported database version 10; first supported version is 11/i],
-      [12, /Database version 12 is newer than supported version 11/i],
+      [13, /Database version 13 is newer than supported version 12/i],
     ] as const) {
       const path = join(root, `version-${version}.sqlite`);
       const fixture = new Database(path);
@@ -506,6 +506,33 @@ test('playlist edits and rotation use physical order with monotonic revisions an
       db.sql.prepare('SELECT pointer FROM guests WHERE id=?').get(guest.id),
       { pointer: 0 },
     );
+  } finally {
+    db.close();
+  }
+});
+test('room playback timestamp rolls back if playlist rotation fails', () => {
+  const db = new Store(':memory:');
+  try {
+    const { guest, createdRoom } = db.createUser('DJ');
+    db.add(guest.id, track('1'));
+    db.add(guest.id, track('2'));
+    db.rotateTrack(guest.id, '1', { roomId: createdRoom.id, startedAt: 100 });
+    const before = db.playlist(guest.id);
+    db.sql
+      .exec(`CREATE TRIGGER reject_rotation BEFORE UPDATE OF position ON playlist
+      BEGIN SELECT RAISE(ABORT, 'playlist rotation failed'); END`);
+    assert.throws(
+      () =>
+        db.rotateTrack(guest.id, '2', {
+          roomId: createdRoom.id,
+          startedAt: 200,
+        }),
+      /playlist rotation failed/,
+    );
+    assert.deepEqual(db.playlist(guest.id), before);
+    assert.deepEqual(db.roomsForDirectory(), [
+      { ...createdRoom, lastPlayedAt: 100 },
+    ]);
   } finally {
     db.close();
   }

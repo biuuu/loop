@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
   DEFAULT_STAGE_CAPACITY,
+  ROOM_DIRECTORY_PAGE_SIZE,
   roomDirectoryFilterSchema,
   roomNumberSchema,
   stageCapacitySchema,
@@ -50,7 +51,12 @@ export function roomRoutes(
           .nonnegative()
           .max(Number.MAX_SAFE_INTEGER)
           .default(0),
-        limit: z.coerce.number().int().min(1).max(100).default(24),
+        limit: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .default(ROOM_DIRECTORY_PAGE_SIZE),
         owner: z.literal('me').optional(),
         filter: roomDirectoryFilterSchema.default('all'),
       })

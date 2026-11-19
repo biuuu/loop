@@ -120,6 +120,7 @@ export interface RoomSummary extends RoomInfo {
   trackTitle?: string;
   trackCover?: string;
 }
+export const ROOM_DIRECTORY_PAGE_SIZE = 9;
 export const roomDirectoryFilterSchema = z.enum([
   'all',
   'playing',

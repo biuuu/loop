@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -26,12 +32,19 @@ const music: MusicService = {
 };
 const headers = (token: string) => ({ cookie: `loop_guest=${token}` });
 
-test('SQLite reopening preserves room numbers, settings, bans and identities', () => {
+test('upgrading from version 11 preserves saved data and persists room playback across reopening', () => {
   const root = mkdtempSync(join(tmpdir(), 'loop-room-numbers-persist-'));
   let db: Store | undefined;
   try {
     const path = join(root, 'rooms.sqlite');
-    db = new Store(path);
+    const baseline = join(root, 'baseline');
+    mkdirSync(baseline);
+    copyFileSync(
+      'migrations/011-baseline.sql',
+      join(baseline, '011-baseline.sql'),
+    );
+    db = new Store(path, baseline);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 11);
     const owners = ['First', 'Second', 'Third'].map((name) =>
       db!.createGuest(name),
     );
@@ -63,16 +76,26 @@ test('SQLite reopening preserves room numbers, settings, bans and identities', (
       expected.map((room) => room.number),
       [2, 3, 1],
     );
-    const tables = ['rooms', 'room_bans', 'guests', 'sessions', 'playlist'];
+    const tables = [
+      'room_numbers',
+      'room_bans',
+      'guests',
+      'sessions',
+      'playlist',
+    ];
     const saved = tables.map((table) =>
       db!.sql.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),
     );
     db.close();
     db = undefined;
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 11);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 12);
     assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
     assert.deepEqual(db.rooms(), expected);
+    assert.deepEqual(
+      db.roomsForDirectory(),
+      expected.map((room) => ({ ...room, lastPlayedAt: null })),
+    );
     for (const [index, table] of tables.entries())
       assert.deepEqual(
         db.sql.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),
@@ -82,6 +105,30 @@ test('SQLite reopening preserves room numbers, settings, bans and identities', (
       assert.deepEqual(db.roomByNumber(room.number), room);
     for (const owner of owners)
       assert.deepEqual(db.guest(owner.token), owner.guest);
+
+    const dj = owners[0]!.guest.id;
+    const firstPlay = { roomId: rooms[2]!.id, startedAt: 100 };
+    db.rotateTrack(dj, '2', firstPlay);
+    assert.deepEqual(db.playlistOrder(dj), { ids: ['1', '2'], revision: 4 });
+    db.remove(dj, '2');
+    const single = db.playlist(dj);
+    db.rotateTrack(dj, track.id, { ...firstPlay, startedAt: 200 });
+    assert.deepEqual(db.playlist(dj), single);
+    assert.deepEqual(db.rooms(), expected);
+
+    db.close();
+    db = undefined;
+    db = new Store(path);
+    assert.deepEqual(db.playlist(dj), single);
+    assert.deepEqual(
+      db.roomsForDirectory(),
+      expected.map((room) => ({
+        ...room,
+        lastPlayedAt: room.id === firstPlay.roomId ? 200 : null,
+      })),
+    );
+    assert.deepEqual(db.room(firstPlay.roomId), expected[1]);
+    assert.deepEqual(db.roomByNumber(rooms[2]!.number), expected[1]);
   } finally {
     db?.close();
     rmSync(root, { recursive: true, force: true });

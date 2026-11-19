@@ -30,6 +30,24 @@ const music: MusicService = {
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 const delay = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
+function enterDirectoryRoom(
+  registry: RoomRegistry,
+  roomId: string,
+  guest: Guest,
+) {
+  const socketId = `socket-${guest.id}`;
+  const socket = {
+    id: socketId,
+    join: () => {},
+    leave: () => {},
+    emit: () => {},
+    disconnect: () => {},
+  } as unknown as Socket;
+  return {
+    room: registry.connect(roomId, guest, socket, `hash-${guest.id}`),
+    socketId,
+  };
+}
 async function promptly(promise: Promise<unknown>) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -372,6 +390,10 @@ test('switching while upstream resolution is pending finishes promptly; late suc
     await tick();
     await tick();
     assert.equal(owner.room.snapshot().playback, null);
+    assert.equal(
+      f.db.roomsForDirectory().find(({ id }) => id === f.a.id)?.lastPlayedAt,
+      null,
+    );
     assert.equal(f.db.playlist(f.ownerA.id).revision, before);
     assert.deepEqual(f.db.playlistOrder(f.ownerA.id).ids, ['1', '2']);
     assert.equal(
@@ -565,23 +587,13 @@ test('public directory filters live room state before pagination and combines it
       playing = db.createRoom(dj.guest.id, 'Playing', 'cozy'),
       empty = db.createRoom(emptyOwner.guest.id, 'Empty', 'cozy'),
       otherEmpty = db.createRoom(otherOwner.guest.id, 'OtherEmpty', 'cozy');
-    const enter = (roomId: string, guest: Guest) => {
-      const socketId = `socket-${guest.id}`;
-      const socket = {
-        id: socketId,
-        join: () => {},
-        leave: () => {},
-        emit: () => {},
-        disconnect: () => {},
-      } as unknown as Socket;
-      return {
-        room: registry.connect(roomId, guest, socket, `hash-${guest.id}`),
-        socketId,
-      };
-    };
-    enter(occupied.id, listener.guest);
-    enter(occupied.id, visitor.guest);
-    const { room, socketId } = enter(playing.id, dj.guest);
+    enterDirectoryRoom(registry, occupied.id, listener.guest);
+    enterDirectoryRoom(registry, occupied.id, visitor.guest);
+    const { room, socketId } = enterDirectoryRoom(
+      registry,
+      playing.id,
+      dj.guest,
+    );
     const directory = async (query = '', token?: string) => {
       const response = await app.inject({
         url: `/api/rooms${query ? `?${query}` : ''}`,
@@ -601,12 +613,12 @@ test('public directory filters live room state before pagination and combines it
 
     const all = await directory();
     assert.equal(all.total, 4);
-    assert.deepEqual(all.ids.slice(0, 2), [occupied.id, playing.id]);
+    assert.deepEqual(all.ids.slice(0, 2), [playing.id, occupied.id]);
     const emptyIds = all.ids.slice(2);
     assert.deepEqual(new Set(emptyIds), new Set([empty.id, otherEmpty.id]));
     assert.deepEqual(await directory('filter=all'), all);
     assert.deepEqual(await directory('limit=1'), {
-      ids: [occupied.id],
+      ids: [playing.id],
       total: 4,
     });
     assert.deepEqual(await directory('filter=playing&limit=1'), {
@@ -614,7 +626,7 @@ test('public directory filters live room state before pagination and combines it
       total: 1,
     });
     assert.deepEqual(await directory('filter=occupied'), {
-      ids: [occupied.id, playing.id],
+      ids: [playing.id, occupied.id],
       total: 2,
     });
     assert.deepEqual(await directory('filter=empty&limit=1'), {
@@ -654,6 +666,117 @@ test('public directory filters live room state before pagination and combines it
       ids: [playing.id],
       total: 1,
     });
+  } finally {
+    await app.close();
+  }
+});
+
+test('directory pages keep recent playback order after rooms empty and ignore failed or pending playback', async (context) => {
+  context.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  let finishInvalid!: (result: { url: string; durationMs: number }) => void;
+  const { app, db, registry } = await createServer({
+    dbPath: ':memory:',
+    music: {
+      ...music,
+      resolve: (item) =>
+        item.id === 'invalid'
+          ? new Promise((done) => {
+              finishInvalid = done;
+            })
+          : music.resolve(item),
+    },
+  });
+  try {
+    const makeRoom = (name: string) => {
+      context.mock.timers.tick(1);
+      const { guest } = db.createGuest(name);
+      return { guest, id: db.createRoom(guest.id, name, 'cozy').id };
+    };
+    const active = makeRoom('Active');
+    const newer = makeRoom('Newer');
+    const older = makeRoom('Older');
+    const invalid = makeRoom('Invalid');
+    const emptyIds = Array.from(
+      { length: 8 },
+      (_, i) => makeRoom(`Empty${i}`).id,
+    );
+    enterDirectoryRoom(registry, active.id, active.guest);
+    enterDirectoryRoom(registry, active.id, db.createGuest('Listener').guest);
+    const olderSession = enterDirectoryRoom(registry, older.id, older.guest);
+    const newerSession = enterDirectoryRoom(registry, newer.id, newer.guest);
+    const invalidSession = enterDirectoryRoom(
+      registry,
+      invalid.id,
+      invalid.guest,
+    );
+    const lastPlayed = (roomId: string) =>
+      db.roomsForDirectory().find(({ id }) => id === roomId)?.lastPlayedAt;
+
+    const cover = 'https://example.com/older.jpg';
+    db.add(older.guest.id, { ...track('older'), cover });
+    await olderSession.room.join(older.guest.id, olderSession.socketId);
+    context.mock.timers.tick(100);
+    db.add(newer.guest.id, track('newer'));
+    await newerSession.room.join(newer.guest.id, newerSession.socketId);
+    assert.equal(newerSession.room.snapshot().playback?.startedAt, Date.now());
+    assert.equal(lastPlayed(newer.id), Date.now());
+    registry.leave(newer.id, newer.guest.id, newerSession.socketId);
+
+    const list = async (query = '') => {
+      const response = await app.inject(`/api/rooms${query}`);
+      assert.equal(response.statusCode, 200, response.body);
+      const result = response.json<{ rooms: RoomSummary[]; total: number }>();
+      assert.ok(result.rooms.every((room) => !('lastPlayedAt' in room)));
+      return result;
+    };
+    const expectedIds = [
+      newer.id,
+      older.id,
+      active.id,
+      invalid.id,
+      ...emptyIds,
+    ];
+    const first = await list();
+    assert.equal(first.total, 12);
+    assert.deepEqual(
+      first.rooms.map(({ id }) => id),
+      expectedIds.slice(0, 9),
+    );
+    assert.equal(first.rooms[0]!.online, 0);
+    assert.equal(first.rooms[0]!.trackTitle, undefined);
+    assert.equal(first.rooms[0]!.trackCover, undefined);
+    const second = await list('?offset=9');
+    assert.equal(second.total, 12);
+    assert.deepEqual(
+      second.rooms.map(({ id }) => id),
+      expectedIds.slice(9),
+    );
+    const playing = await list('?filter=playing&limit=1');
+    assert.equal(playing.total, 1);
+    assert.equal(playing.rooms[0]!.id, older.id);
+    assert.equal(playing.rooms[0]!.trackCover, cover);
+    const empty = await list('?filter=empty&limit=2');
+    assert.equal(empty.total, 9);
+    assert.deepEqual(
+      empty.rooms.map(({ id }) => id),
+      [newer.id, emptyIds[0]],
+    );
+
+    context.mock.timers.tick(100);
+    db.add(invalid.guest.id, track('invalid'));
+    const join = invalidSession.room.join(
+      invalid.guest.id,
+      invalidSession.socketId,
+    );
+    await tick();
+    assert.equal(invalidSession.room.snapshot().resolving, true);
+    assert.equal(lastPlayed(invalid.id), null);
+    assert.deepEqual(await list(), first);
+    finishInvalid({ url: 'ftp://example.com/invalid', durationMs: 60_000 });
+    await join;
+    assert.equal(invalidSession.room.snapshot().playback, null);
+    assert.equal(lastPlayed(invalid.id), null);
+    assert.deepEqual(await list(), first);
   } finally {
     await app.close();
   }

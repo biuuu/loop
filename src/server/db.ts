@@ -22,6 +22,11 @@ import {
 import { ENVIRONMENTS } from '../shared/environments.js';
 
 const BASELINE_VERSION = 11;
+const ROOM_COLUMNS = `r.id,n.number,r.owner_user_id AS ownerId,g.nickname AS ownerNickname,
+  r.name,r.environment_id AS environmentId,r.join_policy AS joinPolicy,r.stage_capacity AS stageCapacity,r.revision,
+  r.created_at AS createdAt,r.updated_at AS updatedAt`;
+const ROOM_TABLES = `FROM rooms r JOIN guests g ON g.id=r.owner_user_id
+  JOIN room_numbers n ON n.room_id=r.id`;
 
 type GuestRow = {
   id: string;
@@ -359,8 +364,16 @@ export class Store {
   firstTrack(id: string): Track | null {
     return this.tracks(id)[0] ?? null;
   }
-  rotateTrack(id: string, trackId: string): Track[] {
+  rotateTrack(
+    id: string,
+    trackId: string,
+    playback?: { roomId: string; startedAt: number },
+  ): Track[] {
     return this.editTracks(id, (tracks) => {
+      if (playback)
+        this.sql
+          .prepare('UPDATE rooms SET last_played_at=? WHERE id=?')
+          .run(playback.startedAt, playback.roomId);
       const played = tracks.find((track) => track.id === trackId);
       return played
         ? [...tracks.filter((track) => track.id !== trackId), played]
@@ -369,28 +382,30 @@ export class Store {
   }
   room(id: string): RoomInfo | null {
     const row = this.sql
-      .prepare(
-        `SELECT r.id,n.number,r.owner_user_id AS ownerId,g.nickname AS ownerNickname,
-      r.name,r.environment_id AS environmentId,r.join_policy AS joinPolicy,r.stage_capacity AS stageCapacity,r.revision,
-      r.created_at AS createdAt,r.updated_at AS updatedAt FROM rooms r JOIN guests g ON g.id=r.owner_user_id
-      JOIN room_numbers n ON n.room_id=r.id WHERE r.id=?`,
-      )
+      .prepare(`SELECT ${ROOM_COLUMNS} ${ROOM_TABLES} WHERE r.id=?`)
       .get(id);
     return (row as RoomInfo | undefined) ?? null;
   }
   roomByNumber(number: number): RoomInfo | null {
     if (!Number.isSafeInteger(number) || number < 1) return null;
     const row = this.sql
-      .prepare('SELECT room_id AS id FROM room_numbers WHERE number=?')
-      .get(number) as { id: string } | undefined;
-    return row ? this.room(row.id) : null;
+      .prepare(`SELECT ${ROOM_COLUMNS} ${ROOM_TABLES} WHERE n.number=?`)
+      .get(number);
+    return (row as RoomInfo | undefined) ?? null;
   }
   rooms(): RoomInfo[] {
-    return (
-      this.sql.prepare('SELECT id FROM rooms ORDER BY created_at,id').all() as {
-        id: string;
-      }[]
-    ).map(({ id }) => this.room(id)!);
+    return this.sql
+      .prepare(
+        `SELECT ${ROOM_COLUMNS} ${ROOM_TABLES} ORDER BY r.created_at,r.id`,
+      )
+      .all() as RoomInfo[];
+  }
+  roomsForDirectory(): Array<RoomInfo & { lastPlayedAt: number | null }> {
+    return this.sql
+      .prepare(
+        `SELECT ${ROOM_COLUMNS},r.last_played_at AS lastPlayedAt ${ROOM_TABLES} ORDER BY r.created_at,r.id`,
+      )
+      .all() as Array<RoomInfo & { lastPlayedAt: number | null }>;
   }
   createRoom(
     ownerId: string,

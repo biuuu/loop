@@ -106,6 +106,7 @@ export class Room {
     private db: Store,
     private music: MusicService,
     private options: {
+      roomId?: string;
       disconnectGraceMs?: number;
       resolveTimeoutMs?: number;
       stageCapacity?: number;
@@ -534,7 +535,14 @@ export class Room {
           )
             throw new Error('无效播放地址');
           const beforeRevision = this.db.playlistOrder(id).revision;
-          this.db.rotateTrack(id, track.id);
+          const startedAt = Date.now();
+          this.db.rotateTrack(
+            id,
+            track.id,
+            this.options.roomId
+              ? { roomId: this.options.roomId, startedAt }
+              : undefined,
+          );
           const order = this.db.playlistOrder(id);
           if (order.revision !== beforeRevision)
             this.onPlaylistChange(id, order);
@@ -543,7 +551,7 @@ export class Room {
             track,
             djId: id,
             url: result.url,
-            startedAt: Date.now(),
+            startedAt,
             durationMs: result.durationMs,
             ...(result.isTrial ? { isTrial: true as const } : {}),
             ...(result.lyricOffsetMs !== undefined

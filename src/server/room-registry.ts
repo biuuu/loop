@@ -40,6 +40,7 @@ export class RoomRegistry {
       this.music,
       {
         ...this.options,
+        roomId: id === '__test__' ? undefined : id,
         stageCapacity: id === '__test__' ? 6 : this.info(id).stageCapacity,
       },
       this.options.emoteCatalog,
@@ -104,7 +105,7 @@ export class RoomRegistry {
   }
   summaries(): RoomSummary[] {
     return this.db
-      .rooms()
+      .roomsForDirectory()
       .map((info) => {
         const snapshot = this.live.get(info.id)?.snapshot();
         return {
@@ -122,12 +123,16 @@ export class RoomRegistry {
             : {}),
         };
       })
-      .sort(
-        (a, b) =>
+      .sort((a, b) => {
+        if (a.lastPlayedAt !== b.lastPlayedAt)
+          return (b.lastPlayedAt ?? -Infinity) - (a.lastPlayedAt ?? -Infinity);
+        return (
           b.online - a.online ||
           a.createdAt - b.createdAt ||
-          a.id.localeCompare(b.id),
-      );
+          a.id.localeCompare(b.id)
+        );
+      })
+      .map(({ lastPlayedAt, ...summary }) => summary);
   }
   admit(id: string, userId: string) {
     if (id !== '__test__' || !this.options.singleRoom) {
