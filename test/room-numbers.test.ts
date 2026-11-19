@@ -83,13 +83,18 @@ test('upgrading from version 11 preserves saved data and persists room playback 
       'sessions',
       'playlist',
     ];
-    const saved = tables.map((table) =>
-      db!.sql.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),
-    );
+    const saved = tables.map((table) => {
+      const rows = db!.sql
+        .prepare(`SELECT * FROM ${table} ORDER BY rowid`)
+        .all() as object[];
+      return table === 'guests'
+        ? rows.map((row) => ({ ...row, nickname_changed_at: null }))
+        : rows;
+    });
     db.close();
     db = undefined;
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 12);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 13);
     assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
     assert.deepEqual(db.rooms(), expected);
     assert.deepEqual(

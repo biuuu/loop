@@ -4,6 +4,7 @@ import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import {
   DEFAULT_STAGE_CAPACITY,
+  NICKNAME_CHANGE_COOLDOWN_MS,
   PLAYLIST_LIMIT,
   type Guest,
   type RoomInfo,
@@ -45,6 +46,11 @@ export const hashToken = (token: string) =>
 export class EmptyPlaylistImportError extends Error {
   constructor() {
     super('所选歌曲均不可导入，原歌单已保留');
+  }
+}
+export class NicknameCooldownError extends Error {
+  constructor(readonly nicknameChangeAvailableAt: number) {
+    super('两次昵称修改需间隔一小时');
   }
 }
 export class Store {
@@ -192,11 +198,35 @@ export class Store {
       .get(hashed) as GuestRow | undefined;
     return legacy ? readGuest(legacy) : null;
   }
-  rename(id: string, nickname: string): Guest {
-    this.sql
-      .prepare('UPDATE guests SET nickname=? WHERE id=?')
-      .run(nickname, id);
-    return this.guestById(id);
+  rename(
+    id: string,
+    nickname: string,
+    now = Date.now(),
+  ): { guest: Guest; changed: boolean } {
+    return this.sql
+      .transaction(() => {
+        const guest = this.guestById(id);
+        if (guest.nickname === nickname) return { guest, changed: false };
+        const availableAt = this.nicknameChangeAvailableAt(id);
+        if (availableAt !== undefined && now < availableAt)
+          throw new NicknameCooldownError(availableAt);
+        this.sql
+          .prepare(
+            'UPDATE guests SET nickname=?,nickname_changed_at=? WHERE id=?',
+          )
+          .run(nickname, now, id);
+        return { guest: { ...guest, nickname }, changed: true };
+      })
+      .immediate();
+  }
+  nicknameChangeAvailableAt(id: string): number | undefined {
+    const row = this.sql
+      .prepare('SELECT nickname_changed_at FROM guests WHERE id=?')
+      .get(id) as { nickname_changed_at: number | null } | undefined;
+    const changedAt = row?.nickname_changed_at;
+    return changedAt == null
+      ? undefined
+      : changedAt + NICKNAME_CHANGE_COOLDOWN_MS;
   }
   guestById(id: string): Guest {
     const row = this.sql
@@ -391,6 +421,12 @@ export class Store {
     const row = this.sql
       .prepare(`SELECT ${ROOM_COLUMNS} ${ROOM_TABLES} WHERE n.number=?`)
       .get(number);
+    return (row as RoomInfo | undefined) ?? null;
+  }
+  roomByOwner(userId: string): RoomInfo | null {
+    const row = this.sql
+      .prepare(`SELECT ${ROOM_COLUMNS} ${ROOM_TABLES} WHERE r.owner_user_id=?`)
+      .get(userId);
     return (row as RoomInfo | undefined) ?? null;
   }
   rooms(): RoomInfo[] {

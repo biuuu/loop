@@ -11,7 +11,7 @@ import type { Direction } from './keyboard-movement';
 import type { CatAppearance } from '../shared/appearance';
 import { stageSeatXs } from '../shared/contracts';
 import type {
-  Guest,
+  AccountProfile,
   Track,
   PlaylistState,
   PlaylistImportResult,
@@ -63,6 +63,15 @@ export function applyPlaybackUpdate(
   };
 }
 
+class NicknameChangeCooldownError extends Error {
+  constructor(
+    message: string,
+    readonly availableAt: number,
+  ) {
+    super(message);
+  }
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -72,11 +81,22 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || '请求失败，请稍后重试');
+  if (!response.ok) {
+    const message = data.error || '请求失败，请稍后重试';
+    if (
+      response.status === 429 &&
+      Number.isSafeInteger(data.nicknameChangeAvailableAt)
+    )
+      throw new NicknameChangeCooldownError(
+        message,
+        data.nicknameChangeAvailableAt,
+      );
+    throw new Error(message);
+  }
   return data as T;
 }
 export const useRoom = defineStore('room', () => {
-  const guest = ref<Guest | null>(null);
+  const guest = ref<AccountProfile | null>(null);
   const playlist = ref<Track[]>([]);
   const playlistRevision = ref(-1);
   const playlistReceiver = createPlaylistReceiver((state) => {
@@ -114,7 +134,7 @@ export const useRoom = defineStore('room', () => {
   function emoteFor(userId: string, now = Date.now()) {
     return localEmotes.get(userId, now);
   }
-  function setGuest(value: Guest | null) {
+  function setGuest(value: AccountProfile | null) {
     if (playlistReceiver.setIdentity(value?.id ?? null)) {
       resetTransientState();
       playlist.value = [];
@@ -200,8 +220,12 @@ export const useRoom = defineStore('room', () => {
       );
       const own = state.users.find((user) => user.id === guest.value?.id);
       if (!own?.connected || own.seat !== null) invalidateMovement();
-      if (guest.value && own?.appearance)
-        guest.value = { ...guest.value, appearance: own.appearance };
+      if (guest.value && own)
+        guest.value = {
+          ...guest.value,
+          nickname: own.nickname,
+          appearance: own.appearance ?? guest.value.appearance,
+        };
     }
   }
   function sync() {
@@ -639,7 +663,7 @@ export const useRoom = defineStore('room', () => {
     invalidateMovement();
     const version = ++authRequest;
     const data = await request<{
-      guest: Guest | null;
+      guest: AccountProfile | null;
       auth?: { emailEnabled: boolean };
     }>('/api/me');
     const value = data.guest;
@@ -650,13 +674,13 @@ export const useRoom = defineStore('room', () => {
   }
   async function enter(nickname: string) {
     const version = ++authRequest;
-    const data = await request<{ guest: Guest; createdRoom?: RoomInfo }>(
-      '/api/guest',
-      {
-        method: 'POST',
-        body: JSON.stringify({ nickname }),
-      },
-    );
+    const data = await request<{
+      guest: AccountProfile;
+      createdRoom?: RoomInfo;
+    }>('/api/guest', {
+      method: 'POST',
+      body: JSON.stringify({ nickname }),
+    });
     if (version !== authRequest) return;
     close();
     setGuest(data.guest);
@@ -671,13 +695,13 @@ export const useRoom = defineStore('room', () => {
     playlistOffset: number,
   ) {
     const version = ++authRequest;
-    const data = await request<{ guest: Guest; createdRoom: RoomInfo }>(
-      '/api/guest/from-netease',
-      {
-        method: 'POST',
-        body: JSON.stringify({ userId, playlistId, nickname, playlistOffset }),
-      },
-    );
+    const data = await request<{
+      guest: AccountProfile;
+      createdRoom: RoomInfo;
+    }>('/api/guest/from-netease', {
+      method: 'POST',
+      body: JSON.stringify({ userId, playlistId, nickname, playlistOffset }),
+    });
     if (version !== authRequest) return;
     close();
     setGuest(data.guest);
@@ -709,11 +733,50 @@ export const useRoom = defineStore('room', () => {
     return result;
   }
   async function setAppearance(appearance: CatAppearance) {
-    const data = await request<{ guest: Guest }>('/api/me/appearance', {
-      method: 'PATCH',
-      body: JSON.stringify(appearance),
-    });
-    if (guest.value?.id === data.guest.id) guest.value = data.guest;
+    const version = authRequest;
+    const data = await request<{ guest: AccountProfile }>(
+      '/api/me/appearance',
+      {
+        method: 'PATCH',
+        body: JSON.stringify(appearance),
+      },
+    );
+    if (version === authRequest && guest.value?.id === data.guest.id)
+      guest.value = { ...guest.value, appearance: data.guest.appearance };
+  }
+  async function setNickname(nickname: string): Promise<boolean> {
+    const version = authRequest;
+    const guestId = guest.value?.id;
+    if (!guestId) return false;
+    try {
+      const data = await request<{ guest: AccountProfile }>(
+        '/api/me/nickname',
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ nickname }),
+        },
+      );
+      if (
+        version !== authRequest ||
+        guest.value?.id !== guestId ||
+        data.guest.id !== guestId
+      )
+        return false;
+      guest.value = {
+        ...guest.value,
+        nickname: data.guest.nickname,
+        nicknameChangeAvailableAt: data.guest.nicknameChangeAvailableAt,
+      };
+      return true;
+    } catch (cause) {
+      if (version !== authRequest || guest.value?.id !== guestId) return false;
+      if (cause instanceof NicknameChangeCooldownError)
+        guest.value = {
+          ...guest.value,
+          nicknameChangeAvailableAt: cause.availableAt,
+        };
+      throw cause;
+    }
   }
   async function remove(id: string) {
     const context = playlistReceiver.context();
@@ -763,10 +826,13 @@ export const useRoom = defineStore('room', () => {
   }
   async function authenticate(challengeId: string, code: string) {
     const version = ++authRequest;
-    const data = await request<{ guest: Guest }>('/api/auth/email/verify', {
-      method: 'POST',
-      body: JSON.stringify({ challengeId, code }),
-    });
+    const data = await request<{ guest: AccountProfile }>(
+      '/api/auth/email/verify',
+      {
+        method: 'POST',
+        body: JSON.stringify({ challengeId, code }),
+      },
+    );
     if (version !== authRequest) return;
     close();
     setGuest(data.guest);
@@ -872,6 +938,7 @@ export const useRoom = defineStore('room', () => {
     enter,
     enterFromNetease,
     setAppearance,
+    setNickname,
     connect,
     cancelPendingEntry,
     sync,

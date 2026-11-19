@@ -298,6 +298,12 @@ export class Room {
     user.appearance = catAppearanceSchema.parse(appearance);
     this.publish();
   }
+  updateNickname(id: string, nickname: string) {
+    const user = this.users.get(id);
+    if (this.closed || !user || user.nickname === nickname) return;
+    user.nickname = nickname;
+    this.publish();
+  }
   disconnect(id: string, connectionId: string) {
     if (this.closed) return;
     if (this.connections.get(id)?.id !== connectionId) return;

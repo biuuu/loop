@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useTimedMessage } from './timed-message';
-import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
 import { ArrowLeft, ListMusic, Shuffle, X } from '@lucide/vue';
 import { randomNickname } from './nicknames';
 import {
@@ -28,6 +28,19 @@ onBeforeUnmount(() => {
   if (returnFocus?.isConnected) returnFocus.focus();
 });
 const nickname = ref(randomNickname());
+const editingNickname = ref(false);
+const nicknameDraft = ref('');
+const nicknameInput = ref<HTMLInputElement | null>(null);
+const nicknameDisplay = ref<HTMLElement | null>(null);
+const nicknameEditButton = ref<HTMLButtonElement | null>(null);
+const nicknameWaitUntil = ref<number>();
+const nicknameTimeFormat = new Intl.DateTimeFormat('zh-CN', {
+  month: 'long',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
 const entryMode = ref<'nickname' | 'netease'>('nickname');
 const selectedSource = ref<{
   user: NeteaseUser;
@@ -38,6 +51,20 @@ const importedNickname = ref('');
 const importedNicknameInput = ref<HTMLInputElement | null>(null);
 const busy = ref(false);
 const error = useTimedMessage();
+const notice = useTimedMessage();
+watch(
+  () => room.guest?.nicknameChangeAvailableAt,
+  (availableAt, _previous, onCleanup) => {
+    const remaining = (availableAt ?? 0) - Date.now();
+    nicknameWaitUntil.value = remaining > 0 ? availableAt : undefined;
+    if (remaining <= 0) return;
+    const timer = setTimeout(() => {
+      nicknameWaitUntil.value = undefined;
+    }, remaining);
+    onCleanup(() => clearTimeout(timer));
+  },
+  { immediate: true },
+);
 function shuffleNickname() {
   if (busy.value) return;
   nickname.value = randomNickname(nickname.value);
@@ -46,6 +73,7 @@ function shuffleNickname() {
 async function act(action: () => Promise<void>) {
   if (busy.value) return;
   error.value = '';
+  notice.value = '';
   busy.value = true;
   try {
     await action();
@@ -54,6 +82,42 @@ async function act(action: () => Promise<void>) {
   } finally {
     busy.value = false;
   }
+}
+function editNickname() {
+  if (!room.guest || busy.value || nicknameWaitUntil.value !== undefined)
+    return;
+  nicknameDraft.value = room.guest.nickname;
+  error.value = '';
+  notice.value = '';
+  editingNickname.value = true;
+  void nextTick(() => {
+    nicknameInput.value?.focus();
+    nicknameInput.value?.select();
+  });
+}
+function cancelNicknameEdit() {
+  editingNickname.value = false;
+  error.value = '';
+  void nextTick(() => {
+    if (nicknameEditButton.value?.disabled) nicknameDisplay.value?.focus();
+    else nicknameEditButton.value?.focus();
+  });
+}
+function saveNickname() {
+  if (nicknameWaitUntil.value !== undefined) return;
+  void act(async () => {
+    const valid = nicknameSchema.safeParse(nicknameDraft.value);
+    if (!valid.success)
+      throw new Error(
+        nicknameDraft.value.trim()
+          ? valid.error.issues[0]?.message || '请输入有效的昵称'
+          : '请输入昵称',
+      );
+    if (!(await room.setNickname(valid.data))) return;
+    editingNickname.value = false;
+    notice.value = '昵称已保存';
+    void nextTick(() => nicknameDisplay.value?.focus());
+  });
 }
 function temporary() {
   void act(async () => {
@@ -120,7 +184,54 @@ function logout(all = false) {
         <button aria-label="关闭账号面板" @click="emit('close')"><X /></button>
       </header>
       <template v-if="room.guest">
-        <p>{{ room.guest.nickname }}</p>
+        <div class="account-nickname">
+          <strong ref="nicknameDisplay" tabindex="-1">{{
+            room.guest.nickname
+          }}</strong>
+          <button
+            v-if="!editingNickname"
+            ref="nicknameEditButton"
+            type="button"
+            :disabled="busy || nicknameWaitUntil !== undefined"
+            @click="editNickname"
+          >
+            修改昵称
+          </button>
+        </div>
+        <form
+          v-if="editingNickname"
+          class="panel-form"
+          @submit.prevent="saveNickname"
+        >
+          <label for="account-nickname">新昵称</label>
+          <input
+            id="account-nickname"
+            ref="nicknameInput"
+            v-model="nicknameDraft"
+            maxlength="16"
+            autocomplete="nickname"
+            :readonly="busy"
+            required
+          />
+          <small v-if="nicknameWaitUntil === undefined"
+            >昵称每小时可修改一次。</small
+          >
+          <div class="account-nickname-actions">
+            <button
+              type="submit"
+              class="primary"
+              :disabled="busy || nicknameWaitUntil !== undefined"
+            >
+              {{ busy ? '正在保存…' : '保存昵称' }}
+            </button>
+            <button type="button" :disabled="busy" @click="cancelNicknameEdit">
+              取消
+            </button>
+          </div>
+        </form>
+        <p v-if="nicknameWaitUntil !== undefined" class="library-hint">
+          下次可在 {{ nicknameTimeFormat.format(nicknameWaitUntil) }} 修改昵称。
+        </p>
         <p class="library-hint">此浏览器会记住当前身份、歌单和房间。</p>
       </template>
       <div
@@ -256,6 +367,7 @@ function logout(all = false) {
           退出所有设备
         </button>
       </div>
+      <p v-if="notice" role="status">{{ notice }}</p>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
     </section>
   </dialog>
@@ -264,6 +376,22 @@ function logout(all = false) {
 <style scoped>
 .account-panel--netease {
   width: min(100%, 560px);
+}
+.account-nickname,
+.account-nickname-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.account-nickname {
+  justify-content: space-between;
+}
+.account-nickname strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.account-nickname button {
+  flex: 0 0 auto;
 }
 .account-netease {
   margin-top: 20px;

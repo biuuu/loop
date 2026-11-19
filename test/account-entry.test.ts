@@ -3,7 +3,11 @@ import test from 'node:test';
 import { createPinia, setActivePinia } from 'pinia';
 import { accountEntryRoute, routeFor } from '../src/client/navigation';
 import { useRoom } from '../src/client/room';
-import type { RoomInfo } from '../src/shared/contracts';
+import { DEFAULT_CAT_APPEARANCE } from '../src/shared/appearance';
+import {
+  NICKNAME_CHANGE_COOLDOWN_MS,
+  type RoomInfo,
+} from '../src/shared/contracts';
 
 const home = (ownerId: string, number: number): RoomInfo => ({
   id: `room-${ownerId}`,
@@ -68,7 +72,7 @@ test('nickname entry exposes only the new room response after applying the creat
   assert.equal(
     await room.enter('renamed'),
     undefined,
-    'a rename does not cause home-room navigation',
+    'the legacy nickname entry for an existing identity returns no new room',
   );
 });
 
@@ -155,4 +159,154 @@ test('a delayed playlist read from an older account cannot return its home as a 
   assert.equal(await stale, undefined);
   assert.equal(room.guest!.id, 'B');
   assert.equal(room.playlistRevision, 0);
+});
+
+test('editing a nickname preserves the current room, playback, identity and playlist', async (context) => {
+  setActivePinia(createPinia());
+  const room = useRoom();
+  context.after(() => {
+    room.close();
+    room.$dispose();
+  });
+  const guest = {
+    id: 'cat',
+    nickname: '猫',
+    appearance: DEFAULT_CAT_APPEARANCE,
+  };
+  const track = {
+    id: '1',
+    title: '一首歌',
+    artist: '',
+    album: '',
+    cover: '',
+    durationMs: 10_000,
+  };
+  const now = Date.now();
+  const availableAt = now + NICKNAME_CHANGE_COOLDOWN_MS;
+  context.mock.method(
+    globalThis,
+    'fetch',
+    async (input: unknown, init?: RequestInit) => {
+      if (input === '/api/me') return Response.json({ guest });
+      if (input === '/api/playlist')
+        return Response.json({ tracks: [track], revision: 3 });
+      assert.equal(input, '/api/me/nickname');
+      assert.equal(init?.method, 'PATCH');
+      assert.deepEqual(JSON.parse(String(init?.body)), { nickname: '云朵猫' });
+      return Response.json({
+        guest: {
+          ...guest,
+          nickname: '云朵猫',
+          nicknameChangeAvailableAt: availableAt,
+        },
+      });
+    },
+  );
+  await room.initialize();
+  room.roomId = 'room-cat';
+  room.connection = 'connected';
+  room.snapshot = {
+    roomId: 'room-cat',
+    revision: 12,
+    serverTime: now,
+    users: [
+      {
+        ...guest,
+        connected: true,
+        seat: 0,
+        x: 396,
+        targetX: 396,
+        y: 255,
+        targetY: 255,
+        movingSince: now,
+        durationMs: 0,
+      },
+    ],
+    stage: ['cat'],
+    capacity: 30,
+    stageCapacity: 5,
+    resolving: false,
+    notice: null,
+    playback: {
+      roundId: 'round',
+      track,
+      djId: 'cat',
+      url: 'https://example.test/song.mp3',
+      startedAt: now,
+      durationMs: track.durationMs,
+    },
+  };
+  const { playlist, roomGeneration, snapshot } = room;
+  assert.equal(await room.setNickname('云朵猫'), true);
+  assert.deepEqual(room.guest, {
+    ...guest,
+    nickname: '云朵猫',
+    nicknameChangeAvailableAt: availableAt,
+  });
+  assert.equal(room.roomId, 'room-cat');
+  assert.equal(room.roomGeneration, roomGeneration);
+  assert.equal(room.connection, 'connected');
+  assert.equal(room.snapshot, snapshot);
+  assert.equal(room.onStage, true);
+  assert.equal(room.playlist, playlist);
+  assert.equal(room.playlistRevision, 3);
+});
+
+test('a nickname cooldown response updates the private retry time and preserves the current name', async (context) => {
+  setActivePinia(createPinia());
+  const room = useRoom();
+  context.after(() => room.$dispose());
+  room.guest = { id: 'cat', nickname: '猫' };
+  const availableAt = Date.now() + NICKNAME_CHANGE_COOLDOWN_MS;
+  context.mock.method(globalThis, 'fetch', async (input: unknown) => {
+    assert.equal(input, '/api/me/nickname');
+    return Response.json(
+      {
+        error: '昵称每小时可修改一次',
+        nicknameChangeAvailableAt: availableAt,
+      },
+      { status: 429 },
+    );
+  });
+  await assert.rejects(room.setNickname('云朵猫'), /每小时/);
+  assert.deepEqual(room.guest, {
+    id: 'cat',
+    nickname: '猫',
+    nicknameChangeAvailableAt: availableAt,
+  });
+});
+
+test('a delayed nickname response cannot change a reauthenticated profile with the same ID', async (context) => {
+  setActivePinia(createPinia());
+  const room = useRoom();
+  context.after(() => {
+    room.close();
+    room.$dispose();
+  });
+  room.guest = { id: 'cat', nickname: '猫' };
+  const activeGuest = { id: 'cat', nickname: '新登录的猫', registered: true };
+  let resolveRename!: (response: Response) => void;
+  const renameResponse = new Promise<Response>((resolve) => {
+    resolveRename = resolve;
+  });
+  context.mock.method(globalThis, 'fetch', async (input: unknown) => {
+    if (input === '/api/me/nickname') return renameResponse;
+    if (input === '/api/auth/email/verify')
+      return Response.json({ guest: activeGuest });
+    assert.equal(input, '/api/playlist');
+    return Response.json({ tracks: [], revision: 1 });
+  });
+  const rename = room.setNickname('旧请求的猫');
+  await room.authenticate('challenge', '123456');
+  resolveRename(
+    Response.json({
+      guest: {
+        id: 'cat',
+        nickname: '旧请求的猫',
+        nicknameChangeAvailableAt: Date.now() + NICKNAME_CHANGE_COOLDOWN_MS,
+      },
+    }),
+  );
+  assert.equal(await rename, false);
+  assert.deepEqual(room.guest, activeGuest);
 });

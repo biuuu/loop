@@ -18,6 +18,7 @@ export interface EmoteCatalog {
 }
 export const EMOTE_DURATION_MS = 3000;
 export const EMOTE_COOLDOWN_MS = 2000;
+export const NICKNAME_CHANGE_COOLDOWN_MS = 60 * 60_000;
 export const nicknameSchema = z
   .string()
   .trim()
@@ -93,6 +94,9 @@ export interface Guest {
   nickname: string;
   // Older snapshots without an appearance render with the default orange coat.
   appearance?: CatAppearance;
+}
+export interface AccountProfile extends Guest {
+  nicknameChangeAvailableAt?: number;
 }
 export const roomNumberSchema = z
   .number()

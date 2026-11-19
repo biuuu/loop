@@ -262,6 +262,14 @@ export class RoomRegistry {
     if (current)
       this.live.get(current.roomId)?.updateAppearance(userId, appearance);
   }
+  updateNickname(userId: string, nickname: string) {
+    const current = this.active.get(userId);
+    if (current)
+      this.live.get(current.roomId)?.updateNickname(userId, nickname);
+    const owned = this.db.roomByOwner(userId);
+    if (owned && owned.id !== current?.roomId && this.live.has(owned.id))
+      this.updated(owned);
+  }
   members(id: string, ownerId: string) {
     this.owner(id, ownerId);
     return this.live.get(id)?.snapshot().users ?? [];

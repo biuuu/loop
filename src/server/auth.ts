@@ -5,7 +5,7 @@ import {
   randomUUID,
   timingSafeEqual,
 } from 'node:crypto';
-import type { Guest, RoomInfo } from '../shared/contracts.js';
+import type { AccountProfile, Guest, RoomInfo } from '../shared/contracts.js';
 import { hashToken, type Store } from './db.js';
 import type { SendMail } from './mail.js';
 
@@ -56,16 +56,20 @@ export class Auth {
   private now() {
     return this.options.now?.() ?? Date.now();
   }
-  profile(guest: Guest): Guest {
+  profile(guest: Guest): AccountProfile {
     const row = this.db.sql
       .prepare(
         "SELECT subject FROM auth_identities WHERE user_id=? AND provider='email'",
       )
       .get(guest.id) as { subject: string } | undefined;
+    const availableAt = this.db.nicknameChangeAvailableAt(guest.id);
     return {
       ...publicGuest(guest),
       registered: this.registered(guest.id),
       ...(row ? { email: row.subject } : {}),
+      ...(availableAt === undefined
+        ? {}
+        : { nicknameChangeAvailableAt: availableAt }),
     };
   }
   registered(userId: string) {

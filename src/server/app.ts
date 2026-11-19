@@ -14,7 +14,12 @@ import {
   type Guest,
 } from '../shared/contracts.js';
 import { catAppearanceSchema } from '../shared/appearance.js';
-import { EmptyPlaylistImportError, Store, hashToken } from './db.js';
+import {
+  EmptyPlaylistImportError,
+  NicknameCooldownError,
+  Store,
+  hashToken,
+} from './db.js';
 import { Auth, HttpError, COOKIE } from './auth.js';
 import { authRoutes, setSession } from './auth-routes.js';
 import { smtpMail, type SendMail } from './mail.js';
@@ -34,6 +39,7 @@ import {
 } from './netease-admin.js';
 
 const ApiError = HttpError;
+const nicknameBody = z.object({ nickname: nicknameSchema }).strict();
 class Limiter {
   private entries = new Map<string, { count: number; until: number }>();
   constructor(
@@ -146,6 +152,17 @@ export async function createServer(
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof z.ZodError)
       return reply.code(400).send({ error: '请求格式无效' });
+    if (error instanceof NicknameCooldownError) {
+      const { nicknameChangeAvailableAt } = error;
+      const seconds = Math.max(
+        1,
+        Math.ceil((nicknameChangeAvailableAt - Date.now()) / 1000),
+      );
+      return reply
+        .code(429)
+        .header('Retry-After', String(seconds))
+        .send({ error: error.message, nicknameChangeAvailableAt });
+    }
     if (error instanceof ApiError)
       return reply.code(error.statusCode).send({ error: error.message });
     const status = (error as { statusCode?: number }).statusCode;
@@ -251,6 +268,16 @@ export async function createServer(
   });
   authRoutes(app, auth);
   roomRoutes(app, db, auth, registry, (key) => roomLimit.allow(key));
+  const rename = (id: string, nickname: string) => {
+    const { guest, changed } = db.rename(id, nickname);
+    if (changed) registry.updateNickname(id, guest.nickname);
+    return { guest: auth.profile(guest) };
+  };
+  app.patch('/api/me/nickname', async (request) => {
+    const current = identity(request);
+    const { nickname } = nicknameBody.parse(request.body);
+    return rename(current.id, nickname);
+  });
   app.patch('/api/me/appearance', async (request) => {
     const current = identity(request);
     const appearance = catAppearanceSchema.parse(request.body);
@@ -261,13 +288,9 @@ export async function createServer(
   app.post('/api/guest', async (request, reply) => {
     if (!guestLimit.allow(request.ip))
       throw new ApiError(429, '操作太快，请稍后重试');
-    const { nickname } = z
-      .object({ nickname: nicknameSchema })
-      .strict()
-      .parse(request.body);
+    const { nickname } = nicknameBody.parse(request.body);
     const existing = db.guest(request.cookies[COOKIE]);
-    if (existing)
-      return { guest: auth.profile(db.rename(existing.id, nickname)) };
+    if (existing) return rename(existing.id, nickname);
     const { guest, token, createdRoom } = db.createUser(nickname);
     setSession(reply, token);
     return { guest: auth.profile(guest), createdRoom };
