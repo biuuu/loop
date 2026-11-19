@@ -414,6 +414,9 @@ test(
         room.snapshot().users.find((u) => u.id === firstId)!.seat,
         0,
       );
+      const beforeSecondJoin = room
+        .snapshot()
+        .users.find((u) => u.nickname === '月亮猫')!;
       await b.getByRole('button', { name: '客厅成员', exact: true }).click();
       await b
         .getByRole('dialog', { name: '客厅成员' })
@@ -557,9 +560,7 @@ test(
         fullPage: true,
       });
       const round = room.snapshot().playback!.roundId;
-      const secondId = room
-        .snapshot()
-        .users.find((u) => u.nickname === '月亮猫')!.id;
+      const secondId = beforeSecondJoin.id;
       const secondSeat = room.snapshot().users.find((u) => u.id === secondId)!;
       await b.setViewportSize({ width: 844, height: 390 });
       await b.waitForFunction(
@@ -578,29 +579,25 @@ test(
       );
       assert.equal(
         room.snapshot().users.find((u) => u.id === secondId)!.seat,
-        1,
+        secondSeat.seat,
       );
       await b.screenshot({ path: 'test-results/room-landscape.png' });
       await clickFloor(b, { x: secondSeat.x, y: secondSeat.y - 25 });
-      await b.getByRole('button', { name: '离开舞台', exact: true }).click();
-      await b
-        .getByRole('dialog', { name: '我的小猫', exact: true })
-        .waitFor({ state: 'hidden' });
+      const catMenu = b.getByRole('dialog', { name: '我的小猫', exact: true });
+      await catMenu
+        .getByRole('button', { name: '离开舞台', exact: true })
+        .click();
+      await catMenu.waitFor({ state: 'hidden' });
       await b.waitForFunction(() => !document.querySelector('.self-cat-menu'));
       await waitFor(
         () =>
           room.snapshot().users.find((u) => u.id === secondId)!.seat === null,
         'self-cat action leaves the stage without confirmation',
       );
-      assert.equal(
-        room.snapshot().users.find((u) => u.id === secondId)!.seat,
-        null,
-      );
-      assert.ok(
-        Math.abs(
-          room.snapshot().users.find((u) => u.id === secondId)!.y - 440,
-        ) < 1,
-      );
+      const returned = room.snapshot().users.find((u) => u.id === secondId)!;
+      assert.equal(returned.seat, null);
+      assert.equal(returned.x, beforeSecondJoin.x);
+      assert.equal(returned.y, beforeSecondJoin.y);
       await a.setViewportSize({ width: 2560, height: 1080 });
       await a.waitForFunction(
         () =>

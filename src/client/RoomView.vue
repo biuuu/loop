@@ -201,11 +201,7 @@ async function requestJoin() {
 async function requestLeave() {
   if (!room.onStage || room.stagePending || room.connection !== 'connected')
     return;
-  if (
-    await room.leaveStage({ x: room.me?.targetX ?? SCENE.width / 2, y: 440 })
-  ) {
-    if (modal.value === 'members') closeModal();
-  }
+  if ((await room.leaveStage()) && modal.value === 'members') closeModal();
 }
 function outsideDialog(event: MouseEvent) {
   if (!dialog.value || event.target !== dialog.value) return;

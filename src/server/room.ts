@@ -20,6 +20,7 @@ import {
   type RoomSnapshot,
   type RoomEmote,
   type RoomMotion,
+  type StageJoin,
 } from '../shared/contracts.js';
 import type { Store } from './db.js';
 import { EmoteCatalog } from './emote-catalog.js';
@@ -64,20 +65,9 @@ function playbackFailureNotice(failures: FailedAttempt[]) {
     : '请稍后下台重新上台重试。';
   return `本轮尝试${target}未能播放：${reasons.join('；')}。${retry}`;
 }
-const floorPositions = Array.from({ length: ROOM_CAPACITY }, (_, index) => ({
-  x:
-    SCENE.walk.left +
-    50 +
-    ((index % 6) * (SCENE.walk.right - SCENE.walk.left - 100)) / 5,
-  y:
-    SCENE.walk.top +
-    20 +
-    (Math.floor(index / 6) * (SCENE.walk.bottom - SCENE.walk.top - 40)) / 4,
-})).sort(
-  (a, b) =>
-    Math.hypot(a.x - SCENE.width / 2, a.y - 450) -
-    Math.hypot(b.x - SCENE.width / 2, b.y - 450),
-);
+const spawnSeatXs = stageSeatXs(STAGE_CAPACITY);
+const SPAWN_ATTEMPTS = 24;
+const SPAWN_SEPARATION = 32;
 export class Room {
   private users = new Map<string, Participant>();
   private connections = new Map<string, Connection>();
@@ -85,6 +75,7 @@ export class Room {
   private emoteTimes = new Map<string, number>();
   private emoteCatalog: EmoteCatalog;
   private stage: string[] = [];
+  private stageReturnPositions = new Map<string, { x: number; y: number }>();
   private stageCapacity: number;
   private stageDirty = false;
   private publishedStage: string[] = [];
@@ -248,26 +239,29 @@ export class Room {
     else this.publish();
     return Promise.resolve();
   }
-  private floorPosition(excludeId?: string) {
+  private spawnPosition() {
     const now = Date.now();
     const audience = [...this.users.values()]
-      .filter((user) => user.id !== excludeId && user.seat === null)
+      .filter((user) => user.seat === null)
       .map((user) => this.position(user, now));
-    const candidates = floorPositions.map((position) => ({
-      position,
-      distance: Math.min(
+    const left = spawnSeatXs[0]!;
+    const right = spawnSeatXs.at(-1)!;
+    const { top, bottom } = SCENE.walk;
+    let best: { point: { x: number; y: number }; distance: number } | undefined;
+    for (let attempt = 0; attempt < SPAWN_ATTEMPTS; attempt++) {
+      const point = {
+        x: left + Math.random() * (right - left),
+        y: top + Math.random() * (bottom - top),
+      };
+      const distance = Math.min(
         ...audience.map((user) =>
-          Math.hypot(user.x - position.x, user.y - position.y),
+          Math.hypot(user.x - point.x, user.y - point.y),
         ),
-      ),
-    }));
-    // Prefer a central free position; if moving cats crowd every candidate, use the clearest one.
-    return (
-      candidates.find((candidate) => candidate.distance >= 32) ??
-      candidates.reduce((best, candidate) =>
-        candidate.distance > best.distance ? candidate : best,
-      )
-    ).position;
+      );
+      if (distance >= SPAWN_SEPARATION) return point;
+      if (!best || distance > best.distance) best = { point, distance };
+    }
+    return best!.point;
   }
   connect(guest: Guest, connection: Connection) {
     if (this.closed) throw new Error('房间已关闭');
@@ -281,7 +275,7 @@ export class Room {
     const existing = this.users.get(guest.id);
     if (existing) Object.assign(existing, guest, { connected: true });
     else {
-      const { x, y } = this.floorPosition();
+      const { x, y } = this.spawnPosition();
       this.users.set(guest.id, {
         ...guest,
         x,
@@ -400,18 +394,28 @@ export class Room {
     this.emoteTimes.set(id, now);
     this.onEmote({ userId: id, id: emote.id });
   }
-  join(id: string, connectionId?: string, _requestedSeat?: number) {
+  join(
+    id: string,
+    connectionId?: string,
+    _requestedSeat?: number,
+    from?: StageJoin['from'],
+  ) {
     return this.enqueue(async () => {
       const user = this.user(id, connectionId);
       if (this.stage.includes(id)) return;
       if (this.stage.length >= this.stageCapacity) throw new Error('舞台已满');
       if (!this.db.tracks(id).length) throw new Error('先添加歌曲到歌单');
+      const now = Date.now();
+      this.stageReturnPositions.set(
+        id,
+        from ? { ...from } : this.position(user, now),
+      );
       delete user.clientMoveId;
       Object.assign(user, {
         y: SCENE.stageY,
         targetY: SCENE.stageY,
         durationMs: 0,
-        movingSince: Date.now(),
+        movingSince: now,
       });
       this.stage.push(id);
       this.positionStage();
@@ -420,14 +424,15 @@ export class Room {
       else this.publish();
     });
   }
-  leave(id: string, connectionId?: string, point?: unknown) {
+  leave(id: string, connectionId?: string, payload: unknown = {}) {
     return this.enqueue(async () => {
       this.user(id, connectionId);
-      const destination =
-        point === undefined ? undefined : stageLeaveSchema.parse(point);
-      if (destination && !this.stage.includes(id))
-        throw new Error('你已经在台下了');
-      await this.leaveInternal(id, destination);
+      stageLeaveSchema.parse(payload);
+      if (!this.stage.includes(id)) throw new Error('你已经在台下了');
+      const current = this.playback?.djId === id || this.pendingDj === id;
+      this.removeStage(id);
+      if (current) await this.advance();
+      else this.publish();
     });
   }
   private positionStage() {
@@ -449,9 +454,11 @@ export class Room {
     this.stage.splice(index, 1);
     this.positionStage();
     this.stageDirty = true;
+    const point = this.stageReturnPositions.get(id)!;
+    this.stageReturnPositions.delete(id);
     const user = this.users.get(id);
     if (user) {
-      const { x, y } = this.floorPosition(id);
+      const { x, y } = point;
       delete user.clientMoveId;
       Object.assign(user, {
         seat: null,
@@ -463,27 +470,6 @@ export class Room {
         movingSince: Date.now(),
       });
     }
-  }
-  private async leaveInternal(
-    id: string,
-    destination?: { x: number; y: number },
-  ) {
-    const current = this.playback?.djId === id || this.pendingDj === id;
-    this.removeStage(id);
-    if (destination) {
-      const user = this.users.get(id);
-      if (user)
-        Object.assign(user, {
-          x: destination.x,
-          y: destination.y,
-          targetX: destination.x,
-          targetY: destination.y,
-          durationMs: 0,
-          movingSince: Date.now(),
-        });
-    }
-    if (current) await this.advance();
-    else this.publish();
   }
   skip(id: string, input: unknown, connectionId?: string, moderator = false) {
     return this.enqueue(async () => {
@@ -637,6 +623,7 @@ export class Room {
     this.invalidateResolution();
     clearTimeout(this.timer);
     this.emoteTimes.clear();
+    this.stageReturnPositions.clear();
     for (const timer of [...this.grace.values(), ...this.pendingTimers])
       clearTimeout(timer);
     this.grace.clear();

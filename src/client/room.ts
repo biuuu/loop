@@ -551,16 +551,19 @@ export const useRoom = defineStore('room', () => {
         ack(result);
     });
   }
-  function stageAction(
-    event: 'stage:join' | 'stage:leave',
-    payload: StageJoin | { x: number; y: number },
-  ): Promise<boolean> {
+  function stageAction(event: 'stage:join' | 'stage:leave'): Promise<boolean> {
     if (!socket?.connected || stagePending.value) return Promise.resolve(false);
-    // Seat placement supersedes floor motion. Stop locally without sending or
-    // flushing a separate command before the join.
-    const stoppedForJoin = event === 'stage:join' && !!movementContext();
-    if (stoppedForJoin && me.value)
-      localMovement.stop(me.value, Date.now() + offset.value);
+    const own = me.value;
+    const stoppedForJoin =
+      event === 'stage:join' && own != null && !!movementContext();
+    const join: StageJoin = {};
+    if (stoppedForJoin) {
+      // Include the local stop in the join so the server remembers the floor position.
+      const now = Date.now() + offset.value;
+      localMovement.stop(own, now);
+      const { x, y } = localMovement.view(own, now);
+      join.from = { x, y };
+    }
     if (event === 'stage:leave') flushMovement();
     movementGeneration++;
     cancelMovement();
@@ -603,20 +606,17 @@ export const useRoom = defineStore('room', () => {
         resolve(!err && !!result?.ok);
       };
       if (event === 'stage:join')
-        active.timeout(75000).emit(event, payload as StageJoin, finished);
-      else
-        active
-          .timeout(75000)
-          .emit(event, payload as { x: number; y: number }, finished);
+        active.timeout(75000).emit(event, join, finished);
+      else active.timeout(75000).emit(event, {}, finished);
     });
   }
   function joinStage() {
     if (onStage.value) return Promise.resolve(false);
-    return stageAction('stage:join', {});
+    return stageAction('stage:join');
   }
-  function leaveStage(point: { x: number; y: number }) {
+  function leaveStage() {
     if (!onStage.value) return Promise.resolve(false);
-    return stageAction('stage:leave', point);
+    return stageAction('stage:leave');
   }
   function skip() {
     const active = socket;

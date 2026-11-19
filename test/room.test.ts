@@ -6,7 +6,9 @@ import { MusicPlaybackError } from '../src/server/music-errors.js';
 import {
   EMOTE_DURATION_MS,
   EMOTE_COOLDOWN_MS,
+  ROOM_CAPACITY,
   SCENE,
+  STAGE_CAPACITY,
   stageSeatXs,
   type MusicService,
   type RoomEmote,
@@ -96,6 +98,18 @@ function assertStageConsistent(snapshot: RoomSnapshot) {
   if (snapshot.playback)
     assert.equal(snapshot.playback.djId, snapshot.stage[0]);
 }
+function assertFloorPosition(
+  user: RoomSnapshot['users'][number] | undefined,
+  { x, y }: { x: number; y: number },
+) {
+  assert.ok(user);
+  assert.equal(user.seat, null);
+  assert.equal(user.x, x);
+  assert.equal(user.y, y);
+  assert.equal(user.targetX, x);
+  assert.equal(user.targetY, y);
+  assert.equal(user.durationMs, 0);
+}
 test('first stage join with an immediate resolver publishes one complete playing state', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const {
@@ -119,7 +133,7 @@ test('first stage join with an immediate resolver publishes one complete playing
     close();
   }
 });
-test('last DJ leaving publishes one consistent idle state at the selected floor destination', async (context) => {
+test('last DJ leaving publishes one consistent idle state at the previous floor position', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const {
     room,
@@ -127,10 +141,11 @@ test('last DJ leaving publishes one consistent idle state at the selected floor 
     close,
   } = setup();
   try {
+    const floor = room.snapshot().users[0]!;
     await room.join(a!.id);
     const snapshots = collectSnapshots(room);
     const revision = room.snapshot().revision;
-    await room.leave(a!.id, a!.id, { x: 420, y: 450 });
+    await room.leave(a!.id, a!.id, {});
     context.mock.timers.tick(0);
     assert.equal(snapshots.length, 1);
     const state = snapshots[0]!;
@@ -139,9 +154,10 @@ test('last DJ leaving publishes one consistent idle state at the selected floor 
     assert.equal(state.playback, null);
     assert.equal(state.resolving, false);
     assert.equal(state.notice, null);
-    const user = state.users.find((user) => user.id === a!.id)!;
-    assert.equal(user.x, 420);
-    assert.equal(user.y, 450);
+    assertFloorPosition(
+      state.users.find((user) => user.id === a!.id),
+      floor,
+    );
     assertStageConsistent(state);
   } finally {
     close();
@@ -338,6 +354,7 @@ test('pending DJ handoff publishes an updated loading state next turn then one f
     },
   });
   try {
+    const floor = room.snapshot().users[0]!;
     await room.join(a!.id);
     await room.join(b!.id);
     pending = true;
@@ -353,7 +370,10 @@ test('pending DJ handoff publishes an updated loading state next turn then one f
     assert.equal(snapshots.length, 1);
     assert.equal(snapshots[0]!.resolving, true);
     assert.equal(snapshots[0]!.playback, null);
-    assert.equal(snapshots[0]!.users.find((user) => user.id === a!.id)!.x, 420);
+    assertFloorPosition(
+      snapshots[0]!.users.find((user) => user.id === a!.id),
+      floor,
+    );
     assert.deepEqual(snapshots[0]!.stage, [b!.id]);
     assertStageConsistent(snapshots[0]!);
     finish({ url: 'https://example.com/2.mp3', durationMs: 60000 });
@@ -845,8 +865,8 @@ test('stopping freezes server progress in both directions and preserves horizont
     const revision = room.snapshot().revision;
     assert.equal(me().facingRight, false);
     for (const [targetX, facingRight] of [
-      [850, true],
-      [150, false],
+      [SCENE.walk.right, true],
+      [SCENE.walk.left, false],
     ] as const) {
       const start = me();
       room.move(a!.id, { x: targetX, y: start.y });
@@ -942,7 +962,7 @@ test('stop requires a connected audience cat and facing survives reconnect, appe
   const me = () => room.snapshot().users.find((user) => user.id === a!.id)!;
   try {
     assert.throws(() => room.stop('missing'), /重新连接/);
-    room.move(a!.id, { x: 850, y: 500 });
+    room.move(a!.id, { x: SCENE.walk.right, y: 500 });
     room.stop(a!.id);
     assert.equal(me().facingRight, true);
     room.disconnect(a!.id, a!.id);
@@ -1057,20 +1077,23 @@ test('late joins go behind the previous DJ and retain their turn when the stage 
     close();
   }
 });
-test('leaving uses the validated floor destination and advances playback only once', async () => {
+test('leaving validates legacy destinations, restores the supplied join point and advances playback only once', async () => {
   const {
     room,
     guests: [a, b],
     close,
   } = setup();
   try {
-    await room.join(a!.id, a!.id, 2);
+    const from = { x: 525.125, y: 503.5 };
+    await room.join(a!.id, a!.id, 2, from);
     await room.join(b!.id, b!.id, 4);
+    await room.join(a!.id, a!.id, undefined, { x: 850, y: 410 });
     const original = room.snapshot().playback!.roundId;
     for (const point of [
       { x: 500, y: 250 },
       { x: Infinity, y: 400 },
       { x: 500, y: 400, seat: 1 },
+      { x: 500 },
     ]) {
       await assert.rejects(room.leave(a!.id, a!.id, point));
       assert.equal(room.snapshot().playback!.roundId, original);
@@ -1078,17 +1101,79 @@ test('leaving uses the validated floor destination and advances playback only on
     const point = { x: 800, y: 510 };
     await room.leave(a!.id, a!.id, point);
     const state = room.snapshot();
-    const me = state.users.find((user) => user.id === a!.id)!;
-    assert.equal(me.seat, null);
-    assert.equal(me.x, point.x);
-    assert.equal(me.y, point.y);
-    assert.equal(state.playback!.djId, b!.id);
-    await assert.rejects(room.leave(a!.id, a!.id, { x: 200, y: 400 }));
-    assert.equal(room.snapshot().playback!.roundId, state.playback!.roundId);
-    assert.equal(
-      room.snapshot().users.find((user) => user.id === a!.id)!.x,
-      point.x,
+    assertFloorPosition(
+      state.users.find((user) => user.id === a!.id),
+      from,
     );
+    assert.equal(state.playback!.djId, b!.id);
+    await assert.rejects(room.leave(a!.id, a!.id, {}), /已经在台下/);
+    assert.equal(room.snapshot().playback!.roundId, state.playback!.roundId);
+    assertFloorPosition(
+      room.snapshot().users.find((user) => user.id === a!.id),
+      from,
+    );
+  } finally {
+    close();
+  }
+});
+test('a join without a floor point captures the authoritative position mid-movement', async (context) => {
+  let now = 1_000_000;
+  context.mock.method(Date, 'now', () => now);
+  const {
+    room,
+    guests: [a],
+    close,
+  } = setup();
+  try {
+    room.motion(a!.id, {
+      x: 200,
+      y: 410,
+      targetX: 380,
+      targetY: 410,
+      facingRight: true,
+      clientMoveId: 1,
+    });
+    now += 250;
+    await room.join(a!.id);
+    now += 2000;
+    await room.leave(a!.id);
+    const user = room.snapshot().users[0]!;
+    assertFloorPosition(user, { x: 245, y: 410 });
+    assert.equal(user.facingRight, true);
+    assert.equal(user.clientMoveId, undefined);
+  } finally {
+    close();
+  }
+});
+test('force down preserves the floor point through seat rotation and reconnect and a later join saves a new point', async () => {
+  const {
+    room,
+    guests: [a, b],
+    close,
+  } = setup();
+  const me = () => room.snapshot().users.find((user) => user.id === a!.id);
+  try {
+    const from = { x: SCENE.walk.left, y: SCENE.walk.bottom };
+    await room.join(a!.id, a!.id, undefined, from);
+    await room.join(b!.id);
+    await room.skip(a!.id, { roundId: room.snapshot().playback!.roundId });
+    assert.equal(me()!.seat, 1);
+    room.disconnect(a!.id, a!.id);
+    room.connect(a!, { id: 'reconnected', replaced() {} });
+    assert.equal(me()!.seat, 1);
+    await room.forceLeave(a!.id);
+    assertFloorPosition(me(), from);
+    const next = { x: SCENE.walk.right, y: SCENE.walk.top };
+    room.motion(a!.id, {
+      ...next,
+      targetX: next.x,
+      targetY: next.y,
+      facingRight: true,
+      clientMoveId: 1,
+    });
+    await room.join(a!.id, 'reconnected');
+    await room.leave(a!.id, 'reconnected', {});
+    assertFloorPosition(me(), next);
   } finally {
     close();
   }
@@ -1362,42 +1447,55 @@ test('emotes reject absent, disconnected and closed identities and discard depar
     close();
   }
 });
-test('30 stationary audience cats have distinct safe positions, including after leaving stage', async () => {
+test('a full audience spawns across the six-seat width even in a one-seat room and reconnect retains position', async (context) => {
   const db = new Store(':memory:'),
-    room = new Room(db, music);
+    room = new Room(db, music, { stageCapacity: 1 });
   try {
     const guests = Array.from(
-      { length: 30 },
+      { length: ROOM_CAPACITY },
       (_, index) => db.createGuest(`Cat${index}`).guest,
     );
+    const samples = [0, 0, 0, 0, 0.99, 0.99];
+    let seed = 0x12345678;
+    const random = context.mock.method(Math, 'random', () => {
+      if (samples.length) return samples.shift()!;
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 2 ** 32;
+    });
     guests.forEach((guest) =>
       room.connect(guest, { id: guest.id, replaced() {} }),
     );
-    const assertFloor = () => {
-      const users = room.snapshot().users;
-      assert.equal(
-        new Set(users.map((user) => `${user.x},${user.y}`)).size,
-        30,
-      );
-      for (const user of users) {
-        assert.ok(user.x >= SCENE.walk.left && user.x <= SCENE.walk.right);
-        assert.ok(user.y >= SCENE.walk.top && user.y <= SCENE.walk.bottom);
-        assert.equal(user.targetX, user.x);
-        assert.equal(user.targetY, user.y);
-        assert.equal(user.durationMs, 0);
-      }
-    };
-    assertFloor();
-    const first = guests[0]!,
-      before = room.snapshot().users[0]!;
+    const { users } = room.snapshot();
+    const seats = stageSeatXs(STAGE_CAPACITY);
+    const left = seats[0]!;
+    const right = seats.at(-1)!;
+    for (const user of users) {
+      assert.ok(user.x >= left && user.x <= right);
+      assert.ok(user.y >= SCENE.walk.top && user.y <= SCENE.walk.bottom);
+      assertFloorPosition(user, user);
+    }
+    assert.equal(
+      new Set(users.map(({ x, y }) => `${x},${y}`)).size,
+      ROOM_CAPACITY,
+    );
+    const first = guests[0]!;
+    const before = users[0]!;
+    assertFloorPosition(before, { x: left, y: SCENE.walk.top });
+    // The second cat first samples the same point and retries.
+    assertFloorPosition(users[1], {
+      x: left + (right - left) * 0.99,
+      y: SCENE.walk.top + (SCENE.walk.bottom - SCENE.walk.top) * 0.99,
+    });
+    const calls = random.mock.callCount();
     room.disconnect(first.id, first.id);
     room.connect(first, { id: 'reconnected', replaced() {} });
-    assert.equal(room.snapshot().users[0]!.x, before.x);
-    assert.equal(room.snapshot().users[0]!.y, before.y);
+    assert.equal(random.mock.callCount(), calls);
+    assertFloorPosition(room.snapshot().users[0], before);
     db.add(first.id, track('1'));
     await room.join(first.id);
     await room.leave(first.id);
-    assertFloor();
+    assert.equal(random.mock.callCount(), calls);
+    assertFloorPosition(room.snapshot().users[0], before);
   } finally {
     room.close();
     db.close();
@@ -1817,6 +1915,7 @@ test('an emptied upcoming playlist removes that DJ and keeps the next turn', asy
     close,
   } = setup();
   try {
+    const bFloor = room.snapshot().users[1]!;
     await room.join(a!.id);
     await room.join(b!.id);
     await room.join(c!.id);
@@ -1828,6 +1927,10 @@ test('an emptied upcoming playlist removes that DJ and keeps the next turn', asy
     assert.deepEqual(room.snapshot().stage, [c!.id, a!.id]);
     assert.equal(snapshots.length, 1);
     assertStageConsistent(snapshots[0]!);
+    assertFloorPosition(
+      snapshots[0]!.users.find((user) => user.id === b!.id),
+      bFloor,
+    );
     assert.equal(playback.length, 0);
   } finally {
     close();

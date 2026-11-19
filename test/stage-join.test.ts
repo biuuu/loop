@@ -18,6 +18,7 @@ import type {
   RoomSnapshot,
   ServerEvents,
   StageJoin,
+  StageLeave,
 } from '../src/shared/contracts';
 
 async function waitFor(predicate: () => boolean) {
@@ -105,6 +106,7 @@ async function fixture(context: TestContext) {
   const peers: Socket<ClientEvents, ServerEvents>[] = [];
   const commands: string[] = [];
   const joins: { payload: StageJoin; ack: (result: Ack) => void }[] = [];
+  const leaves: StageLeave[] = [];
   const motions: { report: ClientMotion; ack: (result: Ack) => void }[] = [];
   server.on('connection', (peer) => {
     const id = guest.id;
@@ -115,7 +117,10 @@ async function fixture(context: TestContext) {
     peer.on('room:sync', (ack) => ack(snapshot(1, id)));
     peer.on('stage:join', (payload, ack) => joins.push({ payload, ack }));
     peer.on('room:motion', (report, ack) => motions.push({ report, ack }));
-    peer.on('stage:leave', (_point, ack) => ack({ ok: true }));
+    peer.on('stage:leave', (payload, ack) => {
+      leaves.push(payload);
+      ack({ ok: true });
+    });
   });
   setActivePinia(createPinia());
   const room = useRoom();
@@ -134,6 +139,7 @@ async function fixture(context: TestContext) {
     peers,
     commands,
     joins,
+    leaves,
     motions,
     advance: (ms: number) => (now += ms),
     rendered: () => room.renderParticipant(room.me!, now),
@@ -157,7 +163,7 @@ test('stationary stage join sends one stage command and no preliminary floor mot
   assert.equal(f.room.stagePending, true);
   await waitFor(() => f.joins.length === 1);
   assert.deepEqual(f.commands, ['stage:join']);
-  assert.deepEqual(f.joins[0]!.payload, {});
+  assert.deepEqual(f.joins[0]!.payload, { from: { x: 300, y: 400 } });
   f.peers[0]!.emit('room:snapshot', snapshot(2, 'a', 0));
   f.joins[0]!.ack({ ok: true });
   assert.equal(await joined, true);
@@ -165,6 +171,19 @@ test('stationary stage join sends one stage command and no preliminary floor mot
   await delay(180);
   assert.deepEqual(f.commands, ['stage:join']);
   assert.equal(f.rendered().x, 340);
+});
+
+test('stage join without a local floor participant leaves the position to the server', async (context) => {
+  const f = await fixture(context);
+  if (!f) return;
+  f.peers[0]!.emit('room:snapshot', { ...snapshot(2), users: [] });
+  await waitFor(() => !f.room.me);
+  const joined = f.room.joinStage();
+  await waitFor(() => f.joins.length === 1);
+  assert.deepEqual(f.joins[0]!.payload, {});
+  f.joins[0]!.ack({ ok: true });
+  assert.equal(await joined, true);
+  assert.deepEqual(f.commands, ['stage:join']);
 });
 
 test('moving stage join cancels trailing reports and preserves the seat against old motion rejections', async (context) => {
@@ -183,6 +202,7 @@ test('moving stage join cancels trailing reports and preserves the seat against 
   assert.equal(stopped.durationMs, 0);
   await waitFor(() => f.joins.length === 1);
   assert.deepEqual(f.commands, ['room:motion', 'stage:join']);
+  assert.deepEqual(f.joins[0]!.payload, { from: point });
   assert.equal(f.motions.length, 1);
   f.motions[0]!.ack({ ok: false, error: 'Old floor rejection' });
   await delay(20);
@@ -323,11 +343,19 @@ test('replaced and closed connections never publish a failed join stop', async (
   assert.equal(f.room.error, '');
 });
 
-test('stage leave keeps sending only the leave command', async (context) => {
+test('stage leave after reconnect sends only a leave command with no position', async (context) => {
   const f = await fixture(context);
   if (!f) return;
   f.peers[0]!.emit('room:snapshot', snapshot(2, 'a', 0));
   await waitFor(() => f.room.onStage);
-  assert.equal(await f.room.leaveStage({ x: 350, y: 400 }), true);
+  f.peers[0]!.conn.close();
+  await waitFor(() => f.room.connection === 'disconnected');
+  await waitFor(
+    () => f.peers.length === 2 && f.room.connection === 'connected',
+  );
+  f.peers[1]!.emit('room:snapshot', snapshot(2, 'a', 0));
+  await waitFor(() => f.room.onStage);
+  assert.equal(await f.room.leaveStage(), true);
   assert.deepEqual(f.commands, ['stage:leave']);
+  assert.deepEqual(f.leaves, [{}]);
 });

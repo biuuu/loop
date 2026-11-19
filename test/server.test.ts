@@ -991,6 +991,15 @@ test('socket authentication, replacement, capacity and shared room snapshots', a
       (await second.timeout(1000).emitWithAck('stage:join', { seat: 8 })).ok,
       false,
     );
+    assert.equal(
+      (
+        await second
+          .timeout(1000)
+          .emitWithAck('stage:join', { from: { x: 500, y: SCENE.stageY } })
+      ).ok,
+      false,
+    );
+    const returnPoint = { x: 550.25, y: 450.5 };
     await second.timeout(1000).emitWithAck('room:sync');
     const joinSnapshots: RoomSnapshot[] = [];
     const joinUpdates: unknown[] = [];
@@ -1001,7 +1010,11 @@ test('socket authentication, replacement, capacity and shared room snapshots', a
     second.on('playlist:reordered', recordQueue);
     try {
       assert.equal(
-        (await second.timeout(1000).emitWithAck('stage:join', { seat: 3 })).ok,
+        (
+          await second
+            .timeout(1000)
+            .emitWithAck('stage:join', { seat: 3, from: returnPoint })
+        ).ok,
         true,
       );
       await second.timeout(1000).emitWithAck('room:sync');
@@ -1070,8 +1083,14 @@ test('socket authentication, replacement, capacity and shared room snapshots', a
     assert.equal(leaveSnapshots[0]!.resolving, false);
     assert.deepEqual(leaveSnapshots[0]!.stage, []);
     assert.equal(leaveSnapshots[0]!.users[0]!.seat, null);
-    assert.equal(room.snapshot().users[0]!.seat, null);
-    assert.equal(room.snapshot().users[0]!.x, 700);
+    const audience = room.snapshot().users[0]!;
+    assert.equal(audience.seat, null);
+    assert.equal(audience.x, returnPoint.x);
+    assert.equal(audience.y, returnPoint.y);
+    assert.equal(
+      (await second.timeout(1000).emitWithAck('stage:leave', {})).ok,
+      false,
+    );
     assert.equal(
       (await second.timeout(1000).emitWithAck('room:move', { x: 850, y: 500 }))
         .ok,

@@ -66,17 +66,26 @@ export const stageSeatSchema = z
   .int()
   .min(0)
   .max(STAGE_CAPACITY - 1);
-// Older clients still send a seat number. The server places every join at the tail.
-export const stageJoinSchema = z
-  .object({ seat: stageSeatSchema.optional() })
-  .strict();
-export type StageJoin = z.infer<typeof stageJoinSchema>;
-export const stageLeaveSchema = z
+const stageFloorPointSchema = z
   .object({
     x: z.number().finite().min(SCENE.walk.left).max(SCENE.walk.right),
     y: z.number().finite().min(SCENE.walk.top).max(SCENE.walk.bottom),
   })
   .strict();
+// Older clients still send a seat number. The server places every join at the tail.
+export const stageJoinSchema = z
+  .object({
+    seat: stageSeatSchema.optional(),
+    from: stageFloorPointSchema.optional(),
+  })
+  .strict();
+export type StageJoin = z.infer<typeof stageJoinSchema>;
+// Accept the old point payload while the server uses the saved pre-stage point.
+export const stageLeaveSchema = z.union([
+  z.object({}).strict(),
+  stageFloorPointSchema,
+]);
+export type StageLeave = z.infer<typeof stageLeaveSchema>;
 export interface Guest {
   registered?: boolean;
   email?: string;
@@ -277,10 +286,7 @@ export interface ClientEvents {
   ) => void;
   'room:emote': (payload: { id: EmoteId }, ack: (result: Ack) => void) => void;
   'stage:join': (payload: StageJoin, ack: (result: Ack) => void) => void;
-  'stage:leave': (
-    payload: { x: number; y: number },
-    ack: (result: Ack) => void,
-  ) => void;
+  'stage:leave': (payload: StageLeave, ack: (result: Ack) => void) => void;
   'playback:skip': (
     payload: { roundId: string },
     ack: (result: Ack) => void,

@@ -9,7 +9,6 @@ import {
   nicknameSchema,
   trackIdSchema,
   stageJoinSchema,
-  stageLeaveSchema,
   PLAYLIST_LIMIT,
   type MusicService,
   type Guest,
@@ -653,12 +652,10 @@ export async function createServer(
     bind('room:stop', () => room.stop(guest.id), false);
     bind('room:emote', (payload) => room.emote(guest.id, payload));
     bind('stage:join', (payload) => {
-      stageJoinSchema.parse(payload);
-      return room.join(guest.id, socket.id);
+      const { from } = stageJoinSchema.parse(payload);
+      return room.join(guest.id, socket.id, undefined, from);
     });
-    bind('stage:leave', (payload) =>
-      room.leave(guest.id, socket.id, stageLeaveSchema.parse(payload)),
-    );
+    bind('stage:leave', (payload) => room.leave(guest.id, socket.id, payload));
     bind('playback:skip', (payload) =>
       room.skip(
         guest.id,
