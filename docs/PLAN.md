@@ -84,7 +84,7 @@
 - Do not offer room deletion to owners or other users; persistent rooms keep their address.
 - Design the room directory as a warm illustrated music-lounge entrance, with distinct covers for the four preset environments and a separate shortcut to the user's own room.
 - For rooms currently playing music, show the current song cover on the directory card; retain environment art when idle, missing artwork, or image loading fails.
-- Make the entire directory room card the room link, without a separate Enter button or the playing/environment label above its title. Keep room number and other useful details visible.
+- Make the entire directory room card the room link, without a separate Enter button or the playing/environment label above its title. Omit the visible `#` room number from the public cards and the home-room shortcut.
 - Directory card room titles may use two lines, then ellipsis; the public directory should give room names, current tracks, online counts and access states clear visual priority without making cards cramped. Show the online count and capacity as a ratio without the “只猫” suffix.
 - The public directory offers 全部, 播放中, 有人的房间, and 空房间. Filter before pagination and return to page one when switching tabs. Playing reflects current playback, occupied means at least one connected member, and empty means zero connected members. The home room shortcut stays visible independently of the filter.
 - Show nine rooms per directory page. Order rooms by the last time a song successfully started, most recent first, even if the room is now idle or empty. Rooms without a recorded play follow.

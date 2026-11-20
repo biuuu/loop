@@ -1862,12 +1862,6 @@ select {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.room-card-number {
-  display: block;
-  margin-top: 4px;
-  color: #a29f91;
-  font-size: 11px;
-}
 .room-card .room-card-track {
   display: flex;
   align-items: flex-start;

@@ -216,7 +216,7 @@ onBeforeUnmount(() => {
         <RoomEnvironmentCover :environment-id="ownRoom.environmentId" square />
       </div>
       <div class="own-room-copy">
-        <span class="eyebrow">我的音乐客厅 · #{{ ownRoom.number }}</span>
+        <span class="eyebrow">我的音乐客厅</span>
         <h2>{{ ownRoom.name }}</h2>
         <p>
           {{ environmentPreset(ownRoom.environmentId).name }} ·
@@ -351,7 +351,6 @@ onBeforeUnmount(() => {
           <div class="room-card-identity">
             <h3 :title="item.name">{{ item.name }}</h3>
             <p class="room-card-owner">房主 {{ item.ownerNickname }}</p>
-            <span class="room-card-number">#{{ item.number }}</span>
           </div>
         </div>
         <div
