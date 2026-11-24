@@ -255,7 +255,7 @@ test('identity initialization stays in lobby; failed entry preserves the active 
   assert.equal(f.room.playlist[0]!.title, 'Personal song');
 });
 
-test('live environments update without replacing room state and stale sync metadata cannot revert them', async (context) => {
+test('live settings update without replacing room state and stale sync metadata cannot revert them', async (context) => {
   const f = await fixture(context);
   if (!f) return;
   await f.room.connect('a');
@@ -266,6 +266,7 @@ test('live environments update without replacing room state and stale sync metad
     ownerId: 'user',
     ownerNickname: 'cat',
     name: 'Room',
+    description: 'Original introduction',
     environmentId: 'cozy',
     stageCapacity: 6,
     joinPolicy: 'open',
@@ -277,9 +278,11 @@ test('live environments update without replacing room state and stale sync metad
   f.peers[0]!.emit('room:updated', {
     ...info,
     environmentId: 'rooftop',
+    description: 'Welcome to the rooftop',
     revision: 2,
   });
   await waitFor(() => f.room.roomInfo?.environmentId === 'rooftop');
+  assert.equal(f.room.roomInfo!.description, 'Welcome to the rooftop');
   assert.equal(f.room.snapshot, state);
   assert.equal(
     f.syncs.length,
@@ -289,21 +292,28 @@ test('live environments update without replacing room state and stale sync metad
   f.syncs[0]!.ack({ ...snapshot('a', 2), room: info });
   await waitFor(() => f.room.snapshot?.revision === 2);
   assert.equal(f.room.roomInfo!.environmentId, 'rooftop');
+  assert.equal(f.room.roomInfo!.description, 'Welcome to the rooftop');
   f.peers[0]!.emit('room:updated', {
     ...info,
     id: 'b',
     environmentId: 'seaside',
+    description: 'Another room',
     revision: 10,
   });
   f.peers[0]!.emit('room:updated', info);
   await delay(15);
   assert.equal(f.room.roomInfo!.environmentId, 'rooftop');
+  assert.equal(f.room.roomInfo!.description, 'Welcome to the rooftop');
   await f.room.connect('b');
   await waitFor(() => f.room.snapshot?.roomId === 'b');
-  f.peers
-    .at(-1)!
-    .emit('room:updated', { ...info, id: 'b', environmentId: 'greenhouse' });
+  f.peers.at(-1)!.emit('room:updated', {
+    ...info,
+    id: 'b',
+    environmentId: 'greenhouse',
+    description: '',
+  });
   await waitFor(() => f.room.roomInfo?.environmentId === 'greenhouse');
+  assert.equal(f.room.roomInfo!.description, '');
   assert.equal(
     f.room.roomInfo!.revision,
     1,

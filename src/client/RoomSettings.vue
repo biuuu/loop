@@ -3,7 +3,11 @@ import { useTimedMessage } from './timed-message';
 import { onMounted, onBeforeUnmount, ref, computed } from 'vue';
 import { X } from '@lucide/vue';
 import { request, useRoom } from './room';
-import type { RoomInfo } from '../shared/contracts';
+import {
+  ROOM_DESCRIPTION_LIMIT,
+  type RoomDetails,
+  type RoomInfo,
+} from '../shared/contracts';
 import EnvironmentPicker from './EnvironmentPicker.vue';
 const props = defineProps<{ info?: RoomInfo }>();
 const emit = defineEmits<{ close: [] }>();
@@ -25,6 +29,7 @@ onBeforeUnmount(() => {
 });
 const info = props.info ?? room.roomInfo!;
 const name = ref(info.name);
+const description = ref(info.description ?? '');
 const joinPolicy = ref(info.joinPolicy);
 const stageCapacity = ref(info.stageCapacity);
 const environmentId = ref(info.environmentId);
@@ -40,6 +45,7 @@ const stageCapacityError = computed(() =>
 );
 const revision = ref(info.revision);
 const busy = ref(false);
+const loaded = ref(false);
 const error = useTimedMessage();
 const notice = useTimedMessage();
 const base = `/api/rooms/${encodeURIComponent(info.id)}`;
@@ -56,34 +62,42 @@ async function act(task: () => Promise<void>) {
     busy.value = false;
   }
 }
-function applySettings(settings: RoomInfo) {
+function applySettings(settings: RoomDetails) {
   name.value = settings.name;
+  description.value = settings.description;
   joinPolicy.value = settings.joinPolicy;
   stageCapacity.value = settings.stageCapacity;
   environmentId.value = settings.environmentId;
   revision.value = settings.revision;
 }
 async function reload() {
-  const data = await request<{ room: RoomInfo }>(base);
+  const data = await request<{ room: RoomDetails }>(`${base}/settings`);
   applySettings(data.room);
+  loaded.value = true;
 }
 function save() {
+  if (!loaded.value) return;
   if (stageCapacityError.value) {
     error.value = stageCapacityError.value;
     return;
   }
   void act(async () => {
-    const data = await request<{ room: RoomInfo }>(base, {
+    const data = await request<{ room: RoomDetails }>(base, {
       method: 'PATCH',
       body: JSON.stringify({
         name: name.value.trim(),
+        description: description.value,
         environmentId: environmentId.value,
         joinPolicy: joinPolicy.value,
         stageCapacity: stageCapacity.value,
         expectedRevision: revision.value,
       }),
     });
-    if (room.roomId === info.id) room.roomInfo = data.room;
+    if (
+      room.roomId === info.id &&
+      (!room.roomInfo || data.room.revision >= room.roomInfo.revision)
+    )
+      room.roomInfo = data.room;
     applySettings(data.room);
     notice.value = '房间设置已保存';
   });
@@ -103,9 +117,32 @@ function save() {
         <button aria-label="关闭房间设置" @click="emit('close')"><X /></button>
       </header>
       <form class="panel-form" @submit.prevent="save">
-        <label
-          >房间名称<input v-model="name" minlength="1" maxlength="32" required
-        /></label>
+        <label>
+          房间名称
+          <input
+            v-model="name"
+            minlength="1"
+            maxlength="32"
+            :disabled="busy"
+            required
+          />
+        </label>
+        <div class="description-field">
+          <label>
+            房间简介
+            <textarea
+              v-model="description"
+              rows="3"
+              :maxlength="ROOM_DESCRIPTION_LIMIT"
+              :disabled="busy || !loaded"
+              aria-describedby="settings-description-hint"
+            />
+          </label>
+          <small id="settings-description-hint">
+            <span>仅在房间内可见，可留空。</span>
+            <span>{{ description.length }} / {{ ROOM_DESCRIPTION_LIMIT }}</span>
+          </small>
+        </div>
         <EnvironmentPicker v-model="environmentId" :disabled="busy" />
         <fieldset class="stage-capacity-picker">
           <legend>舞台位置</legend>
@@ -147,7 +184,7 @@ function save() {
         <button
           type="submit"
           class="primary"
-          :disabled="busy || !!stageCapacityError"
+          :disabled="busy || !loaded || !!stageCapacityError"
         >
           保存设置
         </button>
@@ -160,3 +197,15 @@ function save() {
     </section>
   </dialog>
 </template>
+
+<style scoped>
+.description-field textarea {
+  resize: vertical;
+}
+.description-field small {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+</style>

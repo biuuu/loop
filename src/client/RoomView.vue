@@ -33,6 +33,7 @@ import {
   ArrowUp,
   Check,
   Disc3,
+  Info,
   Music2,
   Pin,
   Plus,
@@ -147,7 +148,15 @@ const status = computed(
       replaced: '已在另一个标签页进入',
     })[room.connection],
 );
-type Modal = 'library' | 'members' | 'appearance';
+const roomDescription = computed(() => {
+  const info = room.roomInfo;
+  return room.connection === 'connected' &&
+    room.me?.connected &&
+    info?.id === room.roomId
+    ? (info.description ?? '')
+    : '';
+});
+type Modal = 'library' | 'members' | 'appearance' | 'description';
 const modal = ref<Modal | null>(null);
 const appearanceDraft = ref<CatAppearance>({ ...DEFAULT_CAT_APPEARANCE });
 const appearanceSaving = ref(false);
@@ -159,6 +168,7 @@ const modalTitle = computed(
       library: '你的音乐角落',
       members: '客厅成员',
       appearance: '我的小猫',
+      description: '房间简介',
     })[modal.value || 'library'],
 );
 const interactionDisabled = computed(() =>
@@ -169,6 +179,13 @@ function closeModal() {
   modal.value = null;
   nextTick(() => returnFocus?.focus());
 }
+watch(
+  [() => room.roomId, roomDescription],
+  ([id, description], [previousId]) => {
+    if (modal.value === 'description' && (id !== previousId || !description))
+      closeModal();
+  },
+);
 async function openModal(value: Modal) {
   resetMovement();
   if (!modal.value)
@@ -178,7 +195,7 @@ async function openModal(value: Modal) {
         : null;
   modal.value = value;
   await nextTick();
-  if (!dialog.value?.open) dialog.value?.showModal();
+  if (modal.value === value && !dialog.value?.open) dialog.value?.showModal();
 }
 function openLibrary(value: 'playlist' | 'search') {
   tab.value = value;
@@ -461,6 +478,16 @@ onBeforeUnmount(() => {
       </div>
       <div class="room-header-actions">
         <button
+          v-if="roomDescription"
+          class="room-header-action"
+          aria-label="房间简介"
+          aria-haspopup="dialog"
+          title="房间简介"
+          @click="openModal('description')"
+        >
+          <Info aria-hidden="true" /><span>简介</span>
+        </button>
+        <button
           class="room-header-action"
           aria-label="返回大厅"
           title="返回大厅"
@@ -659,14 +686,20 @@ onBeforeUnmount(() => {
       <dialog
         ref="dialog"
         class="room-dialog"
+        :class="{ 'room-description-dialog': modal === 'description' }"
         aria-labelledby="dialog-title"
+        :aria-describedby="
+          modal === 'description' ? 'room-description' : undefined
+        "
         @cancel.prevent="closeModal"
         @click="outsideDialog"
         @close="modal = null"
       >
         <header class="dialog-header">
           <div>
-            <span class="eyebrow">MAKE YOURSELF AT HOME</span>
+            <span v-if="modal !== 'description'" class="eyebrow"
+              >MAKE YOURSELF AT HOME</span
+            >
             <h2 id="dialog-title">{{ modalTitle }}</h2>
           </div>
           <button
@@ -938,8 +971,19 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </section>
+          <p
+            v-else-if="modal === 'description'"
+            id="room-description"
+            class="room-description"
+          >
+            {{ roomDescription }}
+          </p>
         </div>
-        <p v-if="room.error" class="dialog-error" role="alert">
+        <p
+          v-if="room.error && modal !== 'description'"
+          class="dialog-error"
+          role="alert"
+        >
           {{ room.error }}
           <button class="text-button" @click="room.error = ''">关闭提示</button>
         </p>
@@ -957,5 +1001,20 @@ onBeforeUnmount(() => {
 <style scoped>
 .playlist-selector {
   margin: 15px 0;
+}
+.room-description-dialog h2 {
+  margin: 0;
+}
+.room-description {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 651px) {
+  .room-description-dialog {
+    width: min(430px, calc(100% - 40px));
+  }
 }
 </style>

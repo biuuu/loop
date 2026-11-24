@@ -104,6 +104,7 @@ export const roomNumberSchema = z
   .int()
   .positive()
   .max(Number.MAX_SAFE_INTEGER);
+export const ROOM_DESCRIPTION_LIMIT = 240;
 
 export interface RoomInfo {
   number: number;
@@ -112,11 +113,16 @@ export interface RoomInfo {
   ownerId: string;
   ownerNickname: string;
   name: string;
+  // Included in room snapshots, live metadata and owner settings.
+  description?: string;
   environmentId: import('./environments.js').EnvironmentId;
   joinPolicy: 'open' | 'closed';
   revision: number;
   createdAt: number;
   updatedAt: number;
+}
+export interface RoomDetails extends RoomInfo {
+  description: string;
 }
 export interface RoomSummary extends RoomInfo {
   online: number;

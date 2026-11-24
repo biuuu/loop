@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
   DEFAULT_STAGE_CAPACITY,
+  ROOM_DESCRIPTION_LIMIT,
   ROOM_DIRECTORY_PAGE_SIZE,
   roomDirectoryFilterSchema,
   roomNumberSchema,
@@ -86,6 +87,13 @@ export function roomRoutes(
     if (!room) throw new HttpError(404, '房间不存在或已被删除');
     return { room: registry.info(room.id) };
   });
+  app.get('/api/rooms/:id/settings', async (request, reply) => {
+    const user = auth.identity(request.cookies[COOKIE]),
+      id = roomId(request.params);
+    registry.owner(id, user.id);
+    reply.header('Cache-Control', 'no-store');
+    return { room: registry.details(id) };
+  });
   app.post('/api/rooms', async (request) => {
     const user = auth.identity(request.cookies[COOKIE]);
     if (!allow(`create:${user.id}:${request.ip}`))
@@ -117,6 +125,13 @@ export function roomRoutes(
     const changes = z
       .object({
         name: fields.name.optional(),
+        description: z
+          .string()
+          .transform((description) =>
+            description.replace(/\r\n?/g, '\n').trim(),
+          )
+          .pipe(z.string().max(ROOM_DESCRIPTION_LIMIT))
+          .optional(),
         environmentId: fields.environmentId.optional(),
         joinPolicy: z.enum(['open', 'closed']).optional(),
         stageCapacity: stageCapacitySchema.optional(),
@@ -132,13 +147,14 @@ export function roomRoutes(
     if (
       !db.updateRoom(id, changes.expectedRevision, {
         name: changes.name ?? before.name,
+        description: changes.description,
         environmentId: changes.environmentId ?? before.environmentId,
         joinPolicy: changes.joinPolicy ?? before.joinPolicy,
         stageCapacity,
       })
     )
       throw new HttpError(409, '房间资料已更新，请刷新后重试');
-    const room = registry.info(id);
+    const room = registry.details(id);
     registry.updated(room);
     return { room };
   });

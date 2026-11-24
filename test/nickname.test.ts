@@ -80,7 +80,7 @@ test('nickname cooldown survives a restart, applies to both endpoints, and allow
 
     server = await createServer({ dbPath, music });
     const firstApp = server.app;
-    assert.equal(server.db.sql.pragma('user_version', { simple: true }), 15);
+    assert.equal(server.db.sql.pragma('user_version', { simple: true }), 16);
     const initial = await profile();
     assert.deepEqual(initial, { ...owner.guest, registered: false });
     const noChange = await patch(' Original ');
@@ -216,6 +216,15 @@ test('renaming a live participant updates their cat and the owned room metadata'
     const listener = db.createUser('Listener');
     const ownerRoom = owner.createdRoom;
     const listenerRoom = listener.createdRoom;
+    const description = '一起听歌。';
+    assert.equal(
+      db.updateRoom(ownerRoom.id, ownerRoom.revision, {
+        ...ownerRoom,
+        description,
+      }),
+      true,
+    );
+    const ownerDetails = db.roomDetails(ownerRoom.id)!;
     const socket = (id: string) =>
       ({
         id,
@@ -275,7 +284,7 @@ test('renaming a live participant updates their cat and the owned room metadata'
       {
         channel: `room:${ownerRoom.id}`,
         event: 'room:updated',
-        payload: { ...ownerRoom, ownerNickname: 'New' },
+        payload: { ...ownerDetails, ownerNickname: 'New' },
       },
     ]);
     broadcasts.length = 0;
@@ -290,6 +299,7 @@ test('renaming a live participant updates their cat and the owned room metadata'
     assert.equal((await patch('Again')).statusCode, 200);
     const home = registry.snapshot(ownerRoom.id);
     assert.equal(home.room!.ownerNickname, 'Again');
+    assert.equal(home.room!.description, description);
     assert.deepEqual(broadcasts, [
       {
         channel: `room:${ownerRoom.id}`,

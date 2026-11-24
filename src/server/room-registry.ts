@@ -5,7 +5,7 @@ import {
   type Guest,
   type MusicService,
   type PlaylistState,
-  type RoomInfo,
+  type RoomDetails,
   type RoomSnapshot,
   type RoomSummary,
 } from '../shared/contracts.js';
@@ -91,12 +91,17 @@ export class RoomRegistry {
   private decorate(id: string, snapshot: RoomSnapshot): RoomSnapshot {
     return id === '__test__'
       ? snapshot
-      : { ...snapshot, roomId: id, room: this.db.room(id) ?? undefined };
+      : { ...snapshot, roomId: id, room: this.db.roomDetails(id) ?? undefined };
   }
   info(id: string) {
     const info = this.db.room(id);
     if (!info) throw new HttpError(404, '房间不存在或已被删除');
     return info;
+  }
+  details(id: string) {
+    const details = this.db.roomDetails(id);
+    if (!details) throw new HttpError(404, '房间不存在或已被删除');
+    return details;
   }
   owner(id: string, userId: string) {
     const info = this.info(id);
@@ -242,7 +247,7 @@ export class RoomRegistry {
     this.db.ban(id, targetId);
     this.remove(id, targetId, '你已被房主禁止进入此房间');
   }
-  updated(info: RoomInfo) {
+  updated(info: RoomDetails) {
     this.live.get(info.id)?.configureStage(info.stageCapacity);
     this.io.to(channel(info.id)).emit('room:updated', info);
   }
@@ -274,7 +279,7 @@ export class RoomRegistry {
       this.live.get(current.roomId)?.updateNickname(userId, nickname);
     const owned = this.db.roomByOwner(userId);
     if (owned && owned.id !== current?.roomId && this.live.has(owned.id))
-      this.updated(owned);
+      this.updated(this.details(owned.id));
   }
   members(id: string, ownerId: string) {
     this.owner(id, ownerId);

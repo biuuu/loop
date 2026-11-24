@@ -247,9 +247,11 @@ test('every preset can be created and edited, persists after reopening and survi
     const directory = (await server.app.inject('/api/rooms')).json()
       .rooms as RoomInfo[];
     for (const { room, owner } of saved) {
+      const { description, ...publicInfo } = room;
+      assert.equal(description, '');
       assert.deepEqual(
         (await server.app.inject(`/api/rooms/${room.id}`)).json().room,
-        room,
+        publicInfo,
       );
       assert.equal(
         directory.find((item) => item.id === room.id)!.environmentId,

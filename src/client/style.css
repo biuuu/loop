@@ -16,7 +16,8 @@ body {
   margin: 0;
 }
 button,
-input {
+input,
+textarea {
   font: inherit;
   -webkit-tap-highlight-color: transparent;
 }
@@ -43,6 +44,7 @@ button:disabled {
 }
 button:focus-visible,
 input:focus-visible,
+textarea:focus-visible,
 a:focus-visible {
   outline: 3px solid #a87850;
   outline-offset: 3px;
@@ -66,7 +68,8 @@ a:focus-visible {
   background: transparent;
   border-color: #bbc4ad;
 }
-input {
+input,
+textarea {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 9px;

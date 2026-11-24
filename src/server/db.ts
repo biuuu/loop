@@ -8,6 +8,7 @@ import {
   PLAYLIST_COUNT_LIMIT,
   PLAYLIST_LIMIT,
   type Guest,
+  type RoomDetails,
   type RoomInfo,
   type NeteasePlaylistEntry,
   type PlaylistImportResult,
@@ -470,6 +471,14 @@ export class Store {
       .get(id);
     return (row as RoomInfo | undefined) ?? null;
   }
+  roomDetails(id: string): RoomDetails | null {
+    const row = this.sql
+      .prepare(
+        `SELECT ${ROOM_COLUMNS},r.description ${ROOM_TABLES} WHERE r.id=?`,
+      )
+      .get(id);
+    return (row as RoomDetails | undefined) ?? null;
+  }
   roomByNumber(number: number): RoomInfo | null {
     if (!Number.isSafeInteger(number) || number < 1) return null;
     const row = this.sql
@@ -518,20 +527,22 @@ export class Store {
   updateRoom(
     id: string,
     revision: number,
-    changes: Pick<RoomInfo, 'name' | 'environmentId' | 'joinPolicy'> &
-      Partial<Pick<RoomInfo, 'stageCapacity'>>,
+    changes: Pick<RoomDetails, 'name' | 'environmentId' | 'joinPolicy'> &
+      Partial<Pick<RoomDetails, 'stageCapacity' | 'description'>>,
   ): boolean {
     return Boolean(
       this.sql
         .prepare(
-          `UPDATE rooms SET name=?,environment_id=?,join_policy=?,stage_capacity=COALESCE(?,stage_capacity),revision=revision+1,
-      updated_at=? WHERE id=? AND revision=?`,
+          `UPDATE rooms SET name=?,environment_id=?,join_policy=?,
+      stage_capacity=COALESCE(?,stage_capacity),description=COALESCE(?,description),
+      revision=revision+1,updated_at=? WHERE id=? AND revision=?`,
         )
         .run(
           changes.name,
           changes.environmentId,
           changes.joinPolicy,
           changes.stageCapacity ?? null,
+          changes.description ?? null,
           Date.now(),
           id,
           revision,

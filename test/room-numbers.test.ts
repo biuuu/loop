@@ -60,12 +60,11 @@ test('upgrading from version 11 preserves saved data and persists room playback 
         .run([30, 10, 20][index], room.id);
       return room;
     });
-    db.updateRoom(rooms[0]!.id, 1, {
-      name: 'Saved name',
-      environmentId: 'rooftop',
-      joinPolicy: 'closed',
-      stageCapacity: 4,
-    });
+    db.sql
+      .prepare(
+        'UPDATE rooms SET name=?,environment_id=?,join_policy=?,stage_capacity=?,revision=2 WHERE id=?',
+      )
+      .run('Saved name', 'rooftop', 'closed', 4, rooms[0]!.id);
     db.ban(rooms[0]!.id, owners[1]!.guest.id);
     db.ban(rooms[2]!.id, owners[0]!.guest.id);
     const playlist = db.sql.prepare('INSERT INTO playlist VALUES (?,?,?,?)');
@@ -108,7 +107,7 @@ test('upgrading from version 11 preserves saved data and persists room playback 
     db.close();
     db = undefined;
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 15);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 16);
     assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
     assert.deepEqual(db.rooms(), expected);
     assert.deepEqual(
@@ -280,7 +279,10 @@ test('numeric room reads preserve UUID identity and current metadata while manag
       uuid = await app.inject(`/api/rooms/${info.id}`);
     assert.equal(numeric.statusCode, 200, numeric.body);
     assert.deepEqual(numeric.json(), uuid.json());
-    assert.deepEqual(numeric.json().room, patch.json().room);
+    assert.deepEqual(patch.json().room, {
+      ...numeric.json().room,
+      description: '',
+    });
     const directory = (await app.inject('/api/rooms')).json().rooms;
     assert.equal(directory[0].number, info.number);
     assert.equal(directory[0].id, info.id);
