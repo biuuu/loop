@@ -11,7 +11,7 @@
     "check": "vue-tsc --noEmit",
     "format": "prettier --write src test scripts *.json *.ts *.html *.md docs/*.md",
     "test": "node scripts/test.mjs",
-    "build": "vite build && esbuild src/server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server/index.js",
+    "build": "node scripts/build.mjs",
     "start": "node --env-file-if-exists=.env dist/server/index.js"
   },
   "dependencies": {

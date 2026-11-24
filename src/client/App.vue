@@ -3,6 +3,7 @@ import { onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { request, useRoom } from './room';
 import type { RoomInfo } from '../shared/contracts';
 import { accountEntryRoute, createNavigation, type Route } from './navigation';
+import { watchDeploymentVersion } from './deployment-version';
 import RoomView from './RoomView.vue';
 import RoomDirectory from './RoomDirectory.vue';
 import AccountPanel from './AccountPanel.vue';
@@ -42,6 +43,7 @@ function openSettings(info: RoomInfo | null = room.roomInfo) {
 }
 const target = ref<Route>({ kind: 'directory' });
 let navigation: ReturnType<typeof createNavigation>;
+let deploymentVersion: ReturnType<typeof watchDeploymentVersion>;
 let navigationGeneration = 0;
 let leaving = false;
 function currentRoute(): Route {
@@ -148,11 +150,21 @@ watch(
     }
   },
 );
+watch(
+  () => room.connection,
+  (connection, previous) => {
+    if (previous === 'disconnected' && connection === 'connected')
+      void deploymentVersion?.check();
+  },
+);
 onMounted(async () => {
   navigation = createNavigation(window, (route) => {
     void navigate(route, true);
   });
   target.value = navigation.current();
+  deploymentVersion = watchDeploymentVersion(
+    typeof __LOOP_BUILD_ID__ === 'undefined' ? undefined : __LOOP_BUILD_ID__,
+  );
   try {
     await room.initialize();
     if (target.value.kind === 'room') await navigate(target.value, true);
@@ -163,6 +175,7 @@ onMounted(async () => {
   }
 });
 onBeforeUnmount(() => {
+  deploymentVersion?.close();
   navigationGeneration++;
   settleLeave(false);
   navigation?.close();

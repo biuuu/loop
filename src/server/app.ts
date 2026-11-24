@@ -96,6 +96,7 @@ function socketToken(header: string | undefined) {
 }
 export async function createServer(
   options: {
+    buildId?: string;
     dbPath?: string;
     music?: MusicService;
     disconnectGraceMs?: number;
@@ -193,6 +194,10 @@ export async function createServer(
     return auth.identity(request.cookies[COOKIE]);
   };
   app.get('/api/health', async () => ({ ok: true }));
+  app.get('/api/version', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    return { version: options.buildId ?? null };
+  });
   const adminGuard =
     (limit: Limiter) =>
     async (
@@ -753,7 +758,13 @@ export async function createServer(
   });
   const clientRoot = resolve('dist/client');
   if (existsSync(clientRoot)) {
-    await app.register(fastifyStatic, { root: clientRoot });
+    const clientEntry = resolve(clientRoot, 'index.html');
+    await app.register(fastifyStatic, {
+      root: clientRoot,
+      setHeaders(reply, filePath) {
+        if (filePath === clientEntry) reply.header('Cache-Control', 'no-store');
+      },
+    });
     app.setNotFoundHandler((request, reply) =>
       request.url.startsWith('/api/') || request.method !== 'GET'
         ? reply.code(404).send({ error: '不存在的接口' })

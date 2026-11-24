@@ -52,7 +52,9 @@ npm run build
 pm2 start ecosystem.config.cjs
 ```
 
-PM2 会启动一个名为 `loop` 的进程并读取项目的 `.env`。更新代码并重新构建后，用 `pm2 restart loop` 重启。需要开机自动恢复时，运行 `pm2 startup` 并按它的提示设置系统服务，再运行 `pm2 save`。
+PM2 会启动一个名为 `loop` 的进程并读取项目的 `.env`。更新代码后，运行 `npm run build` 和 `pm2 reload loop`。已打开的页面会在发现新版本后自动刷新一次，前台通常在 30 秒内检测到。仅重启同一份构建时，页面继续按原流程重连。首次上线自动刷新功能时，已经打开的旧页面需要先手动刷新一次。反向代理需让 HTML 和 `/api/version` 的 `Cache-Control: no-store` 生效。
+
+需要开机自动恢复时，运行 `pm2 startup` 并按它的提示设置系统服务，再运行 `pm2 save`。
 
 ### 关于音乐播放
 

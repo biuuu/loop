@@ -1,6 +1,9 @@
 import { createServer } from './app.js';
 
-const { app } = await createServer();
+const { app } = await createServer({
+  buildId:
+    typeof __LOOP_BUILD_ID__ === 'string' ? __LOOP_BUILD_ID__ : undefined,
+});
 const shutdown = async () => {
   await app.close();
 };
