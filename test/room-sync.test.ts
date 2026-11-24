@@ -101,7 +101,7 @@ async function fixture(context: TestContext) {
       return Response.json({ guest });
     }
     if (input === '/api/playlist')
-      return Response.json({ tracks: [], revision: 0 });
+      return Response.json({ slot: 1, count: 1, tracks: [], revision: 0 });
     throw new Error(`Unexpected request: ${String(input)}`);
   });
   const peers: Socket<ClientEvents, ServerEvents>[] = [];

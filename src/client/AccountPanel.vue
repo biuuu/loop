@@ -4,6 +4,7 @@ import { ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
 import { ArrowLeft, ListMusic, Shuffle, X } from '@lucide/vue';
 import { randomNickname } from './nicknames';
 import {
+  PLAYLIST_LIMIT,
   nicknameSchema,
   type NeteasePlaylist,
   type NeteaseUser,
@@ -343,9 +344,10 @@ function logout(all = false) {
             <button class="primary" :disabled="busy">
               {{ busy ? '正在创建并导入…' : '创建身份并导入歌单' }}
             </button>
-            <small
-              >将导入所选歌单前 50 首中的可用歌曲，并自动创建你的房间。</small
-            >
+            <small>
+              将导入所选歌单前 {{ PLAYLIST_LIMIT }}
+              首中的可用歌曲，并自动创建你的房间。
+            </small>
           </form>
         </template>
         <div v-show="!selectedSource">

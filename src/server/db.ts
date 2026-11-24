@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import {
   DEFAULT_STAGE_CAPACITY,
   NICKNAME_CHANGE_COOLDOWN_MS,
+  PLAYLIST_COUNT_LIMIT,
   PLAYLIST_LIMIT,
   type Guest,
   type RoomInfo,
@@ -35,6 +36,7 @@ type GuestRow = {
   coat: CatAppearance['coat'];
   pattern: CatAppearance['pattern'];
 };
+type PlaylistSettings = Pick<PlaylistState, 'slot' | 'count' | 'revision'>;
 const readGuest = ({ id, nickname, coat, pattern }: GuestRow): Guest => ({
   id,
   nickname,
@@ -242,71 +244,134 @@ export class Store {
       .run(appearance.coat, appearance.pattern, id);
     return this.guestById(id);
   }
-  tracks(id: string): Track[] {
+  tracks(id: string, slot?: number): Track[] {
+    return this.tracksAt(
+      id,
+      slot === undefined
+        ? (this.playlistSettings(id)?.slot ?? 1)
+        : this.playlistSlot(id, slot),
+    );
+  }
+  private tracksAt(id: string, slot: number): Track[] {
     return (
       this.sql
         .prepare(
-          'SELECT track_json FROM playlist WHERE guest_id=? ORDER BY position',
+          'SELECT track_json FROM playlist WHERE guest_id=? AND slot=? ORDER BY position',
         )
-        .all(id) as { track_json: string }[]
+        .all(id, slot) as { track_json: string }[]
     ).map((row) => JSON.parse(row.track_json));
   }
   playlist(id: string): PlaylistState {
-    return { tracks: this.tracks(id), revision: this.playlistRevision(id) };
-  }
-  playlistOrder(id: string): PlaylistOrder {
-    const rows = this.sql
-      .prepare(
-        'SELECT track_id FROM playlist WHERE guest_id=? ORDER BY position',
-      )
-      .all(id) as { track_id: string }[];
-    return {
-      ids: rows.map((row) => row.track_id),
-      revision: this.playlistRevision(id),
-    };
-  }
-  private playlistRevision(id: string): number {
-    const row = this.sql
-      .prepare('SELECT playlist_revision AS revision FROM guests WHERE id=?')
-      .get(id) as { revision: number } | undefined;
-    if (!row) throw new Error('游客不存在');
-    return row.revision;
-  }
-  private editTracks(id: string, edit: (tracks: Track[]) => Track[]): Track[] {
     return this.sql.transaction(() => {
-      const before = this.tracks(id);
-      const after = edit(before);
-      if (
-        before.length === after.length &&
-        before.every((track, index) => track.id === after[index]!.id)
-      )
-        return before;
-      const remove = this.sql.prepare(
-        'DELETE FROM playlist WHERE guest_id=? AND track_id=?',
-      );
-      for (const track of before)
-        if (!after.some((item) => item.id === track.id))
-          remove.run(id, track.id);
-      const insert = this.sql.prepare(
-        'INSERT OR IGNORE INTO playlist VALUES (?,?,?,?)',
-      );
-      const position = this.sql.prepare(
-        'UPDATE playlist SET position=? WHERE guest_id=? AND track_id=?',
-      );
-      after.forEach((track, index) => {
-        insert.run(id, track.id, index, JSON.stringify(track));
-        position.run(index, id, track.id);
-      });
-      this.sql
-        .prepare(
-          'UPDATE guests SET playlist_revision=playlist_revision+1 WHERE id=?',
-        )
-        .run(id);
-      return after;
+      const settings = this.guestPlaylistSettings(id);
+      return { ...settings, tracks: this.tracksAt(id, settings.slot) };
     })();
   }
-  add(id: string, track: Track): Track[] {
-    return this.editTracks(id, (tracks) => {
+  playlistOrder(id: string): PlaylistOrder {
+    return this.sql.transaction(() => {
+      const { slot, revision } = this.guestPlaylistSettings(id);
+      const rows = this.sql
+        .prepare(
+          'SELECT track_id FROM playlist WHERE guest_id=? AND slot=? ORDER BY position',
+        )
+        .all(id, slot) as { track_id: string }[];
+      return { slot, revision, ids: rows.map((row) => row.track_id) };
+    })();
+  }
+  playlistSlot(id: string, slot?: number): number {
+    const settings = this.guestPlaylistSettings(id);
+    if (slot === undefined) return settings.slot;
+    if (!Number.isInteger(slot) || slot < 1 || slot > settings.count)
+      throw new Error('歌单不存在');
+    return slot;
+  }
+  createPlaylist(id: string): PlaylistState {
+    return this.sql
+      .transaction(() => {
+        const { count } = this.guestPlaylistSettings(id);
+        if (count >= PLAYLIST_COUNT_LIMIT)
+          throw new Error(`最多创建 ${PLAYLIST_COUNT_LIMIT} 个歌单`);
+        this.sql
+          .prepare(
+            `UPDATE guests
+             SET playlist_count=playlist_count+1,playlist_slot=playlist_count+1,
+                 playlist_revision=playlist_revision+1
+             WHERE id=?`,
+          )
+          .run(id);
+        return this.playlist(id);
+      })
+      .immediate();
+  }
+  selectPlaylist(id: string, slot: number): PlaylistState {
+    return this.sql
+      .transaction(() => {
+        this.playlistSlot(id, slot);
+        this.sql
+          .prepare(
+            `UPDATE guests SET playlist_slot=?,playlist_revision=playlist_revision+1
+             WHERE id=? AND playlist_slot<>?`,
+          )
+          .run(slot, id, slot);
+        return this.playlist(id);
+      })
+      .immediate();
+  }
+  private playlistSettings(id: string): PlaylistSettings | undefined {
+    return this.sql
+      .prepare(
+        `SELECT playlist_slot AS slot,playlist_count AS count,playlist_revision AS revision
+         FROM guests WHERE id=?`,
+      )
+      .get(id) as PlaylistSettings | undefined;
+  }
+  private guestPlaylistSettings(id: string): PlaylistSettings {
+    const row = this.playlistSettings(id);
+    if (!row) throw new Error('游客不存在');
+    return row;
+  }
+  private editTracks(
+    id: string,
+    slot: number | undefined,
+    edit: (tracks: Track[]) => Track[],
+  ): Track[] {
+    return this.sql
+      .transaction(() => {
+        const target = this.playlistSlot(id, slot);
+        const before = this.tracksAt(id, target);
+        const after = edit(before);
+        if (
+          before.length === after.length &&
+          before.every((track, index) => track.id === after[index]!.id)
+        )
+          return before;
+        const remove = this.sql.prepare(
+          'DELETE FROM playlist WHERE guest_id=? AND slot=? AND track_id=?',
+        );
+        for (const track of before)
+          if (!after.some((item) => item.id === track.id))
+            remove.run(id, target, track.id);
+        const insert = this.sql.prepare(
+          'INSERT OR IGNORE INTO playlist (guest_id,slot,track_id,position,track_json) VALUES (?,?,?,?,?)',
+        );
+        const position = this.sql.prepare(
+          'UPDATE playlist SET position=? WHERE guest_id=? AND slot=? AND track_id=?',
+        );
+        after.forEach((track, index) => {
+          insert.run(id, target, track.id, index, JSON.stringify(track));
+          position.run(index, id, target, track.id);
+        });
+        this.sql
+          .prepare(
+            'UPDATE guests SET playlist_revision=playlist_revision+1 WHERE id=?',
+          )
+          .run(id);
+        return after;
+      })
+      .immediate();
+  }
+  add(id: string, track: Track, slot?: number): Track[] {
+    return this.editTracks(id, slot, (tracks) => {
       if (tracks.some((item) => item.id === track.id)) return tracks;
       if (tracks.length >= PLAYLIST_LIMIT)
         throw new Error(`歌单最多 ${PLAYLIST_LIMIT} 首`);
@@ -318,11 +383,12 @@ export class Store {
     entries: NeteasePlaylistEntry[],
     start: number,
     mode: 'replace' | 'append' = 'append',
+    slot?: number,
   ): PlaylistImportResult {
     const summary = { imported: 0, duplicates: 0, unavailable: 0, overflow: 0 };
     // Read the latest queue after upstream metadata arrives. Append incorporates
     // concurrent edits; replace atomically replaces that latest queue.
-    this.editTracks(id, (tracks) => {
+    this.editTracks(id, slot, (tracks) => {
       const after = mode === 'replace' ? [] : [...tracks];
       const seen = new Set(after.map((track) => track.id));
       for (const entry of entries) {
@@ -354,13 +420,13 @@ export class Store {
       end: entries.length ? entries[entries.length - 1]!.position : start - 1,
     };
   }
-  remove(id: string, trackId: string): Track[] {
-    return this.editTracks(id, (tracks) =>
+  remove(id: string, trackId: string, slot?: number): Track[] {
+    return this.editTracks(id, slot, (tracks) =>
       tracks.filter((track) => track.id !== trackId),
     );
   }
-  order(id: string, ids: string[]): Track[] {
-    return this.editTracks(id, (tracks) => {
+  order(id: string, ids: string[], slot?: number): Track[] {
+    return this.editTracks(id, slot, (tracks) => {
       if (
         new Set(ids).size !== ids.length ||
         ids.length !== tracks.length ||
@@ -375,8 +441,9 @@ export class Store {
     trackId: string,
     targetId: string | undefined,
     placement: 'before' | 'after' | 'first',
+    slot?: number,
   ): Track[] {
-    return this.editTracks(id, (tracks) => {
+    return this.editTracks(id, slot, (tracks) => {
       const track = tracks.find((item) => item.id === trackId);
       if (
         !track ||
@@ -391,15 +458,16 @@ export class Store {
       return next;
     });
   }
-  firstTrack(id: string): Track | null {
-    return this.tracks(id)[0] ?? null;
+  firstTrack(id: string, slot?: number): Track | null {
+    return this.tracks(id, slot)[0] ?? null;
   }
   rotateTrack(
     id: string,
     trackId: string,
     playback?: { roomId: string; startedAt: number },
+    slot?: number,
   ): Track[] {
-    return this.editTracks(id, (tracks) => {
+    return this.editTracks(id, slot, (tracks) => {
       if (playback)
         this.sql
           .prepare('UPDATE rooms SET last_played_at=? WHERE id=?')

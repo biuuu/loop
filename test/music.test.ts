@@ -274,13 +274,13 @@ test('playlist search sends Netease type 1000 and normalizes metadata with pagin
   });
 });
 
+const rawSong = (id: number) => ({
+  id,
+  name: `Song ${id}`,
+  dt: 60000,
+  ar: [{ name: 'Artist' }],
+});
 test('playlist browsing slices complete trackIds before validation, preserving missing and repeated source positions', async () => {
-  const rawSong = (id: number) => ({
-    id,
-    name: `Song ${id}`,
-    dt: 60000,
-    ar: [{ name: 'Artist' }],
-  });
   const calls: string[] = [];
   const music = createMusicService(async (path, data) => {
     calls.push(path);
@@ -337,7 +337,8 @@ test('playlist browsing slices complete trackIds before validation, preserving m
   assert.equal(calls.length, 2);
 });
 
-test('playlist source windows never backfill from position 51 and beyond-end avoids song requests', async () => {
+test('playlist source windows fetch 100 positions in two batches and never backfill', async () => {
+  const batches: string[][] = [];
   const music = createMusicService(async (path, data) => {
     if (path === '/api/v6/playlist/detail')
       return {
@@ -350,14 +351,22 @@ test('playlist source windows never backfill from position 51 and beyond-end avo
       };
     const ids = JSON.parse(String(data.c)) as { id: string }[];
     assert.equal(ids.length, 50);
-    assert.equal(ids[0]!.id, '1');
-    assert.equal(ids.at(-1)!.id, '50');
-    return { songs: [] };
+    batches.push(ids.map(({ id }) => id));
+    return { songs: [rawSong(Number(ids[0]!.id))] };
   });
   const page = await music.playlist!('1');
-  assert.equal(page.tracks.length, 50);
-  assert.ok(page.tracks.every((entry) => entry.track === null));
+  assert.deepEqual(
+    batches.flat(),
+    Array.from({ length: 100 }, (_, i) => String(i + 1)),
+  );
+  assert.equal(page.tracks.length, 100);
+  assert.deepEqual(
+    page.tracks.filter((entry) => entry.track).map(({ position }) => position),
+    [1, 51],
+  );
+  assert.equal(page.tracks.at(-1)?.position, 100);
   assert.deepEqual((await music.playlist!('1', 200)).tracks, []);
+  assert.equal(batches.length, 2);
 });
 
 test('invalid playlist inputs never reach upstream and malformed source responses fail safely', async () => {
@@ -378,7 +387,7 @@ test('invalid playlist inputs never reach upstream and malformed source response
     ['url', 0, 50],
     ['1', -1, 50],
     ['1', 0, 0],
-    ['1', 0, 51],
+    ['1', 0, 101],
     ['1', 0, 1.5],
   ] as const)
     await assert.rejects(music.playlist!(id, offset, limit));

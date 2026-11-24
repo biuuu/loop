@@ -151,6 +151,8 @@ async function confirmImport() {
   const targetId = selected.value.id;
   const sourceStart = preview.value.start;
   const mode = importMode.value;
+  const slot = room.playlistSlot;
+  const destination = slot === undefined ? '当前歌单' : `歌单 ${slot}`;
   importing.value = true;
   mutating.value = true;
   emit('busy', true);
@@ -160,8 +162,8 @@ async function confirmImport() {
     if (disposed) return;
     summary.value =
       mode === 'replace'
-        ? `已用 ${result.imported} 首歌曲覆盖歌单；重复 ${result.duplicates} 首，资料不可用 ${result.unavailable} 首，超出容量 ${result.overflow} 首。`
-        : `已添加 ${result.imported} 首；重复 ${result.duplicates} 首，资料不可用 ${result.unavailable} 首，超出容量 ${result.overflow} 首。`;
+        ? `已用 ${result.imported} 首歌曲覆盖${destination}。重复 ${result.duplicates} 首，资料不可用 ${result.unavailable} 首，超出容量 ${result.overflow} 首。`
+        : `已向${destination}添加 ${result.imported} 首。重复 ${result.duplicates} 首，资料不可用 ${result.unavailable} 首，超出容量 ${result.overflow} 首。`;
   } catch (cause) {
     if (!disposed)
       error.value = cause instanceof Error ? cause.message : '导入失败，请重试';

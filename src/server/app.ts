@@ -9,6 +9,7 @@ import {
   nicknameSchema,
   trackIdSchema,
   stageJoinSchema,
+  PLAYLIST_COUNT_LIMIT,
   PLAYLIST_LIMIT,
   type MusicService,
   type Guest,
@@ -40,6 +41,17 @@ import {
 
 const ApiError = HttpError;
 const nicknameBody = z.object({ nickname: nicknameSchema }).strict();
+const playlistSlotSchema = z.number().int().min(1).max(PLAYLIST_COUNT_LIMIT);
+const playlistTargetQuery = z
+  .object({
+    slot: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .pipe(playlistSlotSchema)
+      .optional(),
+  })
+  .strict();
 class Limiter {
   private entries = new Map<string, { count: number; until: number }>();
   constructor(
@@ -351,12 +363,43 @@ export async function createServer(
   app.get('/api/playlist', async (request) =>
     db.playlist(identity(request).id),
   );
+  function targetPlaylist(userId: string, query: unknown) {
+    const { slot } = playlistTargetQuery.parse(query);
+    try {
+      return db.playlistSlot(userId, slot);
+    } catch {
+      throw new ApiError(404, '歌单不存在');
+    }
+  }
+  app.post('/api/playlists', async (request, reply) => {
+    const { id } = identity(request);
+    if (db.playlist(id).count >= PLAYLIST_COUNT_LIMIT)
+      throw new ApiError(400, `最多创建 ${PLAYLIST_COUNT_LIMIT} 个歌单`);
+    const state = db.createPlaylist(id);
+    registry.publishPlaylist(id, state);
+    return reply.code(201).send(state);
+  });
+  app.put('/api/playlists/active', async (request) => {
+    const { id } = identity(request);
+    const { slot } = z
+      .object({ slot: playlistSlotSchema })
+      .strict()
+      .parse(request.body);
+    const current = db.playlist(id);
+    if (slot > current.count) throw new ApiError(404, '歌单不存在');
+    if (slot === current.slot) return current;
+    const state = db.selectPlaylist(id, slot);
+    registry.publishPlaylist(id, state);
+    return state;
+  });
   app.post('/api/playlist', async (request) => {
     const guest = identity(request),
       { id } = z.object({ id: trackIdSchema }).strict().parse(request.body);
+    const slot = targetPlaylist(guest.id, request.query);
+    const tracks = db.tracks(guest.id, slot);
     if (
-      db.tracks(guest.id).length >= PLAYLIST_LIMIT &&
-      !db.tracks(guest.id).some((track) => track.id === id)
+      tracks.length >= PLAYLIST_LIMIT &&
+      !tracks.some((track) => track.id === id)
     )
       throw new ApiError(400, `歌单最多 ${PLAYLIST_LIMIT} 首`);
     let track;
@@ -367,7 +410,7 @@ export async function createServer(
     }
     if (track.id !== id) throw new ApiError(502, '歌曲资料无效');
     try {
-      db.add(guest.id, track);
+      db.add(guest.id, track, slot);
       return db.playlist(guest.id);
     } catch (error) {
       throw new ApiError(400, (error as Error).message);
@@ -376,7 +419,7 @@ export async function createServer(
   app.delete('/api/playlist/:id', async (request) => {
     const guest = identity(request),
       { id } = z.object({ id: trackIdSchema }).parse(request.params);
-    db.remove(guest.id, id);
+    db.remove(guest.id, id, targetPlaylist(guest.id, request.query));
     return db.playlist(guest.id);
   });
   app.post('/api/playlist/import', async (request) => {
@@ -394,7 +437,8 @@ export async function createServer(
       })
       .strict()
       .parse(request.body);
-    if (mode === 'append' && db.tracks(guest.id).length >= PLAYLIST_LIMIT)
+    const slot = targetPlaylist(guest.id, request.query);
+    if (mode === 'append' && db.tracks(guest.id, slot).length >= PLAYLIST_LIMIT)
       throw new ApiError(
         400,
         `歌单最多 ${PLAYLIST_LIMIT} 首，请先删除部分歌曲`,
@@ -416,7 +460,7 @@ export async function createServer(
           : '该网易云歌单没有歌曲',
       );
     try {
-      return db.importTracks(guest.id, source.tracks, start, mode);
+      return db.importTracks(guest.id, source.tracks, start, mode, slot);
     } catch (error) {
       if (error instanceof EmptyPlaylistImportError)
         throw new ApiError(400, error.message);
@@ -430,8 +474,9 @@ export async function createServer(
         .object({ ids: z.array(trackIdSchema).max(200) })
         .strict()
         .parse(request.body);
+    const slot = targetPlaylist(guest.id, request.query);
     try {
-      db.order(guest.id, ids);
+      db.order(guest.id, ids, slot);
       return db.playlist(guest.id);
     } catch (error) {
       throw new ApiError(400, (error as Error).message);
@@ -450,10 +495,11 @@ export async function createServer(
         message: '请选择排序目标',
       })
       .parse(request.body);
+    const slot = targetPlaylist(guest.id, request.query);
     try {
       // Apply the move inside the current queue's transaction, so concurrent
       // playback rotation/additions cannot be overwritten by a stale ID array.
-      db.moveTrack(guest.id, id, targetId, placement);
+      db.moveTrack(guest.id, id, targetId, placement, slot);
       return db.playlist(guest.id);
     } catch (error) {
       throw new ApiError(400, (error as Error).message);

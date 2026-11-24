@@ -522,7 +522,8 @@ export class Room {
         const id = this.stage[0]!;
         if (visited.has(id)) break;
         visited.add(id);
-        const track = this.db.firstTrack(id);
+        const slot = this.db.playlistSlot(id);
+        const track = this.db.firstTrack(id, slot);
         if (!track) {
           this.removeStage(id);
           continue;
@@ -548,9 +549,10 @@ export class Room {
             this.options.roomId
               ? { roomId: this.options.roomId, startedAt }
               : undefined,
+            slot,
           );
           const order = this.db.playlistOrder(id);
-          if (order.revision !== beforeRevision)
+          if (order.slot === slot && order.revision !== beforeRevision)
             this.onPlaylistChange(id, order);
           this.playback = {
             roundId: randomUUID(),

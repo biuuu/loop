@@ -68,9 +68,17 @@ test('upgrading from version 11 preserves saved data and persists room playback 
     });
     db.ban(rooms[0]!.id, owners[1]!.guest.id);
     db.ban(rooms[2]!.id, owners[0]!.guest.id);
-    db.add(owners[0]!.guest.id, track);
-    db.add(owners[0]!.guest.id, { ...track, id: '2' });
-    db.rotateTrack(owners[0]!.guest.id, '1');
+    const playlist = db.sql.prepare('INSERT INTO playlist VALUES (?,?,?,?)');
+    playlist.run(
+      owners[0]!.guest.id,
+      '2',
+      0,
+      JSON.stringify({ ...track, id: '2' }),
+    );
+    playlist.run(owners[0]!.guest.id, '1', 1, JSON.stringify(track));
+    db.sql
+      .prepare('UPDATE guests SET playlist_revision=3 WHERE id=?')
+      .run(owners[0]!.guest.id);
     const expected = db.rooms();
     assert.deepEqual(
       expected.map((room) => room.number),
@@ -88,13 +96,20 @@ test('upgrading from version 11 preserves saved data and persists room playback 
         .prepare(`SELECT * FROM ${table} ORDER BY rowid`)
         .all() as object[];
       return table === 'guests'
-        ? rows.map((row) => ({ ...row, nickname_changed_at: null }))
-        : rows;
+        ? rows.map((row) => ({
+            ...row,
+            nickname_changed_at: null,
+            playlist_slot: 1,
+            playlist_count: 1,
+          }))
+        : table === 'playlist'
+          ? rows.map((row) => ({ ...row, slot: 1 }))
+          : rows;
     });
     db.close();
     db = undefined;
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 13);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 14);
     assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
     assert.deepEqual(db.rooms(), expected);
     assert.deepEqual(
@@ -114,7 +129,11 @@ test('upgrading from version 11 preserves saved data and persists room playback 
     const dj = owners[0]!.guest.id;
     const firstPlay = { roomId: rooms[2]!.id, startedAt: 100 };
     db.rotateTrack(dj, '2', firstPlay);
-    assert.deepEqual(db.playlistOrder(dj), { ids: ['1', '2'], revision: 4 });
+    assert.deepEqual(db.playlistOrder(dj), {
+      ids: ['1', '2'],
+      revision: 4,
+      slot: 1,
+    });
     db.remove(dj, '2');
     const single = db.playlist(dj);
     db.rotateTrack(dj, track.id, { ...firstPlay, startedAt: 200 });

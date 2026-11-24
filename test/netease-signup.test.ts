@@ -73,10 +73,10 @@ const service = (
   },
 });
 
-test('Netease signup imports first 50 source positions and creates a restorable local identity and room', async () => {
+test('Netease signup imports first 100 source positions into the default playlist and creates a restorable identity and room', async () => {
   const calls: string[] = [];
   const tracks = entries(
-    Array.from({ length: 55 }, (_, index) => String(index + 1)),
+    Array.from({ length: 105 }, (_, index) => String(index + 1)),
   );
   const { app, db } = await createServer({
     dbPath: ':memory:',
@@ -88,9 +88,12 @@ test('Netease signup imports first 50 source positions and creates a restorable 
     const { guest, createdRoom } = response.json();
     assert.equal(guest.nickname, 'Cloud Cat');
     assert.equal(createdRoom.ownerId, guest.id);
-    assert.equal(db.playlist(guest.id).tracks.length, 50);
-    assert.equal(db.playlist(guest.id).tracks.at(-1)?.id, '50');
-    assert.deepEqual(calls, ['user:123:20', 'playlist:7:0:50']);
+    const state = db.playlist(guest.id);
+    assert.equal(state.tracks.length, 100);
+    assert.equal(state.tracks.at(-1)?.id, '100');
+    assert.equal(state.slot, 1);
+    assert.equal(state.count, 1);
+    assert.deepEqual(calls, ['user:123:20', 'playlist:7:0:100']);
     const cookie = (response.headers['set-cookie'] as string).split(';')[0]!;
     const restored = await app.inject({ url: '/api/me', headers: { cookie } });
     assert.equal(restored.json().guest.id, guest.id);

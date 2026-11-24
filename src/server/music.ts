@@ -6,7 +6,7 @@ import type {
   SongLyrics,
   Track,
 } from '../shared/contracts.js';
-import { trackIdSchema } from '../shared/contracts.js';
+import { PLAYLIST_LIMIT, trackIdSchema } from '../shared/contracts.js';
 import {
   createNeteaseRequest,
   NeteaseRequestError,
@@ -28,7 +28,8 @@ const pageOffsetSchema = z
   .number()
   .int()
   .nonnegative()
-  .max(Number.MAX_SAFE_INTEGER - 50);
+  .max(Number.MAX_SAFE_INTEGER - PLAYLIST_LIMIT);
+const SONG_DETAILS_BATCH_SIZE = 50;
 const playlistSchema = z.object({
   id: z.union([z.string(), z.number().int().nonnegative().safe()]),
   name: z.string().trim().min(1),
@@ -263,10 +264,10 @@ export function createMusicService(
         more: body.more || body.playlist.length > 20,
       };
     },
-    async playlist(id, offset = 0, limit = 50) {
+    async playlist(id, offset = 0, limit = PLAYLIST_LIMIT) {
       trackIdSchema.parse(id);
       pageOffsetSchema.parse(offset);
-      z.number().int().min(1).max(50).parse(limit);
+      z.number().int().min(1).max(PLAYLIST_LIMIT).parse(limit);
       const body = (await request('/api/v6/playlist/detail', {
         id,
         n: 100000,
@@ -303,13 +304,14 @@ export function createMusicService(
         ...new Set(selected.map((entry) => entry.id).filter(Boolean)),
       ];
       const byId = new Map<string, Track>();
-      if (ids.length) {
+      for (let i = 0; i < ids.length; i += SONG_DETAILS_BATCH_SIZE) {
+        const batch = ids.slice(i, i + SONG_DETAILS_BATCH_SIZE);
         const detail = (await request('/api/v3/song/detail', {
-          c: JSON.stringify(ids.map((id) => ({ id }))),
+          c: JSON.stringify(batch.map((id) => ({ id }))),
         })) as { songs?: unknown };
         if (!Array.isArray(detail.songs))
           throw new Error('网易云歌曲资料暂时不可用');
-        const wanted = new Set(ids);
+        const wanted = new Set(batch);
         for (const raw of detail.songs) {
           const track = normalizeSong(raw);
           if (track && wanted.has(track.id))

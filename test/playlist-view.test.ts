@@ -17,6 +17,18 @@ function track(id: string): Track {
     durationMs: 1000,
   };
 }
+function state(
+  tracks: Track[],
+  revision: number,
+  slot = 1,
+  count = slot,
+): PlaylistState {
+  return { tracks, revision, slot, count };
+}
+function order(ids: string[], revision: number, slot = 1) {
+  return { slot, ids, revision };
+}
+
 function playing(id = '1', djId = 'a'): Playback {
   return {
     roundId: 'round',
@@ -112,35 +124,20 @@ test('newer socket rotation defeats stale HTTP, while newer HTTP defeats delayed
   });
   receiver.setIdentity('a');
   const context = receiver.context();
-  const response = Promise.resolve({
-    tracks: ['1', '2', '3'].map(track),
-    revision: 10,
-  });
-  receiver.receive(
-    { tracks: ['2', '3', '1'].map(track), revision: 11 },
-    context,
-  );
+  const response = Promise.resolve(state(['1', '2', '3'].map(track), 10));
+  receiver.receive(state(['2', '3', '1'].map(track), 11), context);
   assert.equal(receiver.receive(await response, context), false);
   assert.deepEqual(
     current?.tracks.map((track) => track.id),
     ['2', '3', '1'],
   );
-  assert.equal(
-    receiver.receive({ tracks: [track('4')], revision: 12 }, context),
-    true,
-  );
-  assert.equal(
-    receiver.receive({ tracks: [track('2')], revision: 11 }, context),
-    false,
-  );
+  assert.equal(receiver.receive(state([track('4')], 12), context), true);
+  assert.equal(receiver.receive(state([track('2')], 11), context), false);
   assert.deepEqual(
     current?.tracks.map((track) => track.id),
     ['4'],
   );
-  assert.equal(
-    receiver.receive({ tracks: [track('4')], revision: 12 }, context),
-    true,
-  );
+  assert.equal(receiver.receive(state([track('4')], 12), context), true);
 });
 
 test('connection epochs reject old HTTP and socket states but preserve the current identity revision', () => {
@@ -148,51 +145,33 @@ test('connection epochs reject old HTTP and socket states but preserve the curre
   const receiver = createPlaylistReceiver((state) => accepted.push(state));
   receiver.setIdentity('a');
   const old = receiver.context();
-  receiver.receive({ tracks: [track('1')], revision: 20 }, old);
+  receiver.receive(state([track('1')], 20), old);
   receiver.renewConnection();
-  assert.equal(
-    receiver.receive({ tracks: [track('2')], revision: 21 }, old),
-    false,
-  );
+  assert.equal(receiver.receive(state([track('2')], 21), old), false);
   assert.equal(receiver.setIdentity('a'), false);
   const current = receiver.context();
-  assert.equal(
-    receiver.receive({ tracks: [track('3')], revision: 19 }, current),
-    false,
-  );
-  assert.equal(
-    receiver.receive({ tracks: [track('4')], revision: 21 }, current),
-    true,
-  );
+  assert.equal(receiver.receive(state([track('3')], 19), current), false);
+  assert.equal(receiver.receive(state([track('4')], 21), current), true);
   assert.equal(accepted.length, 2);
 });
 
 test('identity changes reset revision and reject earlier guests, including a later return to that identity', () => {
   const accepted: PlaylistState[] = [];
   const receiver = createPlaylistReceiver((state) => accepted.push(state));
-  assert.equal(
-    receiver.receive({ tracks: [], revision: 1 }, receiver.context()),
-    false,
-  );
+  assert.equal(receiver.receive(state([], 1), receiver.context()), false);
   receiver.setIdentity('a');
   const firstA = receiver.context();
-  receiver.receive({ tracks: [track('1')], revision: 100 }, firstA);
+  receiver.receive(state([track('1')], 100), firstA);
   receiver.setIdentity('b');
+  assert.equal(receiver.receive(state([track('2')], 200), firstA), false);
   assert.equal(
-    receiver.receive({ tracks: [track('2')], revision: 200 }, firstA),
-    false,
-  );
-  assert.equal(
-    receiver.receive({ tracks: [track('3')], revision: 1 }, receiver.context()),
+    receiver.receive(state([track('3')], 1), receiver.context()),
     true,
   );
   receiver.setIdentity('a');
+  assert.equal(receiver.receive(state([track('2')], 300), firstA), false);
   assert.equal(
-    receiver.receive({ tracks: [track('2')], revision: 300 }, firstA),
-    false,
-  );
-  assert.equal(
-    receiver.receive({ tracks: [track('4')], revision: 2 }, receiver.context()),
+    receiver.receive(state([track('4')], 2), receiver.context()),
     true,
   );
   assert.deepEqual(
@@ -215,11 +194,11 @@ test('playlist states without a valid revision cannot override the authoritative
     Number.MAX_SAFE_INTEGER + 1,
   ]) {
     assert.equal(
-      receiver.receive({ tracks: [], revision } as PlaylistState, context),
+      receiver.receive({ ...state([], 0), revision } as PlaylistState, context),
       false,
     );
   }
-  assert.equal(receiver.receive({ tracks: [], revision: 0 }, context), true);
+  assert.equal(receiver.receive(state([], 0), context), true);
   assert.equal(accepted.length, 1);
 });
 
@@ -229,24 +208,50 @@ test('ID orders reuse metadata, skip rotations and drop removed entries without 
   receiver.setIdentity('a');
   const context = receiver.context();
   const tracks = ['1', '2', '3', '4'].map(track);
-  receiver.receive({ tracks, revision: 5 }, context);
+  receiver.receive(state(tracks, 5), context);
   assert.equal(
-    receiver.receiveOrder({ ids: ['3', '1', '2'], revision: 8 }, context),
+    receiver.receiveOrder(order(['3', '1', '2'], 8), context),
     'applied',
   );
   assert.deepEqual(states.at(-1)!.tracks, [tracks[2], tracks[0], tracks[1]]);
   assert.equal(states.at(-1)!.tracks[0], tracks[2]);
   assert.equal(receiver.needsReload(context), false);
-  assert.equal(receiver.receive({ tracks, revision: 7 }, context), false);
+  assert.equal(receiver.receive(state(tracks, 7), context), false);
+  assert.equal(receiver.receive(state([track('5')], 9), context), true);
   assert.equal(
-    receiver.receive({ tracks: [track('5')], revision: 9 }, context),
-    true,
-  );
-  assert.equal(
-    receiver.receiveOrder({ ids: ['2', '3', '1'], revision: 8 }, context),
+    receiver.receiveOrder(order(['2', '3', '1'], 8), context),
     'ignored',
   );
   assert.equal(states.at(-1)!.tracks[0]!.id, '5');
+});
+
+test('orders for another slot require full state even when all of their track IDs are cached', () => {
+  const states: PlaylistState[] = [];
+  const receiver = createPlaylistReceiver((state) => states.push(state));
+  receiver.setIdentity('a');
+  const context = receiver.context();
+  const first = state(['1', '2'].map(track), 1, 1, 2);
+  receiver.receive(first, context);
+
+  const otherOrder = order(['2', '1'], 3, 2);
+  assert.equal(receiver.receiveOrder(otherOrder, context), 'reload');
+  assert.equal(receiver.needsReload(context), true);
+  assert.equal(states.at(-1), first);
+  assert.equal(receiver.receive({ ...first, revision: 2 }, context), false);
+
+  const second = state(['2', '1'].map(track), 3, 2);
+  assert.equal(receiver.receive(second, context), true);
+  assert.equal(receiver.needsReload(context), false);
+  assert.equal(receiver.receiveOrder(order(['1', '2'], 2), context), 'ignored');
+  assert.equal(
+    receiver.receiveOrder(order(['1', '2'], 4, 2), context),
+    'applied',
+  );
+  assert.deepEqual(states.at(-1), {
+    ...second,
+    tracks: [second.tracks[1], second.tracks[0]],
+    revision: 4,
+  });
 });
 
 test('unknown order IDs advance the HTTP revision floor until complete metadata arrives', () => {
@@ -254,35 +259,26 @@ test('unknown order IDs advance the HTTP revision floor until complete metadata 
   const receiver = createPlaylistReceiver((state) => states.push(state));
   receiver.setIdentity('a');
   const context = receiver.context();
-  receiver.receive({ tracks: [track('1')], revision: 1 }, context);
-  assert.equal(
-    receiver.receiveOrder({ ids: ['2', '1'], revision: 3 }, context),
-    'reload',
-  );
+  receiver.receive(state([track('1')], 1), context);
+  assert.equal(receiver.receiveOrder(order(['2', '1'], 3), context), 'reload');
   assert.equal(receiver.needsReload(context), true);
   assert.equal(states.length, 1);
   assert.equal(
-    receiver.receive({ tracks: ['1', '2'].map(track), revision: 2 }, context),
+    receiver.receive(state(['1', '2'].map(track), 2), context),
     false,
   );
+  assert.equal(receiver.receiveOrder(order(['1'], 2), context), 'ignored');
   assert.equal(
-    receiver.receiveOrder({ ids: ['1'], revision: 2 }, context),
-    'ignored',
-  );
-  assert.equal(
-    receiver.receiveOrder({ ids: ['1', '3', '2'], revision: 4 }, context),
+    receiver.receiveOrder(order(['1', '3', '2'], 4), context),
     'reload',
   );
   assert.equal(
-    receiver.receive({ tracks: ['2', '1'].map(track), revision: 3 }, context),
+    receiver.receive(state(['2', '1'].map(track), 3), context),
     false,
   );
   assert.equal(receiver.needsReload(context), true);
   assert.equal(
-    receiver.receive(
-      { tracks: ['1', '3', '2'].map(track), revision: 4 },
-      context,
-    ),
+    receiver.receive(state(['1', '3', '2'].map(track), 4), context),
     true,
   );
   assert.equal(receiver.needsReload(context), false);
@@ -295,40 +291,25 @@ test('uninitialized order recovery is scoped to identity and connection epochs',
   assert.equal(receiver.needsReload(receiver.context()), false);
   receiver.setIdentity('a');
   const first = receiver.context();
-  assert.equal(
-    receiver.receiveOrder({ ids: ['1'], revision: 10 }, first),
-    'reload',
-  );
+  assert.equal(receiver.receiveOrder(order(['1'], 10), first), 'reload');
   assert.equal(receiver.needsReload(first), true);
   receiver.renewConnection();
   const reconnected = receiver.context();
   assert.equal(receiver.needsReload(first), false);
-  assert.equal(
-    receiver.receiveOrder({ ids: [], revision: 11 }, first),
-    'ignored',
-  );
-  assert.equal(
-    receiver.receive({ tracks: [track('1')], revision: 9 }, reconnected),
-    false,
-  );
-  receiver.receive({ tracks: [track('1')], revision: 10 }, reconnected);
+  assert.equal(receiver.receiveOrder(order([], 11), first), 'ignored');
+  assert.equal(receiver.receive(state([track('1')], 9), reconnected), false);
+  receiver.receive(state([track('1')], 10), reconnected);
   receiver.renewConnection();
   assert.equal(
-    receiver.receiveOrder({ ids: ['1'], revision: 11 }, receiver.context()),
+    receiver.receiveOrder(order(['1'], 11), receiver.context()),
     'applied',
   );
   receiver.setIdentity('b');
   const second = receiver.context();
-  assert.equal(
-    receiver.receiveOrder({ ids: ['1'], revision: 1 }, second),
-    'reload',
-  );
-  assert.equal(
-    receiver.receive({ tracks: [track('1')], revision: 12 }, reconnected),
-    false,
-  );
+  assert.equal(receiver.receiveOrder(order(['1'], 1), second), 'reload');
+  assert.equal(receiver.receive(state([track('1')], 12), reconnected), false);
   assert.equal(receiver.needsReload(second), true);
-  receiver.receive({ tracks: [], revision: 1 }, second);
+  receiver.receive(state([], 1), second);
   assert.equal(receiver.needsReload(second), false);
 });
 
@@ -337,10 +318,10 @@ test('malformed ID orders are ignored without raising the required revision', ()
   const receiver = createPlaylistReceiver((state) => states.push(state));
   receiver.setIdentity('a');
   const context = receiver.context();
-  receiver.receive({ tracks: [track('1')], revision: 1 }, context);
+  receiver.receive(state([track('1')], 1), context);
   for (const ids of [['1', '1'], [1], null, '1']) {
     assert.equal(
-      receiver.receiveOrder({ ids, revision: 99 } as never, context),
+      receiver.receiveOrder({ slot: 1, ids, revision: 99 } as never, context),
       'ignored',
     );
   }
@@ -352,11 +333,11 @@ test('malformed ID orders are ignored without raising the required revision', ()
     Number.MAX_SAFE_INTEGER + 1,
   ]) {
     assert.equal(
-      receiver.receiveOrder({ ids: ['1'], revision }, context),
+      receiver.receiveOrder(order(['1'], revision), context),
       'ignored',
     );
   }
   assert.equal(receiver.needsReload(context), false);
-  assert.equal(receiver.receive({ tracks: [], revision: 2 }, context), true);
+  assert.equal(receiver.receive(state([], 2), context), true);
   assert.deepEqual(states.at(-1)!.tracks, []);
 });

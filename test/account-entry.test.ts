@@ -59,7 +59,7 @@ test('nickname entry exposes only the new room response after applying the creat
         ...(creations++ === 0 ? { createdRoom } : {}),
       });
     assert.equal(input, '/api/playlist');
-    return Response.json({ tracks: [], revision: 0 });
+    return Response.json({ slot: 1, count: 1, tracks: [], revision: 0 });
   });
   assert.deepEqual(await room.enter('cat'), createdRoom);
   assert.equal(room.guest!.id, 'cat');
@@ -108,7 +108,12 @@ test('Netease entry sends the selected user and playlist, then loads the importe
         });
       }
       assert.equal(input, '/api/playlist');
-      return Response.json({ tracks: [selectedTrack], revision: 1 });
+      return Response.json({
+        slot: 1,
+        count: 1,
+        tracks: [selectedTrack],
+        revision: 1,
+      });
     },
   );
   assert.deepEqual(
@@ -149,13 +154,13 @@ test('a delayed playlist read from an older account cannot return its home as a 
           release = done;
           started();
         });
-      return Response.json({ tracks: [], revision: 0 });
+      return Response.json({ slot: 1, count: 1, tracks: [], revision: 0 });
     },
   );
   const stale = room.enter('A');
   await firstRead;
   assert.deepEqual(await room.enter('B'), home('B', 2));
-  release(Response.json({ tracks: [], revision: 50 }));
+  release(Response.json({ slot: 1, count: 1, tracks: [], revision: 50 }));
   assert.equal(await stale, undefined);
   assert.equal(room.guest!.id, 'B');
   assert.equal(room.playlistRevision, 0);
@@ -189,7 +194,12 @@ test('editing a nickname preserves the current room, playback, identity and play
     async (input: unknown, init?: RequestInit) => {
       if (input === '/api/me') return Response.json({ guest });
       if (input === '/api/playlist')
-        return Response.json({ tracks: [track], revision: 3 });
+        return Response.json({
+          slot: 1,
+          count: 1,
+          tracks: [track],
+          revision: 3,
+        });
       assert.equal(input, '/api/me/nickname');
       assert.equal(init?.method, 'PATCH');
       assert.deepEqual(JSON.parse(String(init?.body)), { nickname: '云朵猫' });
@@ -294,7 +304,7 @@ test('a delayed nickname response cannot change a reauthenticated profile with t
     if (input === '/api/auth/email/verify')
       return Response.json({ guest: activeGuest });
     assert.equal(input, '/api/playlist');
-    return Response.json({ tracks: [], revision: 1 });
+    return Response.json({ slot: 1, count: 1, tracks: [], revision: 1 });
   });
   const rename = room.setNickname('旧请求的猫');
   await room.authenticate('challenge', '123456');

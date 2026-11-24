@@ -146,9 +146,12 @@ test('client move preserves the queue on failure and ignores a response after id
       }
       if (input === '/api/playlist')
         return Response.json({
+          slot: 1,
+          count: 1,
           tracks: (guest.id === 'a' ? ['1', '2', '3'] : ['9']).map(track),
           revision: 1,
         });
+      assert.equal(input, '/api/playlist/move?slot=1');
       payload = JSON.parse(String(init?.body));
       return new Promise<Response>((done) => {
         resolve = done;
@@ -157,12 +160,26 @@ test('client move preserves the queue on failure and ignores a response after id
   );
   await room.initialize();
   const successful = room.moveTrack('3', '1', 'before');
-  resolve(Response.json({ tracks: ['3', '1', '2'].map(track), revision: 2 }));
+  resolve(
+    Response.json({
+      slot: 1,
+      count: 1,
+      tracks: ['3', '1', '2'].map(track),
+      revision: 2,
+    }),
+  );
   await successful;
   assert.deepEqual(ids(room.playlist), ['3', '1', '2']);
   const toTop = room.moveTrackToTop('2');
   assert.deepEqual(payload, { id: '2', placement: 'first' });
-  resolve(Response.json({ tracks: ['2', '3', '1'].map(track), revision: 3 }));
+  resolve(
+    Response.json({
+      slot: 1,
+      count: 1,
+      tracks: ['2', '3', '1'].map(track),
+      revision: 3,
+    }),
+  );
   await toTop;
   assert.deepEqual(ids(room.playlist), ['2', '3', '1']);
   const before = room.playlist;
@@ -173,7 +190,14 @@ test('client move preserves the queue on failure and ignores a response after id
   assert.equal(room.playlist, before);
   const pending = room.moveTrack('3', '1', 'before');
   await room.enter('B');
-  resolve(Response.json({ tracks: ['3', '1', '2'].map(track), revision: 100 }));
+  resolve(
+    Response.json({
+      slot: 1,
+      count: 1,
+      tracks: ['3', '1', '2'].map(track),
+      revision: 100,
+    }),
+  );
   await pending;
   assert.deepEqual(ids(room.playlist), ['9']);
 });

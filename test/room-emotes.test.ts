@@ -193,7 +193,7 @@ test('the actual store receives only live events and clears them across membersh
   globalThis.fetch = async (input) => {
     if (input === '/api/me') return Response.json({ guest });
     if (input === '/api/playlist')
-      return Response.json({ tracks: [], revision: 0 });
+      return Response.json({ slot: 1, count: 1, tracks: [], revision: 0 });
     if (input === '/api/emotes')
       return Response.json({ enabled: true, revision: 0, groups: [] });
     throw new Error(`Unexpected request: ${String(input)}`);

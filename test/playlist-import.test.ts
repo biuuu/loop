@@ -64,7 +64,7 @@ test('playlist metadata and import APIs authenticate, reject foreign origins and
       assert.equal(offset, 60);
       return { playlists: [], total: 0, more: false };
     },
-    playlist: async (id: string, offset = 0, limit = 50) => {
+    playlist: async (id: string, offset = 0, limit = PLAYLIST_LIMIT) => {
       calls++;
       assert.equal(id, '7');
       assert.equal(offset, 60);
@@ -118,7 +118,7 @@ test('playlist metadata and import APIs authenticate, reject foreign origins and
       '/api/music/playlists/search?q=猫&offset=1.2',
       '/api/music/playlists/search?q=猫&extra=x',
       '/api/music/playlists/bad',
-      '/api/music/playlists/7?limit=51',
+      '/api/music/playlists/7?limit=101',
       '/api/music/playlists/7?offset=-1',
       '/api/music/playlists/7?limit=0',
     ])
@@ -181,7 +181,7 @@ test('replace imports a selected source window into a full queue without treatin
     dbPath: ':memory:',
     music: {
       ...base,
-      playlist: async (_id, offset = 0, limit = 50) => {
+      playlist: async (_id, offset = 0, limit = PLAYLIST_LIMIT) => {
         calls.push({ offset, limit });
         return page(entries(['2', null, '500', '500', '501'], offset), offset);
       },
@@ -231,6 +231,8 @@ test('replace imports a selected source window into a full queue without treatin
     assert.deepEqual(db.playlist(b.guest.id), {
       tracks: [track('999')],
       revision: 1,
+      slot: 1,
+      count: 1,
     });
   } finally {
     await app.close();
@@ -314,7 +316,7 @@ test('replace keeps the old queue on unusable metadata, upstream failure and SQL
   }
 });
 
-test('replace caps selected source IDs at 50 and persists the one revision', () => {
+test('replace caps selected source IDs at 100 and persists the one revision', () => {
   const root = mkdtempSync(join(tmpdir(), 'loop-playlist-replace-'));
   const path = join(root, 'loop.sqlite');
   let db = new Store(path);
@@ -322,20 +324,24 @@ test('replace caps selected source IDs at 50 and persists the one revision', () 
     const a = db.createGuest('A');
     db.add(a.guest.id, track('999'));
     const before = db.playlist(a.guest.id);
-    const source = entries(Array.from({ length: 52 }, (_, i) => String(i + 1)));
+    const source = entries(
+      Array.from({ length: PLAYLIST_LIMIT + 2 }, (_, i) => String(i + 1)),
+    );
     const result = db.importTracks(a.guest.id, source, 1, 'replace');
-    assert.equal(result.imported, 50);
+    assert.equal(result.imported, PLAYLIST_LIMIT);
     assert.equal(result.overflow, 2);
     assert.equal(result.revision, before.revision + 1);
     assert.deepEqual(
       result.tracks.map((item) => item.id),
-      source.slice(0, 50).map((item) => item.id),
+      source.slice(0, PLAYLIST_LIMIT).map((item) => item.id),
     );
     db.sql.close();
     db = new Store(path);
     assert.deepEqual(db.playlist(a.guest.id), {
       tracks: result.tracks,
       revision: result.revision,
+      slot: 1,
+      count: 1,
     });
   } finally {
     if (db.sql.open) db.sql.close();
@@ -375,10 +381,10 @@ test('batch import appends a fixed source window, summarizes each position, isol
   let calls = 0;
   const music = {
     ...base,
-    playlist: async (id: string, offset = 0, limit = 50) => {
+    playlist: async (id: string, offset = 0, limit = PLAYLIST_LIMIT) => {
       calls++;
       assert.equal(id, '7');
-      assert.equal(offset, 60);
+      assert.equal(offset, 10);
       assert.equal(limit, PLAYLIST_LIMIT);
       return page(
         entries(
@@ -389,7 +395,7 @@ test('batch import appends a fixed source window, summarizes each position, isol
             '500',
             '501',
             '502',
-            ...Array.from({ length: 44 }, (_, i) => String(600 + i)),
+            ...Array.from({ length: 94 }, (_, i) => String(600 + i)),
           ],
           offset,
         ),
@@ -401,13 +407,13 @@ test('batch import appends a fixed source window, summarizes each position, isol
   try {
     const a = db.createGuest('A'),
       b = db.createGuest('B');
-    fill(db, a.guest.id, 48);
+    fill(db, a.guest.id, PLAYLIST_LIMIT - 2);
     db.add(b.guest.id, track('999'));
     const response = await app.inject({
       method: 'POST',
       url: '/api/playlist/import',
       headers: headers(a.token),
-      payload: { playlistId: '7', start: 61, mode: 'append' },
+      payload: { playlistId: '7', start: 11, mode: 'append' },
     });
     assert.equal(response.statusCode, 200);
     const result = response.json();
@@ -415,13 +421,15 @@ test('batch import appends a fixed source window, summarizes each position, isol
       { ...result, tracks: undefined },
       {
         tracks: undefined,
-        revision: 49,
+        revision: 99,
+        slot: 1,
+        count: 1,
         imported: 2,
         duplicates: 2,
         unavailable: 1,
-        overflow: 45,
-        scanned: 50,
-        start: 61,
+        overflow: 95,
+        scanned: 100,
+        start: 11,
         end: 110,
       },
     );
@@ -429,6 +437,8 @@ test('batch import appends a fixed source window, summarizes each position, isol
     assert.deepEqual(db.playlist(b.guest.id), {
       tracks: [track('999')],
       revision: 1,
+      slot: 1,
+      count: 1,
     });
     assert.equal(calls, 1);
   } finally {
@@ -471,7 +481,7 @@ test('all duplicate imports preserve revision and out-of-range imports return a 
   }
 });
 
-test('single additions enforce 50 in store and API, while duplicates remain unchanged', async () => {
+test('single additions enforce 100 in store and API, while duplicates remain unchanged', async () => {
   let details = 0,
     sources = 0;
   const { app, db } = await createServer({
@@ -492,7 +502,7 @@ test('single additions enforce 50 in store and API, while duplicates remain unch
     const a = db.createGuest('A');
     fill(db, a.guest.id, PLAYLIST_LIMIT);
     const before = db.playlist(a.guest.id);
-    assert.throws(() => db.add(a.guest.id, track('999')), /50/);
+    assert.throws(() => db.add(a.guest.id, track('999')), /100/);
     assert.deepEqual(db.add(a.guest.id, track('1')), before.tracks);
     assert.equal(
       (
@@ -535,12 +545,14 @@ test('single additions enforce 50 in store and API, while duplicates remain unch
   }
 });
 
-test('historical queues above 50 stay intact and support reorder/remove without permitting additions', async () => {
+test('historical queues above 100 stay intact and support reorder/remove without permitting additions', async () => {
   const { app, db } = await createServer({ dbPath: ':memory:', music: base });
   try {
     const a = db.createGuest('A');
-    const insert = db.sql.prepare('INSERT INTO playlist VALUES (?,?,?,?)');
-    for (let i = 1; i <= 70; i++)
+    const insert = db.sql.prepare(
+      'INSERT INTO playlist (guest_id,track_id,position,track_json) VALUES (?,?,?,?)',
+    );
+    for (let i = 1; i <= 120; i++)
       insert.run(
         a.guest.id,
         String(i),
@@ -551,7 +563,7 @@ test('historical queues above 50 stay intact and support reorder/remove without 
       .tracks(a.guest.id)
       .map((t) => t.id)
       .reverse();
-    assert.throws(() => db.add(a.guest.id, track('999')), /50/);
+    assert.throws(() => db.add(a.guest.id, track('999')), /100/);
     assert.equal(
       (
         await app.inject({
@@ -563,7 +575,7 @@ test('historical queues above 50 stay intact and support reorder/remove without 
       ).statusCode,
       400,
     );
-    assert.equal(db.tracks(a.guest.id).length, 70);
+    assert.equal(db.tracks(a.guest.id).length, 120);
     const reordered = await app.inject({
       method: 'PUT',
       url: '/api/playlist/order',
@@ -579,13 +591,13 @@ test('historical queues above 50 stay intact and support reorder/remove without 
       (
         await app.inject({
           method: 'DELETE',
-          url: '/api/playlist/70',
+          url: '/api/playlist/120',
           headers: headers(a.token),
         })
       ).statusCode,
       200,
     );
-    assert.equal(db.tracks(a.guest.id).length, 69);
+    assert.equal(db.tracks(a.guest.id).length, 119);
     assert.deepEqual(
       db.tracks(a.guest.id).map((t) => t.id),
       ids.slice(1),
@@ -615,7 +627,7 @@ test('import rechecks latest queue after await, preserving edits and concurrent 
   });
   try {
     const a = db.createGuest('A');
-    fill(db, a.guest.id, 48);
+    fill(db, a.guest.id, PLAYLIST_LIMIT - 2);
     const first = app.inject({
       method: 'POST',
       url: '/api/playlist/import',
@@ -675,7 +687,7 @@ test('concurrent single additions cannot bypass store cap after upstream await',
   });
   try {
     const a = db.createGuest('A');
-    fill(db, a.guest.id, 49);
+    fill(db, a.guest.id, PLAYLIST_LIMIT - 1);
     const add = (id: string) =>
       app.inject({
         method: 'POST',
@@ -691,9 +703,137 @@ test('concurrent single additions cannot bypass store cap after upstream await',
     assert.equal((await first).statusCode, 200);
     pending[1]!();
     assert.equal((await second).statusCode, 400);
-    assert.equal(db.tracks(a.guest.id).length, 50);
-    assert.equal(db.playlist(a.guest.id).revision, 50);
+    assert.equal(db.tracks(a.guest.id).length, PLAYLIST_LIMIT);
+    assert.equal(db.playlist(a.guest.id).revision, PLAYLIST_LIMIT);
   } finally {
+    await app.close();
+  }
+});
+
+test('playlist creation and selection apply per account and reject unavailable slots', async () => {
+  const { app, db } = await createServer({ dbPath: ':memory:', music: base });
+  try {
+    const a = db.createGuest('A');
+    const b = db.createGuest('B');
+    fill(db, a.guest.id, PLAYLIST_LIMIT);
+    const create = (token: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/playlists',
+        headers: headers(token),
+      });
+    const select = (token: string, slot: number) =>
+      app.inject({
+        method: 'PUT',
+        url: '/api/playlists/active',
+        headers: headers(token),
+        payload: { slot },
+      });
+    const add = (token: string, id: string, slot: string) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/playlist?slot=${slot}`,
+        headers: headers(token),
+        payload: { id },
+      });
+    assert.equal((await create('invalid')).statusCode, 401);
+    assert.equal((await select(a.token, 2)).statusCode, 404);
+    assert.equal((await select(a.token, 4)).statusCode, 400);
+    const second = await create(a.token);
+    assert.equal(second.statusCode, 201);
+    assert.deepEqual(second.json(), {
+      tracks: [],
+      slot: 2,
+      count: 2,
+      revision: 101,
+    });
+    assert.equal((await add(a.token, '1', '2')).statusCode, 200);
+    assert.equal((await add(b.token, '1', '2')).statusCode, 404);
+    assert.equal((await add(a.token, '7', 'bad')).statusCode, 400);
+    const third = await create(a.token);
+    assert.equal(third.statusCode, 201);
+    assert.equal(third.json().slot, 3);
+    assert.equal((await create(a.token)).statusCode, 400);
+    const selected = await select(a.token, 1);
+    assert.equal(selected.json().tracks.length, PLAYLIST_LIMIT);
+    assert.equal(selected.json().slot, 1);
+    assert.equal(selected.json().count, 3);
+    assert.deepEqual((await select(a.token, 1)).json(), selected.json());
+    assert.deepEqual((await select(a.token, 2)).json().tracks, [track('1')]);
+    assert.deepEqual(db.playlist(b.guest.id), {
+      tracks: [],
+      slot: 1,
+      count: 1,
+      revision: 0,
+    });
+  } finally {
+    await app.close();
+  }
+});
+
+test('an in-flight import keeps its original slot and returns the latest active playlist', async () => {
+  let resolveSource!: (page: NeteasePlaylistPage) => void;
+  let startLookup!: () => void;
+  const lookup = new Promise<void>((resolve) => {
+    startLookup = resolve;
+  });
+  const source = new Promise<NeteasePlaylistPage>((resolve) => {
+    resolveSource = resolve;
+  });
+  const { app, db } = await createServer({
+    dbPath: ':memory:',
+    music: {
+      ...base,
+      playlist: async () => {
+        startLookup();
+        return source;
+      },
+    },
+  });
+  const a = db.createGuest('A');
+  const credentials = headers(a.token);
+  db.add(a.guest.id, track('1'));
+  const importing = app
+    .inject({
+      method: 'POST',
+      url: '/api/playlist/import',
+      headers: credentials,
+      payload: { playlistId: '7', mode: 'replace' },
+    })
+    .then((response) => response);
+  try {
+    await lookup;
+    assert.equal(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/playlists',
+          headers: credentials,
+        })
+      ).statusCode,
+      201,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/playlist?slot=2',
+          headers: credentials,
+          payload: { id: '2' },
+        })
+      ).statusCode,
+      200,
+    );
+    resolveSource(page(entries(['3'])));
+    const imported = await importing;
+    assert.equal(imported.statusCode, 200);
+    assert.equal(imported.json().imported, 1);
+    assert.equal(imported.json().slot, 2);
+    assert.deepEqual(imported.json().tracks, [track('2')]);
+    assert.deepEqual(db.tracks(a.guest.id, 1), [track('3')]);
+  } finally {
+    resolveSource(page([]));
+    await importing;
     await app.close();
   }
 });
@@ -757,7 +897,12 @@ test('empty source playlists reject import, while final partial windows report e
     });
     assert.equal(rejected.statusCode, 400);
     assert.match(rejected.json().error, /没有歌曲/);
-    assert.deepEqual(db.playlist(a.guest.id), { tracks: [], revision: 0 });
+    assert.deepEqual(db.playlist(a.guest.id), {
+      tracks: [],
+      revision: 0,
+      slot: 1,
+      count: 1,
+    });
     empty = false;
     const imported = await app.inject({
       method: 'POST',

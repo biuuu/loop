@@ -45,7 +45,12 @@ test('nickname cooldown survives a restart, applies to both endpoints, and allow
     let owner: ReturnType<Store['createUser']>;
     try {
       owner = original.createUser('Original');
-      original.add(owner.guest.id, track);
+      original.sql
+        .prepare('INSERT INTO playlist VALUES (?,?,?,?)')
+        .run(owner.guest.id, track.id, 0, JSON.stringify(track));
+      original.sql
+        .prepare('UPDATE guests SET playlist_revision=1 WHERE id=?')
+        .run(owner.guest.id);
       original.sql
         .prepare('INSERT INTO guests (id,nickname,token_hash) VALUES (?,?,?)')
         .run('legacy', 'Legacy', hashToken('legacy-token'));
@@ -75,7 +80,7 @@ test('nickname cooldown survives a restart, applies to both endpoints, and allow
 
     server = await createServer({ dbPath, music });
     const firstApp = server.app;
-    assert.equal(server.db.sql.pragma('user_version', { simple: true }), 13);
+    assert.equal(server.db.sql.pragma('user_version', { simple: true }), 14);
     const initial = await profile();
     assert.deepEqual(initial, { ...owner.guest, registered: false });
     const noChange = await patch(' Original ');
@@ -180,6 +185,8 @@ test('nickname cooldown survives a restart, applies to both endpoints, and allow
     assert.deepEqual(server.db.playlist(owner.guest.id), {
       tracks: [track],
       revision: 1,
+      slot: 1,
+      count: 1,
     });
     assert.deepEqual(server.db.rooms(), [
       { ...owner.createdRoom, ownerNickname: named },

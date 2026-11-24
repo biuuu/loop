@@ -190,6 +190,8 @@ async function fixture(context: TestContext) {
       });
     if (input === '/api/playlist')
       return Response.json({
+        slot: 1,
+        count: 1,
         tracks: [
           {
             id: '1',

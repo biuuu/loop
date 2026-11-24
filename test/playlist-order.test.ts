@@ -28,8 +28,13 @@ function track(id: string): Track {
     durationMs: 60_000,
   };
 }
-function state(ids: string[], revision: number): PlaylistState {
-  return { tracks: ids.map(track), revision };
+function state(
+  ids: string[],
+  revision: number,
+  slot = 1,
+  count = slot,
+): PlaylistState {
+  return { tracks: ids.map(track), revision, slot, count };
 }
 async function waitFor(predicate: () => boolean) {
   const deadline = performance.now() + 3000;
@@ -91,7 +96,7 @@ async function fixture(context: TestContext) {
         guest = { id: 'b', nickname: 'b' };
         return Response.json({ guest });
       }
-      if (input === '/api/playlist' && init?.method === 'POST')
+      if (input === '/api/playlist?slot=1' && init?.method === 'POST')
         return held(mutations);
       if (input === '/api/playlist') {
         playlistGets++;
@@ -147,13 +152,95 @@ async function fixture(context: TestContext) {
   };
 }
 
+test('playlist edits target the visible slot and a delayed import response can report the new active slot', async (context) => {
+  setActivePinia(createPinia());
+  const room = useRoom();
+  context.after(() => {
+    room.close();
+    room.$dispose();
+  });
+  const mutations: [string, string | undefined][] = [];
+  let current = state(['1', '2'], 1);
+  let finishImport!: () => void;
+  context.mock.method(
+    globalThis,
+    'fetch',
+    async (input: string, init?: RequestInit) => {
+      if (input === '/api/me')
+        return Response.json({ guest: { id: 'a', nickname: 'A' } });
+      if (input === '/api/playlist') return Response.json(current);
+      mutations.push([input, init?.method]);
+      if (input === '/api/playlists') {
+        current = state([], 2, 2);
+      } else if (input === '/api/playlists/active') {
+        const { slot } = JSON.parse(String(init?.body));
+        current = state(
+          slot === 1 ? ['1', '2'] : [],
+          current.revision + 1,
+          slot,
+          2,
+        );
+      } else if (input === '/api/playlist/import?slot=1') {
+        return new Promise<Response>((resolve) => {
+          finishImport = () =>
+            resolve(
+              Response.json({
+                ...current,
+                revision: current.revision + 1,
+                imported: 1,
+                duplicates: 0,
+                unavailable: 0,
+                overflow: 0,
+              }),
+            );
+        });
+      }
+      return Response.json(current);
+    },
+  );
+
+  await room.initialize();
+  assert.equal(room.playlistSlot, 1);
+  assert.equal(room.playlistCount, 1);
+  await room.createPlaylist();
+  assert.equal(room.playlistSlot, 2);
+  assert.equal(room.playlistCount, 2);
+  assert.deepEqual(room.playlist, []);
+  await room.add('3');
+  await room.selectPlaylist(1);
+  await room.remove('2');
+  await room.reorderTracks('1', '2');
+  await room.moveTrack('2', '1', 'before');
+  const importing = room.importPlaylist('70', 1, 'replace');
+  await room.selectPlaylist(2);
+  finishImport();
+  assert.equal((await importing).imported, 1);
+  assert.equal(room.playlistSlot, 2);
+  assert.equal(room.playlistRevision, 5);
+  assert.deepEqual(room.playlist, []);
+  assert.deepEqual(mutations, [
+    ['/api/playlists', 'POST'],
+    ['/api/playlist?slot=2', 'POST'],
+    ['/api/playlists/active', 'PUT'],
+    ['/api/playlist/2?slot=1', 'DELETE'],
+    ['/api/playlist/order?slot=1', 'PUT'],
+    ['/api/playlist/move?slot=1', 'PUT'],
+    ['/api/playlist/import?slot=1', 'POST'],
+    ['/api/playlists/active', 'PUT'],
+  ]);
+});
+
 test('cached playlist orders reuse metadata and avoid HTTP, with revisions fencing mutation responses', async (context) => {
   const f = await fixture(context);
   if (!f) return;
   const original = f.room.playlist.slice();
   const mutation = f.room.add('4');
   await waitFor(() => f.mutations.length === 1);
-  f.peers[0]!.emit('playlist:reordered', { ids: ['3', '1', '2'], revision: 4 });
+  f.peers[0]!.emit('playlist:reordered', {
+    slot: 1,
+    ids: ['3', '1', '2'],
+    revision: 4,
+  });
   await waitFor(() => f.room.playlistRevision === 4);
   assert.equal(f.room.playlist[0], original[2]);
   assert.equal(f.room.playlist[1], original[0]);
@@ -164,9 +251,17 @@ test('cached playlist orders reuse metadata and avoid HTTP, with revisions fenci
     f.room.playlist.map((track) => track.id),
     ['3', '1', '2'],
   );
-  f.peers[0]!.emit('playlist:reordered', { ids: ['1', '3'], revision: 5 });
+  f.peers[0]!.emit('playlist:reordered', {
+    slot: 1,
+    ids: ['1', '3'],
+    revision: 5,
+  });
   await waitFor(() => f.room.playlistRevision === 5);
-  f.peers[0]!.emit('playlist:reordered', { ids: ['2', '3', '1'], revision: 3 });
+  f.peers[0]!.emit('playlist:reordered', {
+    slot: 1,
+    ids: ['2', '3', '1'],
+    revision: 3,
+  });
   await delay(20);
   assert.deepEqual(
     f.room.playlist.map((track) => track.id),
@@ -181,11 +276,13 @@ test('unknown IDs coalesce recovery, reject stale metadata and retry only for a 
   const original = f.room.playlist;
   const mutation = f.room.add('4');
   f.peers[0]!.emit('playlist:reordered', {
+    slot: 1,
     ids: ['2', '3', '4', '1'],
     revision: 3,
   });
   await waitFor(() => f.reloads.length === 1);
   f.peers[0]!.emit('playlist:reordered', {
+    slot: 1,
     ids: ['3', '4', '5', '1', '2'],
     revision: 4,
   });
@@ -201,6 +298,7 @@ test('unknown IDs coalesce recovery, reject stale metadata and retry only for a 
   f.reloads[1]!.resolve(state(['3', '4', '5', '1', '2'], 4));
   await waitFor(() => f.room.playlistRevision === 4);
   f.peers[0]!.emit('playlist:reordered', {
+    slot: 1,
     ids: ['4', '5', '1', '2', '3'],
     revision: 5,
   });
@@ -214,6 +312,7 @@ test('recovery failure preserves the queue, stops repeated stale responses and p
   if (!f) return;
   const original = f.room.playlist;
   f.peers[0]!.emit('playlist:reordered', {
+    slot: 1,
     ids: ['4', '1', '2', '3'],
     revision: 3,
   });
@@ -222,6 +321,7 @@ test('recovery failure preserves the queue, stops repeated stale responses and p
   await waitFor(() => f.room.error === 'Recovery unavailable');
   assert.equal(f.room.playlist, original);
   f.peers[0]!.emit('playlist:reordered', {
+    slot: 1,
     ids: ['4', '1', '2', '3'],
     revision: 3,
   });
@@ -234,6 +334,7 @@ test('recovery failure preserves the queue, stops repeated stale responses and p
   assert.equal(f.reloads.length, 3);
   assert.equal(f.room.playlist, original);
   f.peers[0]!.emit('playlist:reordered', {
+    slot: 1,
     ids: ['4', '1', '2', '3'],
     revision: 3,
   });
@@ -247,13 +348,14 @@ test('reconnect and identity changes isolate recovery requests, errors and old s
   if (!f) return;
   const oldCallback = f.callback();
   f.peers[0]!.emit('playlist:reordered', {
+    slot: 1,
     ids: ['4', '1', '2', '3'],
     revision: 3,
   });
   await waitFor(() => f.reloads.length === 1);
   f.peers[0]!.conn.close();
   await waitFor(() => f.room.connection === 'disconnected');
-  oldCallback({ ids: ['5'], revision: 99 });
+  oldCallback({ slot: 1, ids: ['5'], revision: 99 });
   assert.equal(f.reloads.length, 1);
   await waitFor(
     () => f.peers.length === 2 && f.room.connection === 'connected',
@@ -261,6 +363,7 @@ test('reconnect and identity changes isolate recovery requests, errors and old s
   f.peers[1]!.emit('playlist:updated', state(['1', '2', '3', '4'], 4));
   await waitFor(() => f.room.playlistRevision === 4);
   f.peers[1]!.emit('playlist:reordered', {
+    slot: 1,
     ids: ['5', '1', '2', '3', '4'],
     revision: 5,
   });
@@ -269,6 +372,7 @@ test('reconnect and identity changes isolate recovery requests, errors and old s
   await delay(20);
   assert.equal(f.room.error, '');
   f.peers[1]!.emit('playlist:reordered', {
+    slot: 1,
     ids: ['1', '2', '3', '4', '5'],
     revision: 6,
   });
@@ -281,7 +385,7 @@ test('reconnect and identity changes isolate recovery requests, errors and old s
     () => f.peers.length === 3 && f.room.connection === 'connected',
   );
   f.reloads[1]!.resolve(state(['5', '1', '2', '3', '4'], 100));
-  oldIdentityCallback({ ids: ['4'], revision: 101 });
+  oldIdentityCallback({ slot: 1, ids: ['4'], revision: 101 });
   await delay(20);
   assert.equal(f.room.guest!.id, 'b');
   assert.deepEqual(
@@ -292,6 +396,6 @@ test('reconnect and identity changes isolate recovery requests, errors and old s
   assert.equal(f.room.error, '');
   const closedCallback = f.callback();
   f.room.close();
-  closedCallback({ ids: ['unknown'], revision: 2 });
+  closedCallback({ slot: 1, ids: ['unknown'], revision: 2 });
   assert.equal(f.gets(), 4);
 });

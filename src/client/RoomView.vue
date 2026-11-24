@@ -53,6 +53,7 @@ import { request, useRoom } from './room';
 import { useAudio } from './audio';
 import {
   DEFAULT_STAGE_CAPACITY,
+  PLAYLIST_COUNT_LIMIT,
   PLAYLIST_LIMIT,
   SCENE,
   type Track,
@@ -650,6 +651,9 @@ onBeforeUnmount(() => {
               </button>
             </div>
             <template v-if="tab === 'search'">
+              <p v-if="room.playlistSlot !== undefined" class="library-hint">
+                添加和导入到歌单 {{ room.playlistSlot }}
+              </p>
               <div
                 class="segmented-tabs music-search-kinds"
                 role="group"
@@ -742,8 +746,32 @@ onBeforeUnmount(() => {
                 </ul>
               </template>
             </template>
-            <template v-else
-              ><div v-if="playlistDisplay.pinned" class="playlist-current">
+            <template v-else>
+              <div v-if="room.playlistCount" class="playlist-selector">
+                <div class="segmented-tabs" role="group" aria-label="播放歌单">
+                  <button
+                    v-for="slot in room.playlistCount"
+                    :key="slot"
+                    type="button"
+                    :class="{ selected: room.playlistSlot === slot }"
+                    :aria-pressed="room.playlistSlot === slot"
+                    :disabled="operation"
+                    @click="act(() => room.selectPlaylist(slot))"
+                  >
+                    歌单 {{ slot }}
+                  </button>
+                </div>
+                <button
+                  v-if="room.playlistCount < PLAYLIST_COUNT_LIMIT"
+                  type="button"
+                  class="outline new-playlist"
+                  :disabled="operation"
+                  @click="act(() => room.createPlaylist())"
+                >
+                  <Plus aria-hidden="true" />新建歌单
+                </button>
+              </div>
+              <div v-if="playlistDisplay.pinned" class="playlist-current">
                 <ul class="track-list">
                   <li>
                     <div class="song-copy">
@@ -757,11 +785,7 @@ onBeforeUnmount(() => {
                 </ul>
               </div>
               <p class="library-hint">
-                {{
-                  playlistDisplay.pinned
-                    ? '拖动左侧手柄调整顺序，也可直接置顶；每次轮到你时，从第一首分享。'
-                    : '拖动左侧手柄排序，或点击置顶；上台从第一首分享，播放后排到队尾。'
-                }}
+                轮到你时分享所选歌单的第一首，播放后排到队尾。拖动手柄排序，或点击置顶。
               </p>
               <div v-if="!playlistDisplay.queue.length" class="empty-state">
                 <span><Music2 aria-hidden="true" /></span
@@ -783,7 +807,7 @@ onBeforeUnmount(() => {
               </div>
               <PlaylistQueue
                 v-else
-                :key="room.guest.id"
+                :key="`${room.guest.id}:${room.playlistSlot}`"
                 :tracks="room.playlist"
                 :disabled="operation"
                 @top="(id) => act(() => room.moveTrackToTop(id))"
@@ -792,7 +816,8 @@ onBeforeUnmount(() => {
                     act(() => room.moveTrack(id, targetId, placement))
                 "
                 @remove="(id) => act(() => room.remove(id))"
-            /></template>
+              />
+            </template>
           </section>
           <section v-else-if="modal === 'members'">
             <RoomMembers />
@@ -824,3 +849,21 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.playlist-selector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 15px 0;
+}
+.playlist-selector .segmented-tabs {
+  flex: 1 0 auto;
+}
+.new-playlist {
+  min-height: 38px;
+  padding: 6px 9px;
+  font-size: 13px;
+}
+</style>

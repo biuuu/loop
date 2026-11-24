@@ -1,8 +1,9 @@
-import type {
-  Playback,
-  PlaylistOrder,
-  PlaylistState,
-  Track,
+import {
+  PLAYLIST_COUNT_LIMIT,
+  type Playback,
+  type PlaylistOrder,
+  type PlaylistState,
+  type Track,
 } from '../shared/contracts';
 
 export function playlistView(
@@ -50,6 +51,8 @@ export function createPlaylistReceiver(
     context.connection === connection;
   const acceptsRevision = (value: number) =>
     Number.isSafeInteger(value) && value >= 0 && value >= revision;
+  const validSlot = (value: number) =>
+    Number.isSafeInteger(value) && value >= 1 && value <= PLAYLIST_COUNT_LIMIT;
   return {
     setIdentity(id: string | null) {
       if (guestId === id) return false;
@@ -66,7 +69,14 @@ export function createPlaylistReceiver(
       return { identity, connection };
     },
     receive(state: PlaylistState, context: PlaylistContext) {
-      if (!isCurrent(context) || !acceptsRevision(state.revision)) return false;
+      if (
+        !isCurrent(context) ||
+        !acceptsRevision(state.revision) ||
+        !validSlot(state.slot) ||
+        !validSlot(state.count) ||
+        state.slot > state.count
+      )
+        return false;
       revision = state.revision;
       cached = state;
       accepted(state);
@@ -79,18 +89,22 @@ export function createPlaylistReceiver(
       if (
         !isCurrent(context) ||
         !acceptsRevision(order.revision) ||
+        !validSlot(order.slot) ||
         !Array.isArray(order.ids) ||
         !order.ids.every((id) => typeof id === 'string') ||
         new Set(order.ids).size !== order.ids.length
       )
         return 'ignored';
-      // An order can arrive before metadata from an add/import response. Fence
-      // older full responses even while retaining the last visible playlist.
+      if (cached?.revision === order.revision && cached.slot !== order.slot)
+        return 'ignored';
+      // An order may arrive before the full state for an edit or switch. Keep
+      // the last visible playlist until its active slot and metadata are known.
       revision = order.revision;
-      if (!cached) return 'reload';
+      if (!cached || cached.slot !== order.slot) return 'reload';
       const known = new Map(cached.tracks.map((track) => [track.id, track]));
       if (order.ids.some((id) => !known.has(id))) return 'reload';
       cached = {
+        ...cached,
         tracks: order.ids.map((id) => known.get(id)!),
         revision: order.revision,
       };

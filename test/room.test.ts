@@ -1825,6 +1825,107 @@ test('successful resolution rotates the selected song within current edits witho
     }
   }
 });
+test('changing playlists during resolution keeps the pending song and rotates its original queue', async () => {
+  let finish!: (result: Awaited<ReturnType<MusicService['resolve']>>) => void;
+  let started!: () => void;
+  const resolving = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const {
+    room,
+    db,
+    guests: [a],
+    close,
+  } = setup(
+    {
+      ...music,
+      resolve: (item) => {
+        if (item.id !== '1') return music.resolve(item);
+        started();
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      },
+    },
+    { disconnectGraceMs: 15, resolveTimeoutMs: 1000 },
+  );
+  try {
+    const id = a!.id;
+    db.add(id, track('4'));
+    db.createPlaylist(id);
+    for (const trackId of ['7', '1', '8']) db.add(id, track(trackId));
+    db.selectPlaylist(id, 1);
+
+    const updates: PlaylistOrder[] = [];
+    room.onPlaylistChange = (_id, state) => updates.push(state);
+    const joining = room.join(id);
+    await resolving;
+    const selected = db.selectPlaylist(id, 2);
+    finish(await music.resolve(track('1')));
+    await joining;
+
+    const playing = room.snapshot().playback!;
+    assert.equal(playing.track.id, '1');
+    assert.deepEqual(
+      db.tracks(id, 1).map((item) => item.id),
+      ['4', '1'],
+    );
+    assert.deepEqual(db.playlist(id), {
+      ...selected,
+      revision: selected.revision + 1,
+    });
+    assert.deepEqual(updates, []);
+
+    await room.skip(id, { roundId: playing.roundId });
+    assert.equal(room.snapshot().playback!.track.id, '7');
+    assert.deepEqual(updates, [
+      {
+        ids: ['1', '8', '7'],
+        slot: 2,
+        revision: selected.revision + 2,
+      },
+    ]);
+  } finally {
+    close();
+  }
+});
+test('selecting an empty playlist during playback leaves the DJ seated until the next turn', async () => {
+  const {
+    room,
+    db,
+    guests: [a, b],
+    close,
+  } = setup();
+  try {
+    const id = a!.id;
+    const floor = room.snapshot().users[0]!;
+    await room.join(id);
+    await room.join(b!.id);
+    const playing = room.snapshot().playback!;
+
+    db.createPlaylist(id);
+    assert.deepEqual(room.snapshot().playback, playing);
+    assert.deepEqual(room.snapshot().stage, [id, b!.id]);
+
+    await room.skip(id, { roundId: playing.roundId });
+    assert.equal(room.snapshot().playback!.djId, b!.id);
+    assert.deepEqual(room.snapshot().stage, [b!.id, id]);
+    await room.skip(b!.id, { roundId: room.snapshot().playback!.roundId });
+    const state = room.snapshot();
+    assert.equal(state.playback!.djId, b!.id);
+    assert.deepEqual(state.stage, [b!.id]);
+    assertFloorPosition(
+      state.users.find((user) => user.id === id),
+      floor,
+    );
+    assert.deepEqual(
+      db.tracks(id, 1).map((item) => item.id),
+      ['1'],
+    );
+  } finally {
+    close();
+  }
+});
 test('closing during resolution cancels the pending loading notification and leaves the queue untouched', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   let finish!: (result: Awaited<ReturnType<MusicService['resolve']>>) => void;

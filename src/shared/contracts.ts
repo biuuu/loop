@@ -26,7 +26,8 @@ export const nicknameSchema = z
   .max(16)
   .regex(/^[\p{L}\p{N}_\- ]+$/u, '昵称使用文字、数字、空格、下划线或短横线');
 export const trackIdSchema = z.string().regex(/^\d{1,20}$/);
-export const PLAYLIST_LIMIT = 50;
+export const PLAYLIST_LIMIT = 100;
+export const PLAYLIST_COUNT_LIMIT = 3;
 export const moveSchema = z
   .object({ x: z.number().finite(), y: z.number().finite() })
   .strict();
@@ -314,10 +315,13 @@ export interface ServerEvents {
 export interface PlaylistState {
   tracks: Track[];
   revision: number;
+  slot: number;
+  count: number;
 }
 export interface PlaylistOrder {
   ids: string[];
   revision: number;
+  slot: number;
 }
 export interface PlaylistImportResult extends PlaylistState {
   imported: number;

@@ -56,7 +56,7 @@ test('guest appearance has schema defaults, checks enums and persists edits thro
       .run('legacy', 'Legacy', hashToken('legacy-token'));
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 13);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 14);
     assert.deepEqual(
       db.guest('legacy-token')!.appearance,
       DEFAULT_CAT_APPEARANCE,
@@ -109,7 +109,9 @@ test('all black and white coat variants preserve identities and playlists across
     db.updateAppearance(a.guest.id, { coat: 'black', pattern: 'socks' });
     db.updateAppearance(b.guest.id, { coat: 'white', pattern: 'tabby' });
     for (const guest of [a.guest, b.guest]) {
-      const insert = db.sql.prepare('INSERT INTO playlist VALUES (?,?,?,?)');
+      const insert = db.sql.prepare(
+        'INSERT INTO playlist (guest_id,track_id,position,track_json) VALUES (?,?,?,?)',
+      );
       insert.run(
         guest.id,
         '2',
@@ -126,7 +128,7 @@ test('all black and white coat variants preserve identities and playlists across
       .all();
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 13);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 14);
     assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
     assert.deepEqual(
       db.sql.prepare('SELECT * FROM guests ORDER BY id').all(),
@@ -142,7 +144,9 @@ test('all black and white coat variants preserve identities and playlists across
     assert.throws(
       () =>
         db.sql
-          .prepare("INSERT INTO playlist VALUES ('missing','1',0,'{}')")
+          .prepare(
+            "INSERT INTO playlist (guest_id,track_id,position,track_json) VALUES ('missing','1',0,'{}')",
+          )
           .run(),
       /FOREIGN KEY/,
     );
@@ -331,6 +335,8 @@ test('tokens are hashed and identities and playlists survive reopening', () => {
     assert.deepEqual(db.playlist(a.guest.id), {
       tracks: [track('1'), track('2')],
       revision: 4,
+      slot: 1,
+      count: 1,
     });
     assert.notEqual(
       (
@@ -342,7 +348,7 @@ test('tokens are hashed and identities and playlists survive reopening', () => {
     );
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 13);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 14);
     assert.deepEqual(db.guest(a.token), a.guest);
     assert.equal(db.firstTrack(a.guest.id)!.id, '1');
     assert.equal(db.playlist(a.guest.id).revision, 4);
@@ -417,7 +423,7 @@ test('startup rejects unversioned data and unsupported schema versions without m
       [0, /Unversioned database is not empty/i],
       [1, /Unsupported database version 1; first supported version is 11/i],
       [10, /Unsupported database version 10; first supported version is 11/i],
-      [14, /Database version 14 is newer than supported version 13/i],
+      [15, /Database version 15 is newer than supported version 14/i],
     ] as const) {
       const path = join(root, `version-${version}.sqlite`);
       const fixture = new Database(path);
@@ -479,7 +485,12 @@ test('playlist edits and rotation use physical order with monotonic revisions an
   try {
     const { guest } = db.createGuest('A');
     const ids = () => db.playlist(guest.id).tracks.map((item) => item.id);
-    assert.deepEqual(db.playlist(guest.id), { tracks: [], revision: 0 });
+    assert.deepEqual(db.playlist(guest.id), {
+      tracks: [],
+      revision: 0,
+      slot: 1,
+      count: 1,
+    });
     assert.equal(db.firstTrack(guest.id), null);
     ['1', '2', '3', '4'].forEach((id) => db.add(guest.id, track(id)));
     assert.equal(db.firstTrack(guest.id)!.id, '1');
@@ -548,7 +559,11 @@ test('playlist order reads only IDs and revision, including when metadata is una
   const db = new Store(':memory:');
   try {
     const { guest } = db.createGuest('A');
-    assert.deepEqual(db.playlistOrder(guest.id), { ids: [], revision: 0 });
+    assert.deepEqual(db.playlistOrder(guest.id), {
+      ids: [],
+      revision: 0,
+      slot: 1,
+    });
     ['1', '2', '3'].forEach((id) => db.add(guest.id, track(id)));
     db.rotateTrack(guest.id, '1');
     db.sql
@@ -557,6 +572,7 @@ test('playlist order reads only IDs and revision, including when metadata is una
     assert.deepEqual(db.playlistOrder(guest.id), {
       ids: ['2', '3', '1'],
       revision: 4,
+      slot: 1,
     });
     assert.throws(() => db.playlist(guest.id));
     assert.throws(() => db.playlistOrder('missing'), /游客不存在/);
@@ -638,7 +654,12 @@ test('HTTP validates input, secures identity and keeps playlists isolated', asyn
       url: '/api/playlist/2',
       headers,
     });
-    assert.deepEqual(removed.json(), { tracks: [track('1')], revision: 4 });
+    assert.deepEqual(removed.json(), {
+      tracks: [track('1')],
+      revision: 4,
+      slot: 1,
+      count: 1,
+    });
     assert.equal(
       (
         await app.inject({
@@ -664,7 +685,7 @@ test('HTTP validates input, secures identity and keeps playlists isolated', asyn
           },
         })
       ).json(),
-      { tracks: [], revision: 0 },
+      { tracks: [], revision: 0, slot: 1, count: 1 },
     );
     assert.equal(
       (
@@ -1248,10 +1269,14 @@ test('slow first stage join sends a full loading snapshot and playback-only comp
     assert.deepEqual(sender.playlist, {
       tracks: [track('1'), track('2')],
       revision: 2,
+      slot: 1,
+      count: 1,
     });
     assert.deepEqual(observer.playlist, {
       tracks: [track('9')],
       revision: 1,
+      slot: 1,
+      count: 1,
     });
     const sync = () =>
       Promise.all(
@@ -1322,9 +1347,13 @@ test('slow first stage join sends a full loading snapshot and playback-only comp
       assert.equal(final.playback!.track.id, '1');
       assert.equal(final.revision, recorded.snapshots[0]!.revision + 1);
     }
-    assert.deepEqual(sent.updates, [{ ids: ['2', '1'], revision: 3 }]);
+    assert.deepEqual(sent.updates, [{ ids: ['2', '1'], revision: 3, slot: 1 }]);
     assert.deepEqual(db.playlistOrder(a.guest.id), sent.updates[0]);
-    assert.deepEqual(Object.keys(sent.updates[0]!).sort(), ['ids', 'revision']);
+    assert.deepEqual(Object.keys(sent.updates[0]!).sort(), [
+      'ids',
+      'revision',
+      'slot',
+    ]);
     assert.deepEqual(observed.updates, []);
     assert.deepEqual(db.playlist(b.guest.id), observer.playlist);
   } finally {
@@ -1519,7 +1548,12 @@ test('playlist rotation events reach only the current authenticated owner and ca
     await current.ready;
     await disconnected;
     assert.deepEqual(current.initial, [
-      { tracks: [track('1'), track('2'), track('3')], revision: 3 },
+      {
+        tracks: [track('1'), track('2'), track('3')],
+        revision: 3,
+        slot: 1,
+        count: 1,
+      },
     ]);
     const headers = { cookie: `loop_guest=${a.token}` };
     assert.equal(
@@ -1533,6 +1567,7 @@ test('playlist rotation events reach only the current authenticated owner and ca
     assert.deepEqual(current.updates.at(-1), {
       ids: ['2', '3', '1'],
       revision: 4,
+      slot: 1,
     });
     const httpPlaylist = (
       await app.inject({ url: '/api/playlist', headers })
@@ -1541,6 +1576,7 @@ test('playlist rotation events reach only the current authenticated owner and ca
       {
         ids: httpPlaylist.tracks.map((track) => track.id),
         revision: httpPlaylist.revision,
+        slot: httpPlaylist.slot,
       },
       current.updates.at(-1),
     );
@@ -1556,6 +1592,7 @@ test('playlist rotation events reach only the current authenticated owner and ca
     assert.deepEqual(current.updates.at(-1), {
       ids: ['3', '1', '2'],
       revision: 5,
+      slot: 1,
     });
     assert.equal(
       (
@@ -1575,6 +1612,8 @@ test('playlist rotation events reach only the current authenticated owner and ca
     assert.deepEqual(ordered.json(), {
       tracks: [track('1'), track('3'), track('2')],
       revision: 6,
+      slot: 1,
+      count: 1,
     });
     assert.equal(
       (
@@ -1587,6 +1626,7 @@ test('playlist rotation events reach only the current authenticated owner and ca
     assert.deepEqual(current.updates.at(-1), {
       ids: ['3', '2', '1'],
       revision: 7,
+      slot: 1,
     });
     await other.socket.timeout(1000).emitWithAck('room:sync');
     assert.deepEqual(
@@ -1595,17 +1635,35 @@ test('playlist rotation events reach only the current authenticated owner and ca
     );
     assert.equal(stale.initial.length, 1);
     assert.equal(stale.updates.length, 0);
-    assert.deepEqual(other.initial, [{ tracks: [track('9')], revision: 1 }]);
+    assert.deepEqual(other.initial, [
+      { tracks: [track('9')], revision: 1, slot: 1, count: 1 },
+    ]);
     assert.equal(other.updates.length, 0);
     assert.equal(current.initial.length, 1);
     for (const state of current.updates)
-      assert.deepEqual(Object.keys(state).sort(), ['ids', 'revision']);
+      assert.deepEqual(Object.keys(state).sort(), ['ids', 'revision', 'slot']);
     assert.deepEqual(db.playlistOrder(a.guest.id), current.updates.at(-1));
     assert.deepEqual(db.playlist(b.guest.id), {
       tracks: [track('9')],
       revision: 1,
+      slot: 1,
+      count: 1,
     });
     assert.equal('playlist' in room.snapshot(), false);
+    const currentRound = room.snapshot().playback!.roundId;
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/playlists',
+      headers,
+    });
+    assert.equal(created.statusCode, 201);
+    await current.socket.timeout(1000).emitWithAck('room:sync');
+    assert.equal(current.initial.length, 2);
+    assert.deepEqual(current.initial.at(-1), created.json());
+    assert.equal(created.json().slot, 2);
+    assert.equal(room.snapshot().playback!.roundId, currentRound);
+    await other.socket.timeout(1000).emitWithAck('room:sync');
+    assert.equal(other.initial.length, 1);
   } finally {
     sockets.forEach((socket) => socket.disconnect());
     await app.close();
@@ -1670,7 +1728,9 @@ test('pending skip rotates current HTTP edits only when resolution changes order
         (await socket.timeout(1000).emitWithAck('stage:join', { seat: 0 })).ok,
         true,
       );
-      assert.deepEqual(orders, [{ ids: ['2', '3', '1'], revision: 4 }]);
+      assert.deepEqual(orders, [
+        { ids: ['2', '3', '1'], revision: 4, slot: 1 },
+      ]);
       const oldRound = room.snapshot().playback!.roundId;
       const skipping = socket
         .timeout(2000)
@@ -1718,6 +1778,7 @@ test('pending skip rotates current HTTP edits only when resolution changes order
         assert.deepEqual(orders.at(-1), {
           ids: ['3', '1', '4', '2'],
           revision: beforeResolved.revision + 1,
+          slot: 1,
         });
         assert.equal(orders.length, 2);
         assert.deepEqual(db.playlistOrder(guest.guest.id), orders.at(-1));
@@ -1737,7 +1798,11 @@ test('pending skip rotates current HTTP edits only when resolution changes order
         'full metadata is sent only for initial connection',
       );
       for (const order of orders)
-        assert.deepEqual(Object.keys(order).sort(), ['ids', 'revision']);
+        assert.deepEqual(Object.keys(order).sort(), [
+          'ids',
+          'revision',
+          'slot',
+        ]);
       assert.equal(after.revision, db.playlistOrder(guest.guest.id).revision);
       assert.equal(calls, 2, 'stale skip cannot start another resolution');
     } finally {

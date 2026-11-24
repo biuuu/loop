@@ -4,6 +4,7 @@ import {
   ROOM_CAPACITY,
   type Guest,
   type MusicService,
+  type PlaylistState,
   type RoomInfo,
   type RoomSnapshot,
   type RoomSummary,
@@ -261,6 +262,11 @@ export class RoomRegistry {
     const current = this.active.get(userId);
     if (current)
       this.live.get(current.roomId)?.updateAppearance(userId, appearance);
+  }
+  publishPlaylist(userId: string, state: PlaylistState) {
+    const current = this.active.get(userId);
+    if (current && this.isCurrent(current.roomId, userId, current.socket.id))
+      current.socket.emit('playlist:updated', state);
   }
   updateNickname(userId: string, nickname: string) {
     const current = this.active.get(userId);

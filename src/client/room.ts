@@ -97,11 +97,13 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 export const useRoom = defineStore('room', () => {
   const guest = ref<AccountProfile | null>(null);
-  const playlist = ref<Track[]>([]);
-  const playlistRevision = ref(-1);
+  const playlistState = ref<PlaylistState | null>(null);
+  const playlist = computed(() => playlistState.value?.tracks ?? []);
+  const playlistRevision = computed(() => playlistState.value?.revision ?? -1);
+  const playlistSlot = computed(() => playlistState.value?.slot);
+  const playlistCount = computed(() => playlistState.value?.count ?? 0);
   const playlistReceiver = createPlaylistReceiver((state) => {
-    playlist.value = state.tracks;
-    playlistRevision.value = state.revision;
+    playlistState.value = state;
   });
   const snapshot = ref<RoomSnapshot | null>(null);
   const connection = ref('idle');
@@ -137,8 +139,7 @@ export const useRoom = defineStore('room', () => {
   function setGuest(value: AccountProfile | null) {
     if (playlistReceiver.setIdentity(value?.id ?? null)) {
       resetTransientState();
-      playlist.value = [];
-      playlistRevision.value = -1;
+      playlistState.value = null;
       snapshot.value = null;
     }
     guest.value = value;
@@ -658,6 +659,28 @@ export const useRoom = defineStore('room', () => {
     const context = playlistReceiver.context();
     applyPlaylist(await request<PlaylistState>('/api/playlist'), context);
   }
+  function playlistPath(path = '/api/playlist') {
+    const slot = playlistSlot.value;
+    return slot === undefined ? path : `${path}?slot=${slot}`;
+  }
+  async function createPlaylist() {
+    const context = playlistReceiver.context();
+    applyPlaylist(
+      await request<PlaylistState>('/api/playlists', { method: 'POST' }),
+      context,
+    );
+  }
+  async function selectPlaylist(slot: number) {
+    if (slot === playlistSlot.value) return;
+    const context = playlistReceiver.context();
+    applyPlaylist(
+      await request<PlaylistState>('/api/playlists/active', {
+        method: 'PUT',
+        body: JSON.stringify({ slot }),
+      }),
+      context,
+    );
+  }
   async function initialize() {
     resetTransientState();
     invalidateMovement();
@@ -712,7 +735,7 @@ export const useRoom = defineStore('room', () => {
   async function add(id: string) {
     const context = playlistReceiver.context();
     applyPlaylist(
-      await request<PlaylistState>('/api/playlist', {
+      await request<PlaylistState>(playlistPath(), {
         method: 'POST',
         body: JSON.stringify({ id }),
       }),
@@ -725,10 +748,13 @@ export const useRoom = defineStore('room', () => {
     mode: 'replace' | 'append',
   ) {
     const context = playlistReceiver.context();
-    const result = await request<PlaylistImportResult>('/api/playlist/import', {
-      method: 'POST',
-      body: JSON.stringify({ playlistId, start, mode }),
-    });
+    const result = await request<PlaylistImportResult>(
+      playlistPath('/api/playlist/import'),
+      {
+        method: 'POST',
+        body: JSON.stringify({ playlistId, start, mode }),
+      },
+    );
     applyPlaylist(result, context);
     return result;
   }
@@ -781,7 +807,7 @@ export const useRoom = defineStore('room', () => {
   async function remove(id: string) {
     const context = playlistReceiver.context();
     applyPlaylist(
-      await request<PlaylistState>(`/api/playlist/${id}`, {
+      await request<PlaylistState>(playlistPath(`/api/playlist/${id}`), {
         method: 'DELETE',
       }),
       context,
@@ -799,7 +825,7 @@ export const useRoom = defineStore('room', () => {
     if (!ids) return;
     const context = playlistReceiver.context();
     applyPlaylist(
-      await request<PlaylistState>('/api/playlist/order', {
+      await request<PlaylistState>(playlistPath('/api/playlist/order'), {
         method: 'PUT',
         body: JSON.stringify({ ids }),
       }),
@@ -814,7 +840,7 @@ export const useRoom = defineStore('room', () => {
     if (placement !== 'first' && id === targetId) return;
     const context = playlistReceiver.context();
     applyPlaylist(
-      await request<PlaylistState>('/api/playlist/move', {
+      await request<PlaylistState>(playlistPath('/api/playlist/move'), {
         method: 'PUT',
         body: JSON.stringify({ id, targetId, placement }),
       }),
@@ -927,6 +953,8 @@ export const useRoom = defineStore('room', () => {
     leave,
     playlist,
     playlistRevision,
+    playlistSlot,
+    playlistCount,
     snapshot,
     connection,
     stagePending,
@@ -953,6 +981,8 @@ export const useRoom = defineStore('room', () => {
     joinStage,
     leaveStage,
     skip,
+    createPlaylist,
+    selectPlaylist,
     add,
     importPlaylist,
     remove,
