@@ -156,7 +156,14 @@ const roomDescription = computed(() => {
     ? (info.description ?? '')
     : '';
 });
-type Modal = 'library' | 'members' | 'appearance' | 'description';
+function focusIntroduction(event: PointerEvent) {
+  if (
+    event.pointerType === 'touch' &&
+    event.currentTarget instanceof HTMLElement
+  )
+    event.currentTarget.focus({ preventScroll: true });
+}
+type Modal = 'library' | 'members' | 'appearance';
 const modal = ref<Modal | null>(null);
 const appearanceDraft = ref<CatAppearance>({ ...DEFAULT_CAT_APPEARANCE });
 const appearanceSaving = ref(false);
@@ -168,7 +175,6 @@ const modalTitle = computed(
       library: '你的音乐角落',
       members: '客厅成员',
       appearance: '我的小猫',
-      description: '房间简介',
     })[modal.value || 'library'],
 );
 const interactionDisabled = computed(() =>
@@ -179,13 +185,6 @@ function closeModal() {
   modal.value = null;
   nextTick(() => returnFocus?.focus());
 }
-watch(
-  [() => room.roomId, roomDescription],
-  ([id, description], [previousId]) => {
-    if (modal.value === 'description' && (id !== previousId || !description))
-      closeModal();
-  },
-);
 async function openModal(value: Modal) {
   resetMovement();
   if (!modal.value)
@@ -477,16 +476,20 @@ onBeforeUnmount(() => {
         >
       </div>
       <div class="room-header-actions">
-        <button
-          v-if="roomDescription"
-          class="room-header-action"
-          aria-label="房间简介"
-          aria-haspopup="dialog"
-          title="房间简介"
-          @click="openModal('description')"
-        >
-          <Info aria-hidden="true" /><span>简介</span>
-        </button>
+        <div v-if="roomDescription" class="room-introduction">
+          <button
+            type="button"
+            class="room-introduction-trigger"
+            aria-label="房间简介"
+            aria-describedby="room-description"
+            @pointerup="focusIntroduction"
+          >
+            <Info aria-hidden="true" />
+          </button>
+          <div class="room-introduction-bubble">
+            <p id="room-description" role="tooltip">{{ roomDescription }}</p>
+          </div>
+        </div>
         <button
           class="room-header-action"
           aria-label="返回大厅"
@@ -686,20 +689,14 @@ onBeforeUnmount(() => {
       <dialog
         ref="dialog"
         class="room-dialog"
-        :class="{ 'room-description-dialog': modal === 'description' }"
         aria-labelledby="dialog-title"
-        :aria-describedby="
-          modal === 'description' ? 'room-description' : undefined
-        "
         @cancel.prevent="closeModal"
         @click="outsideDialog"
         @close="modal = null"
       >
         <header class="dialog-header">
           <div>
-            <span v-if="modal !== 'description'" class="eyebrow"
-              >MAKE YOURSELF AT HOME</span
-            >
+            <span class="eyebrow">MAKE YOURSELF AT HOME</span>
             <h2 id="dialog-title">{{ modalTitle }}</h2>
           </div>
           <button
@@ -971,19 +968,8 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </section>
-          <p
-            v-else-if="modal === 'description'"
-            id="room-description"
-            class="room-description"
-          >
-            {{ roomDescription }}
-          </p>
         </div>
-        <p
-          v-if="room.error && modal !== 'description'"
-          class="dialog-error"
-          role="alert"
-        >
+        <p v-if="room.error" class="dialog-error" role="alert">
           {{ room.error }}
           <button class="text-button" @click="room.error = ''">关闭提示</button>
         </p>
@@ -1002,19 +988,72 @@ onBeforeUnmount(() => {
 .playlist-selector {
   margin: 15px 0;
 }
-.room-description-dialog h2 {
-  margin: 0;
+.room-introduction {
+  position: relative;
 }
-.room-description {
+.room-introduction-trigger,
+.room-introduction-trigger:hover:not(:disabled) {
+  width: 36px;
+  min-height: 38px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sage);
+  cursor: help;
+}
+.room-introduction-trigger svg {
+  width: 17px;
+  height: 17px;
+}
+.room-introduction-bubble {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  z-index: 1;
+  width: 280px;
+  padding-top: 14px;
+  transform: translateX(-50%);
+  visibility: hidden;
+}
+.room-introduction-bubble p {
+  max-height: min(240px, 55dvh);
   margin: 0;
-  font-size: 14px;
-  line-height: 1.8;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 10px 13px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fffdf6;
+  color: var(--ink);
+  box-shadow: 0 5px 16px #333c2d21;
+  font-size: 13px;
+  line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-@media (min-width: 651px) {
-  .room-description-dialog {
-    width: min(430px, calc(100% - 40px));
+.room-introduction-trigger:focus-visible + .room-introduction-bubble {
+  visibility: visible;
+}
+@media (hover: hover) {
+  .room-introduction:hover .room-introduction-bubble {
+    visibility: visible;
+  }
+}
+@media (hover: none) {
+  .room-introduction:focus-within .room-introduction-bubble {
+    visibility: visible;
+  }
+}
+@media (max-width: 650px) {
+  .room-introduction {
+    position: static;
+  }
+  .room-introduction-bubble {
+    top: calc(100% - 8px);
+    right: 7px;
+    left: auto;
+    width: min(280px, calc(100% - 14px));
+    transform: none;
   }
 }
 </style>
