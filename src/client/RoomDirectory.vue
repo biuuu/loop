@@ -36,24 +36,22 @@ const emit = defineEmits<{
 const room = useRoom();
 const filters = [
   { value: 'all', label: '全部' },
-  { value: 'playing', label: '播放中' },
-  { value: 'occupied', label: '有人的房间' },
+  { value: 'occupied', label: '活跃中' },
   { value: 'empty', label: '空房间' },
 ] as const satisfies ReadonlyArray<{
   value: RoomDirectoryFilter;
   label: string;
 }>;
-const filter = ref<RoomDirectoryFilter>('all');
+type DirectoryFilter = (typeof filters)[number]['value'];
+const filter = ref<DirectoryFilter>('all');
 const rooms = ref<RoomSummary[]>([]);
 const total = ref<number | null>(null);
 const page = ref(0);
 const pageCount = computed(() => Math.ceil((total.value ?? 0) / PAGE_SIZE));
 const emptyMessage = computed(() => {
   switch (filter.value) {
-    case 'playing':
-      return '暂时没有正在播放的房间。';
     case 'occupied':
-      return '暂时没有人在线的房间。';
+      return '暂时没有活跃的房间。';
     case 'empty':
       return '暂时没有空房间。';
     default:
@@ -137,7 +135,7 @@ function changePage(value: number) {
   page.value = value;
   void refresh();
 }
-function changeFilter(value: RoomDirectoryFilter) {
+function changeFilter(value: DirectoryFilter) {
   if (filter.value === value) return;
   filter.value = value;
   page.value = 0;
