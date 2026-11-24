@@ -152,7 +152,8 @@ const roomDescription = computed(() => {
   const info = room.roomInfo;
   return room.connection === 'connected' &&
     room.me?.connected &&
-    info?.id === room.roomId
+    info?.id === room.roomId &&
+    info.ownerId !== room.guest?.id
     ? (info.description ?? '')
     : '';
 });
