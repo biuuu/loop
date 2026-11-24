@@ -32,6 +32,7 @@ import {
   MusicPlaybackError,
   type MusicPlaybackFailure,
 } from './music-errors.js';
+import type { RoomCheckpoint } from './room-checkpoint.js';
 
 type Connection = { id: string; replaced(): void };
 type FailedAttempt = { kind: MusicPlaybackFailure | 'unknown'; title: string };
@@ -74,7 +75,10 @@ const seekSchema = z
 export class Room {
   private users = new Map<string, Participant>();
   private connections = new Map<string, Connection>();
-  private grace = new Map<string, ReturnType<typeof setTimeout>>();
+  private grace = new Map<
+    string,
+    { until: number; timer: ReturnType<typeof setTimeout> }
+  >();
   private emoteTimes = new Map<string, number>();
   private emoteCatalog: EmoteCatalog;
   private stage: string[] = [];
@@ -93,14 +97,19 @@ export class Room {
   private resolutionGeneration = 0;
   private pendingDj: string | null = null;
   private cancelResolution?: () => void;
+  private waitingForReconnect = false;
+  private lastCheckpoint?: string;
   onEmpty: () => void = () => {};
   onChange: (snapshot: RoomSnapshot) => void = () => {};
   onPlaybackChange: (state: PlaybackState) => void = () => {};
   onEmote: (event: RoomEmote) => void = () => {};
   onMotion: (event: RoomMotion) => void = () => {};
   onPlaylistChange: (guestId: string, state: PlaylistOrder) => void = () => {};
+  hasMember(id: string) {
+    return this.users.has(id);
+  }
   canConnect(id: string) {
-    return this.users.has(id) || this.users.size < ROOM_CAPACITY;
+    return this.hasMember(id) || this.users.size < ROOM_CAPACITY;
   }
   isCurrent(id: string, connectionId: string) {
     return this.connections.get(id)?.id === connectionId;
@@ -132,6 +141,102 @@ export class Room {
     this.stageCapacity = capacity;
     this.positionStage();
     this.publish();
+  }
+  private captureCheckpoint(
+    savedAt: number,
+    playback = this.playback,
+  ): RoomCheckpoint | null {
+    if (!this.users.size) return null;
+    return {
+      savedAt,
+      members: [...this.users.values()].map((user) => {
+        const position =
+          this.stageReturnPositions.get(user.id) ??
+          this.position(user, savedAt);
+        const grace = this.grace.get(user.id);
+        return {
+          id: user.id,
+          ...position,
+          facingRight: user.facingRight ?? false,
+          ...(grace ? { reconnectUntil: grace.until } : {}),
+        };
+      }),
+      stage: [...this.stage],
+      playback,
+    };
+  }
+  checkpoint(): void {
+    if (this.closed || !this.options.roomId) return;
+    const checkpoint = this.captureCheckpoint(Date.now());
+    const serialized = JSON.stringify(checkpoint);
+    if (serialized === this.lastCheckpoint) return;
+    try {
+      this.db.saveRoomCheckpoint(this.options.roomId, checkpoint);
+      this.lastCheckpoint = serialized;
+    } catch (error) {
+      console.error(
+        'Failed to save room checkpoint',
+        this.options.roomId,
+        error,
+      );
+    }
+  }
+  restoreCheckpoint(checkpoint: RoomCheckpoint): void {
+    const roomId = this.options.roomId;
+    if (this.closed || !roomId) return;
+    const now = Date.now();
+    for (const member of checkpoint.members) {
+      const { id, x, y, facingRight } = member;
+      const until = member.reconnectUntil ?? now + this.disconnectGraceMs;
+      if (until <= now || this.db.banned(roomId, id)) continue;
+      let guest: Guest;
+      try {
+        guest = this.db.guestById(id);
+      } catch (error) {
+        if (error instanceof Error && error.message === '游客不存在') continue;
+        throw error;
+      }
+      this.users.set(id, {
+        ...guest,
+        x,
+        y,
+        targetX: x,
+        targetY: y,
+        movingSince: now,
+        durationMs: 0,
+        facingRight,
+        seat: null,
+        connected: false,
+      });
+      this.reserveMember(id, until, now);
+    }
+    if (!this.users.size) {
+      this.checkpoint();
+      this.onEmpty();
+      return;
+    }
+    // A retained round can finish during grace. The next round needs a listener.
+    this.waitingForReconnect = true;
+    this.stage = checkpoint.stage
+      .filter((id) => this.users.has(id))
+      .slice(0, this.stageCapacity);
+    for (const id of this.stage) {
+      const user = this.users.get(id)!;
+      this.stageReturnPositions.set(id, { x: user.x, y: user.y });
+      user.y = user.targetY = SCENE.stageY;
+    }
+    this.positionStage();
+    const playback = checkpoint.playback;
+    if (playback && this.stage[0] === playback.djId) {
+      const elapsedMs = now - playback.startedAt;
+      if (elapsedMs >= playback.durationMs) this.rotateStage();
+      else if (elapsedMs >= 0) {
+        this.playback = playback;
+        this.schedulePlaybackEnd(playback, playback.durationMs - elapsedMs);
+      }
+    }
+    this.publishedStage = [...this.stage];
+    this.checkpoint();
   }
   snapshot(): RoomSnapshot {
     return structuredClone({
@@ -217,7 +322,7 @@ export class Room {
     if (this.closed || (connectionId && !this.isCurrent(id, connectionId)))
       return Promise.resolve();
     const current = this.playback?.djId === id || this.pendingDj === id;
-    clearTimeout(this.grace.get(id));
+    clearTimeout(this.grace.get(id)?.timer);
     this.grace.delete(id);
     this.connections.delete(id);
     this.removeStage(id);
@@ -229,10 +334,14 @@ export class Room {
       this.playback = null;
       this.resolving = false;
       this.notice = null;
+      this.checkpoint();
       this.publish();
       this.onEmpty();
     } else if (current) void this.advance().catch(() => {});
-    else this.publish();
+    else {
+      this.checkpoint();
+      this.publish();
+    }
     return Promise.resolve();
   }
   forceLeave(id: string): Promise<void> {
@@ -240,7 +349,10 @@ export class Room {
     const current = this.playback?.djId === id || this.pendingDj === id;
     this.removeStage(id);
     if (current) void this.advance().catch(() => {});
-    else this.publish();
+    else {
+      this.checkpoint();
+      this.publish();
+    }
     return Promise.resolve();
   }
   private spawnPosition() {
@@ -274,7 +386,7 @@ export class Room {
     const previous = this.connections.get(guest.id);
     this.connections.set(guest.id, connection);
     if (previous && previous.id !== connection.id) previous.replaced();
-    clearTimeout(this.grace.get(guest.id));
+    clearTimeout(this.grace.get(guest.id)?.timer);
     this.grace.delete(guest.id);
     const existing = this.users.get(guest.id);
     if (existing) Object.assign(existing, guest, { connected: true });
@@ -293,7 +405,12 @@ export class Room {
         connected: true,
       });
     }
+    const resume =
+      this.waitingForReconnect && !this.playback && this.stage.length;
+    this.waitingForReconnect = false;
+    this.checkpoint();
     this.publish();
+    if (resume) void this.advance().catch(() => {});
   }
   updateAppearance(id: string, appearance: CatAppearance) {
     const user = this.users.get(id);
@@ -314,12 +431,20 @@ export class Room {
     const user = this.users.get(id);
     if (!user) return;
     user.connected = false;
+    const now = Date.now();
+    this.reserveMember(id, now + this.disconnectGraceMs, now);
+    this.checkpoint();
     this.publish();
+  }
+  private get disconnectGraceMs() {
+    return this.options.disconnectGraceMs ?? 30_000;
+  }
+  private reserveMember(id: string, until: number, now: number) {
     const timer = setTimeout(() => {
       this.grace.delete(id);
       if (!this.connections.has(id)) void this.removeMember(id);
-    }, this.options.disconnectGraceMs ?? 30_000);
-    this.grace.set(id, timer);
+    }, until - now);
+    this.grace.set(id, { until, timer });
   }
   private user(id: string, connectionId?: string) {
     const user = this.users.get(id);
@@ -431,7 +556,10 @@ export class Room {
       this.positionStage();
       this.stageDirty = true;
       if (!this.playback && !this.resolving) await this.advance();
-      else this.publish();
+      else {
+        this.checkpoint();
+        this.publish();
+      }
     });
   }
   leave(id: string, connectionId?: string, payload: unknown = {}) {
@@ -442,7 +570,10 @@ export class Room {
       const current = this.playback?.djId === id || this.pendingDj === id;
       this.removeStage(id);
       if (current) await this.advance();
-      else this.publish();
+      else {
+        this.checkpoint();
+        this.publish();
+      }
     });
   }
   private positionStage() {
@@ -517,6 +648,7 @@ export class Room {
       if (target <= Math.max(0, now - playback.startedAt)) return;
       this.playback = { ...playback, startedAt: now - target };
       this.schedulePlaybackEnd(this.playback, playback.durationMs - target);
+      this.checkpoint();
       this.publishPlayback();
     });
   }
@@ -538,8 +670,14 @@ export class Room {
     if (this.playback && this.stage[0] === this.playback.djId)
       this.rotateStage();
     this.playback = null;
-    this.resolving = true;
+    this.resolving = !this.waitingForReconnect;
     this.notice = null;
+    // Preserve the next DJ and retire the old round before resolving the URL.
+    this.checkpoint();
+    if (this.waitingForReconnect) {
+      this.publishPlayback();
+      return;
+    }
     // Cached resolutions finish before the next turn; only announce a loading
     // state when resolution actually remains pending.
     const pendingNotification = setTimeout(() => {
@@ -559,8 +697,10 @@ export class Room {
         const track = this.db.firstTrack(id, slot);
         if (!track) {
           this.removeStage(id);
+          this.checkpoint();
           continue;
         }
+        let beforeRevision: number;
         try {
           this.pendingDj = id;
           const result = await this.resolve(track);
@@ -574,20 +714,9 @@ export class Room {
             result.durationMs <= 0
           )
             throw new Error('无效播放地址');
-          const beforeRevision = this.db.playlistOrder(id).revision;
+          beforeRevision = this.db.playlistOrder(id).revision;
           const startedAt = Date.now();
-          this.db.rotateTrack(
-            id,
-            track.id,
-            this.options.roomId
-              ? { roomId: this.options.roomId, startedAt }
-              : undefined,
-            slot,
-          );
-          const order = this.db.playlistOrder(id);
-          if (order.slot === slot && order.revision !== beforeRevision)
-            this.onPlaylistChange(id, order);
-          this.playback = {
+          const playback: Playback = {
             roundId: randomUUID(),
             track,
             djId: id,
@@ -606,8 +735,18 @@ export class Room {
                 }
               : {}),
           };
-          this.resolving = false;
-          this.schedulePlaybackEnd(this.playback, result.durationMs);
+          const roomId = this.options.roomId;
+          const checkpoint = roomId
+            ? this.captureCheckpoint(startedAt, playback)!
+            : undefined;
+          this.db.rotateTrack(
+            id,
+            track.id,
+            roomId ? { roomId, startedAt, checkpoint } : undefined,
+            slot,
+          );
+          if (checkpoint) this.lastCheckpoint = JSON.stringify(checkpoint);
+          this.playback = playback;
         } catch (error) {
           if (this.closed || generation !== this.resolutionGeneration) return;
           this.pendingDj = null;
@@ -616,8 +755,14 @@ export class Room {
             title: track.title,
           });
           this.rotateStage();
+          this.checkpoint();
           continue;
         }
+        this.resolving = false;
+        this.schedulePlaybackEnd(this.playback, this.playback.durationMs);
+        const order = this.db.playlistOrder(id);
+        if (order.slot === slot && order.revision !== beforeRevision)
+          this.onPlaylistChange(id, order);
         this.publishPlayback();
         return;
       }
@@ -665,8 +810,8 @@ export class Room {
     clearTimeout(this.timer);
     this.emoteTimes.clear();
     this.stageReturnPositions.clear();
-    for (const timer of [...this.grace.values(), ...this.pendingTimers])
-      clearTimeout(timer);
+    for (const { timer } of this.grace.values()) clearTimeout(timer);
+    for (const timer of this.pendingTimers) clearTimeout(timer);
     this.grace.clear();
     this.pendingTimers.clear();
   }

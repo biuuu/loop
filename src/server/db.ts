@@ -23,6 +23,11 @@ import {
   type CatAppearance,
 } from '../shared/appearance.js';
 import { ENVIRONMENTS } from '../shared/environments.js';
+import {
+  readRoomCheckpoint,
+  ROOM_CHECKPOINT_MAX_AGE_MS,
+  type RoomCheckpoint,
+} from './room-checkpoint.js';
 
 const BASELINE_VERSION = 11;
 const ROOM_COLUMNS = `r.id,n.number,r.owner_user_id AS ownerId,g.nickname AS ownerNickname,
@@ -451,19 +456,67 @@ export class Store {
   rotateTrack(
     id: string,
     trackId: string,
-    playback?: { roomId: string; startedAt: number },
+    playback?: {
+      roomId: string;
+      startedAt: number;
+      checkpoint?: RoomCheckpoint;
+    },
     slot?: number,
   ): Track[] {
     return this.editTracks(id, slot, (tracks) => {
-      if (playback)
+      if (playback) {
         this.sql
           .prepare('UPDATE rooms SET last_played_at=? WHERE id=?')
           .run(playback.startedAt, playback.roomId);
+        if (playback.checkpoint)
+          this.saveRoomCheckpoint(playback.roomId, playback.checkpoint);
+      }
       const played = tracks.find((track) => track.id === trackId);
       return played
         ? [...tracks.filter((track) => track.id !== trackId), played]
         : tracks;
     });
+  }
+  saveRoomCheckpoint(roomId: string, checkpoint: RoomCheckpoint | null) {
+    if (!checkpoint) {
+      this.sql
+        .prepare('DELETE FROM room_checkpoints WHERE room_id=?')
+        .run(roomId);
+      return;
+    }
+    const { savedAt, ...state } = checkpoint;
+    this.sql
+      .prepare(
+        `INSERT INTO room_checkpoints (room_id,saved_at,state_json) VALUES (?,?,?)
+         ON CONFLICT(room_id) DO UPDATE SET saved_at=excluded.saved_at,state_json=excluded.state_json`,
+      )
+      .run(roomId, savedAt, JSON.stringify(state));
+  }
+  roomCheckpoints(now: number): Array<{
+    roomId: string;
+    checkpoint: RoomCheckpoint;
+  }> {
+    return this.sql
+      .transaction(() => {
+        this.sql
+          .prepare(
+            'DELETE FROM room_checkpoints WHERE saved_at<? OR saved_at>?',
+          )
+          .run(now - ROOM_CHECKPOINT_MAX_AGE_MS, now);
+        const rows = this.sql
+          .prepare(
+            `SELECT room_id AS roomId,saved_at AS savedAt,state_json AS state
+             FROM room_checkpoints ORDER BY saved_at DESC,room_id`,
+          )
+          .all() as Array<{ roomId: string; savedAt: number; state: string }>;
+        return rows.flatMap(({ roomId, savedAt, state }) => {
+          const checkpoint = readRoomCheckpoint(savedAt, state);
+          if (checkpoint) return [{ roomId, checkpoint }];
+          this.saveRoomCheckpoint(roomId, null);
+          return [];
+        });
+      })
+      .immediate();
   }
   room(id: string): RoomInfo | null {
     const row = this.sql

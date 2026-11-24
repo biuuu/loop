@@ -11,6 +11,7 @@ import {
 } from '../shared/contracts.js';
 import { HttpError, publicGuest } from './auth.js';
 import type { Store } from './db.js';
+import { ROOM_CHECKPOINT_INTERVAL_MS } from './room-checkpoint.js';
 import { Room } from './room.js';
 import type { EmoteCatalog } from './emote-catalog.js';
 
@@ -19,6 +20,7 @@ const channel = (id: string) => `room:${id}`;
 export class RoomRegistry {
   private live = new Map<string, Room>();
   private active = new Map<string, Active>();
+  private checkpointTimer?: ReturnType<typeof setInterval>;
   readonly singleRoom?: Room;
   constructor(
     private db: Store,
@@ -31,9 +33,28 @@ export class RoomRegistry {
       emoteCatalog?: EmoteCatalog;
     } = {},
   ) {
-    if (options.singleRoom) this.singleRoom = this.runtime('__test__');
+    if (options.singleRoom) {
+      this.singleRoom = this.runtime('__test__');
+      return;
+    }
+    const restored = new Set<string>();
+    for (const { roomId, checkpoint } of db.roomCheckpoints(Date.now())) {
+      const info = db.room(roomId);
+      if (!info) {
+        db.saveRoomCheckpoint(roomId, null);
+        continue;
+      }
+      const members = checkpoint.members.filter(({ id }) => !restored.has(id));
+      const room = this.runtime(roomId, info.stageCapacity);
+      room.restoreCheckpoint({ ...checkpoint, members });
+      for (const { id } of members) if (room.hasMember(id)) restored.add(id);
+    }
+    this.checkpointTimer = setInterval(() => {
+      for (const room of this.live.values()) room.checkpoint();
+    }, ROOM_CHECKPOINT_INTERVAL_MS);
+    this.checkpointTimer.unref();
   }
-  private runtime(id: string) {
+  private runtime(id: string, stageCapacity?: number) {
     let room = this.live.get(id);
     if (room) return room;
     room = new Room(
@@ -42,7 +63,10 @@ export class RoomRegistry {
       {
         ...this.options,
         roomId: id === '__test__' ? undefined : id,
-        stageCapacity: id === '__test__' ? 6 : this.info(id).stageCapacity,
+        stageCapacity:
+          id === '__test__'
+            ? 6
+            : (stageCapacity ?? this.info(id).stageCapacity),
       },
       this.options.emoteCatalog,
     );
@@ -145,15 +169,16 @@ export class RoomRegistry {
       const info = this.info(id);
       if (this.db.banned(id, userId))
         throw new HttpError(403, '你已被禁止进入此房间');
-      const existing = this.live
-        .get(id)
-        ?.snapshot()
-        .users.some((user) => user.id === userId);
+      const existing = this.live.get(id)?.hasMember(userId);
       if (info.joinPolicy === 'closed' && info.ownerId !== userId && !existing)
         throw new HttpError(403, '房主已暂停新成员进入');
     }
     if (this.live.get(id)?.canConnect(userId) === false)
       throw new HttpError(409, '房间已满');
+  }
+  private memberRoom(userId: string) {
+    for (const [id, room] of this.live) if (room.hasMember(userId)) return id;
+    return undefined;
   }
   connect(id: string, guest: Guest, socket: Socket, tokenHash: string) {
     // No await between admission and commit. A failed admission preserves the previous room.
@@ -162,11 +187,14 @@ export class RoomRegistry {
       previous = this.active.get(guest.id);
     if (previous && previous.roomId !== id) {
       this.active.delete(guest.id);
-      void this.live
-        .get(previous.roomId)
-        ?.removeMember(guest.id, previous.socket.id);
+      void this.live.get(previous.roomId)?.removeMember(guest.id);
       previous.socket.emit('room:replaced');
       previous.socket.disconnect(true);
+    } else if (!previous) {
+      // A restored member may reserve a place before it has a socket entry.
+      const previousRoom = this.memberRoom(guest.id);
+      if (previousRoom && previousRoom !== id)
+        void this.live.get(previousRoom)?.removeMember(guest.id);
     }
     this.active.set(guest.id, { roomId: id, socket, tokenHash });
     socket.join(channel(id));
@@ -260,8 +288,9 @@ export class RoomRegistry {
   }
   revoke(userId: string, tokenHash?: string) {
     const current = this.active.get(userId);
-    if (current && (!tokenHash || current.tokenHash === tokenHash))
-      this.remove(current.roomId, userId, '账号会话已结束，请重新登录');
+    if (tokenHash && current?.tokenHash !== tokenHash) return;
+    const id = current?.roomId ?? this.memberRoom(userId);
+    if (id) this.remove(id, userId, '账号会话已结束，请重新登录');
   }
   updateAppearance(userId: string, appearance: CatAppearance) {
     const current = this.active.get(userId);
@@ -289,6 +318,9 @@ export class RoomRegistry {
     return this.live.size;
   }
   close() {
+    clearInterval(this.checkpointTimer);
+    if (!this.options.singleRoom)
+      for (const room of this.live.values()) room.checkpoint();
     for (const room of this.live.values()) room.close();
     this.live.clear();
     this.active.clear();

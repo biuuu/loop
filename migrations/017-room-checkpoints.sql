@@ -1,0 +1,5 @@
+CREATE TABLE room_checkpoints (
+  room_id TEXT PRIMARY KEY NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  saved_at INTEGER NOT NULL,
+  state_json TEXT NOT NULL
+) STRICT;

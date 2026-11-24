@@ -56,7 +56,7 @@ test('version 16 adds empty descriptions to existing rooms and saves edits acros
     db.close();
     db = undefined;
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 16);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 17);
     assert.deepEqual(db.roomDetails(createdRoom.id), {
       ...createdRoom,
       description: '',
