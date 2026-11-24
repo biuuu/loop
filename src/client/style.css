@@ -1551,13 +1551,6 @@ h3 {
   margin: 5px 0;
   font-size: 13px;
 }
-.room-card .room-card-track {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  padding: 18px 0;
-  color: var(--ink);
-}
 .room-card footer {
   justify-content: space-between;
   font-size: 12px;
@@ -1770,7 +1763,7 @@ select {
   align-items: stretch;
   gap: 14px;
   min-width: 0;
-  min-height: 255px;
+  min-height: 218px;
   padding: 18px;
   border-color: #e6dfd0;
   border-radius: 20px;
@@ -1788,6 +1781,14 @@ select {
   transform: translateY(-2px);
   border-color: #b8c5aa;
   box-shadow: 0 11px 26px #65583f18;
+}
+.room-card-empty {
+  background: #f8f6ee;
+  box-shadow: none;
+}
+.room-card-playing {
+  border-color: #d3ddc9;
+  background: #fcfdf7;
 }
 .room-card-blocked {
   border-color: #e4e1d8;
@@ -1809,7 +1810,7 @@ select {
 }
 .room-card-cover {
   position: relative;
-  width: 88px;
+  width: 76px;
   aspect-ratio: 1;
   flex: none;
   overflow: hidden;
@@ -1818,6 +1819,10 @@ select {
 }
 .room-card-cover .room-cover {
   transition: transform 0.35s ease;
+}
+.room-card-empty .room-card-cover .room-cover {
+  filter: saturate(0.7);
+  opacity: 0.82;
 }
 .room-card-song-art {
   display: block;
@@ -1879,50 +1884,52 @@ select {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.room-card .room-card-track {
+.room-card-activity {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
-  min-height: 64px;
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: #f5f3e9;
-  overflow: visible;
-  white-space: normal;
-  text-overflow: clip;
+  min-height: 38px;
+  padding-inline: 2px;
+  color: #757567;
 }
-.room-card-track > svg {
-  width: 16px;
-  height: 16px;
-  margin-top: 3px;
+.room-card-playing .room-card-activity {
+  padding: 6px 10px;
+  border-radius: 9px;
+  background: #eaf0e3;
+  color: #506749;
+}
+.room-card-occupied .room-card-activity {
+  color: #536a4e;
+}
+.room-card-occupied .room-card-activity::before {
+  width: 7px;
+  height: 7px;
   flex: none;
-  color: #a9ab9b;
+  border-radius: 50%;
+  background: #78946d;
+  content: '';
 }
-.room-card-track.is-playing > svg {
-  color: var(--sage);
+.room-card-activity > svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
 }
-.room-card-track > div {
-  min-width: 0;
+.room-card-activity-label {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
-.room-card-track small {
-  display: block;
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.35;
-}
-.room-card-track strong {
-  display: -webkit-box;
+.room-card-activity strong {
   min-width: 0;
   overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
   color: var(--ink);
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 600;
   line-height: 1.45;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .room-card footer {
   justify-content: space-between;
@@ -1942,30 +1949,14 @@ select {
   height: 13px;
 }
 .room-card-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #566d50;
+  color: #757567;
   white-space: nowrap;
-}
-.room-card-status::before {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #829875;
-  content: '';
 }
 .room-card-status.is-closed {
   color: #946e56;
 }
-.room-card-status.is-closed::before {
-  background: #bb9271;
-}
 .room-card-status.is-full {
-  color: #8b8174;
-}
-.room-card-status.is-full::before {
-  background: #aa9d8e;
+  color: #76695a;
 }
 .room-card-skeleton {
   pointer-events: none;
@@ -1986,9 +1977,11 @@ select {
 .room-card-skeleton-copy .skeleton-line:last-child {
   margin-bottom: 0;
 }
-.room-card-skeleton-track {
-  height: 64px;
-  border-radius: 12px;
+.room-card-skeleton-activity {
+  width: 42%;
+  height: 16px;
+  margin-block: 11px;
+  border-radius: 8px;
   background: #f1efe4;
 }
 .room-card-skeleton-footer {
@@ -2064,7 +2057,7 @@ select {
     padding: 15px;
   }
   .room-card-cover {
-    width: 82px;
+    width: 70px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

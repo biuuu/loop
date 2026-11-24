@@ -308,6 +308,9 @@ onBeforeUnmount(() => {
           'room-card-blocked': directoryRoomAccess(item, room.guest?.id)
             .blocked,
           'room-card-busy': room.entering,
+          'room-card-playing': !!item.trackTitle,
+          'room-card-occupied': !item.trackTitle && item.online > 0,
+          'room-card-empty': !item.trackTitle && item.online === 0,
         }"
         :href="
           directoryRoomAccess(item, room.guest?.id).blocked || room.entering
@@ -351,17 +354,15 @@ onBeforeUnmount(() => {
             <p class="room-card-owner">房主 {{ item.ownerNickname }}</p>
           </div>
         </div>
-        <div
-          class="room-card-track"
-          :class="{ 'is-playing': !!item.trackTitle }"
-        >
-          <Music2 aria-hidden="true" />
-          <div>
-            <small>{{ item.trackTitle ? '正在播放' : '此刻安静' }}</small
-            ><strong :title="item.trackTitle || undefined">{{
-              item.trackTitle || '等一首喜欢的歌'
-            }}</strong>
-          </div>
+        <div class="room-card-activity">
+          <template v-if="item.trackTitle">
+            <Music2 aria-hidden="true" />
+            <span class="room-card-activity-label">播放中</span>
+            <strong :title="item.trackTitle">{{ item.trackTitle }}</strong>
+          </template>
+          <span v-else class="room-card-activity-label">
+            {{ item.online > 0 ? '有人在线' : '空房间' }}
+          </span>
         </div>
         <footer>
           <span class="room-card-population">
@@ -396,7 +397,7 @@ onBeforeUnmount(() => {
             <div class="skeleton-line short"></div>
           </div>
         </div>
-        <div class="room-card-skeleton-track"></div>
+        <div class="room-card-skeleton-activity"></div>
         <div class="room-card-skeleton-footer"></div>
       </div>
     </div>
