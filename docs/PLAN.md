@@ -47,6 +47,7 @@
 - Use the stage plus button or a vacant part of the stage to join the end of the stage queue when the playlist has songs. Clicking your own cat opens actions at the pointer position: change coat/pattern, plus direct leave-stage while seated. Stage occupants clicking the floor do nothing; remove the floor leave confirmation. Audience cats move freely.
 - Keep the coat/pattern action on the user's cat menu; omit it from the room members panel.
 - Put member management in 客厅成员. The owner can open a three-dot menu on another member to ban, kick, or remove them from the stage if seated. Show the room's bans and unblock actions to the owner there. Remove the stage explanation, own stage join/leave buttons and sound settings from that panel.
+- Size member and ban entries to their contents and wrap them within the panel. Truncate long names when space runs out, keeping the management controls visible.
 - Audience cats can also move with WASD and arrow keys. Keep text entry, focused controls and modal panels usable without triggering room movement.
 - Holding a movement key should walk continuously with advancing walk frames; releasing it stops the cat. Keyboard movement must not depend on operating-system key repeat timing.
 - Every local movement, turn and stop responds immediately, including rapid keys and clicks. Limit only network reports and synchronize the final local position/facing. Other participants must see timely stops and smooth position updates; old server snapshots must not pull the local cat backward.

@@ -275,8 +275,18 @@ watch(
 );
 watch(
   [
-    () => members.value.findIndex((member) => member.id === selectedId.value),
-    () => selectedMember.value?.seat != null,
+    // A label or status change can wrap preceding rows and shift the trigger.
+    () =>
+      selectedId.value &&
+      JSON.stringify(
+        members.value.map(({ id, nickname, connected, seat }) => [
+          id,
+          nickname,
+          connected,
+          seat,
+        ]),
+      ),
+    () => selectedId.value && room.snapshot?.playback?.djId,
     feedback,
     pending,
   ],
@@ -479,8 +489,9 @@ onBeforeUnmount(() => {
   color: #943f33;
 }
 .room-member-list {
-  display: grid;
-  gap: 5px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -491,6 +502,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   min-height: 42px;
   min-width: 0;
+  max-width: 100%;
   padding: 2px 6px 2px 12px;
   border-radius: 9px;
   background: #efeee3;
@@ -522,8 +534,8 @@ onBeforeUnmount(() => {
   font-size: 11px;
 }
 .member-status {
-  margin-left: auto;
   padding-right: 5px;
+  white-space: nowrap;
 }
 .member-actions-trigger {
   flex: 0 0 38px;
@@ -598,7 +610,6 @@ button[aria-disabled='true'] {
 }
 .member-secondary-button {
   flex-shrink: 0;
-  margin-left: auto;
   padding: 4px 9px;
   min-height: 34px;
   font-size: 12px;
