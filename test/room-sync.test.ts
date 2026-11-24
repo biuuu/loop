@@ -232,7 +232,10 @@ class FakeAudio extends EventTarget {
   src = '';
   error = null;
   playCalls = 0;
-  load() {}
+  loadCalls = 0;
+  load() {
+    this.loadCalls++;
+  }
   pause() {
     this.paused = true;
   }
@@ -359,6 +362,45 @@ test('audio metadata and connection changes do not request sync; foreground rest
     unmount();
     room.close();
   }
+});
+
+test('audio immediately follows a same-round seek and keeps its loaded source', async (context) => {
+  const now = 100_000;
+  context.mock.method(Date, 'now', () => now);
+  setActivePinia(createPinia());
+  const room = useRoom();
+  room.snapshot = snapshot();
+  const sync = context.mock.method(room, 'sync', () => {});
+  const { audio, player } = mountAudio(context);
+  await nextTick();
+  assert.equal(audio.currentTime, 2);
+  const { loadCalls, playCalls, src } = audio;
+
+  const update = (positionMs: number) => {
+    const current = room.snapshot!;
+    room.snapshot = {
+      ...current,
+      revision: current.revision + 1,
+      playback: { ...current.playback!, startedAt: now - positionMs },
+    };
+  };
+  update(24_000);
+  assert.equal(audio.currentTime, 24);
+  assert.equal(player.progress.value, 0.4);
+  assert.equal(audio.src, src);
+  assert.equal(audio.loadCalls, loadCalls);
+  assert.equal(audio.playCalls, playCalls);
+  assert.equal(sync.mock.callCount(), 0);
+
+  audio.readyState = 0;
+  update(48_000);
+  assert.equal(audio.currentTime, 24);
+  assert.equal(player.progress.value, 0.8);
+  audio.readyState = 1;
+  audio.dispatchEvent(new Event('loadedmetadata'));
+  assert.equal(audio.currentTime, 48);
+  assert.equal(audio.loadCalls, loadCalls);
+  room.close();
 });
 
 test('using device volume bypasses a saved mute and preserves the desktop preference', (context) => {

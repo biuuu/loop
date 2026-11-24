@@ -224,6 +224,7 @@ export interface Playback {
   track: Track;
   djId: string;
   url: string;
+  // Timeline origin in server time. Seeking rebases it within the same round.
   startedAt: number;
   durationMs: number;
   isTrial?: true;
@@ -295,6 +296,10 @@ export interface ClientEvents {
   'stage:leave': (payload: StageLeave, ack: (result: Ack) => void) => void;
   'playback:skip': (
     payload: { roundId: string },
+    ack: (result: Ack) => void,
+  ) => void;
+  'playback:seek': (
+    payload: { roundId: string; positionMs: number },
     ack: (result: Ack) => void,
   ) => void;
   'room:sync': (ack: (snapshot: RoomSnapshot) => void) => void;

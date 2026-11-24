@@ -45,13 +45,15 @@ watch(
     () => playback.value?.track.id,
     () => playback.value?.roundId,
     data,
+    () => playback.value?.startedAt,
   ],
-  ([index, id, round, lyrics], previous) => {
+  ([index, id, round, lyrics, startedAt], previous) => {
     animate.value = !!(
       lyrics &&
       lyrics === previous?.[3] &&
       id === previous?.[1] &&
       round === previous?.[2] &&
+      startedAt === previous?.[4] &&
       previous?.[0] !== undefined &&
       index === previous[0] + 1
     );

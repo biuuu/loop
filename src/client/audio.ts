@@ -57,11 +57,17 @@ export function useAudio(useDeviceVolume = () => false) {
     const p = room.snapshot?.playback;
     return p ? Math.max(0, (Date.now() + room.offset - p.startedAt) / 1000) : 0;
   }
-  function seek() {
+  function updateProgress() {
+    const playback = room.snapshot?.playback;
+    progress.value = playback
+      ? Math.min(1, (target() * 1000) / playback.durationMs)
+      : 0;
+  }
+  function seek(tolerance = 0.5) {
     const p = room.snapshot?.playback;
     if (p && audio.readyState >= 1 && Number.isFinite(audio.duration)) {
       const time = Math.min(target(), Math.max(0, audio.duration - 0.05));
-      if (Math.abs(audio.currentTime - time) > 0.5) {
+      if (Math.abs(audio.currentTime - time) > tolerance) {
         try {
           audio.currentTime = time;
         } catch {
@@ -160,8 +166,17 @@ export function useAudio(useDeviceVolume = () => false) {
   for (const event of gestureEvents)
     document.addEventListener(event, gesture, true);
   watch(
-    () => `${room.roomGeneration}:${room.snapshot?.playback?.roundId ?? ''}`,
-    () => {
+    [
+      () => room.roomGeneration,
+      () => room.snapshot?.playback?.roundId,
+      () => room.snapshot?.playback?.startedAt,
+    ],
+    ([roomGeneration, roundId], [previousGeneration, previousRound]) => {
+      updateProgress();
+      if (roomGeneration === previousGeneration && roundId === previousRound) {
+        seek(0);
+        return;
+      }
       generation++;
       starting = false;
       failedRound = '';
@@ -195,14 +210,15 @@ export function useAudio(useDeviceVolume = () => false) {
   function restore() {
     if (!document.hidden) {
       room.sync();
+      updateProgress();
       seek();
       void start();
     }
   }
   document.addEventListener('visibilitychange', restore);
-  const timer = setInterval(() => {
+  const progressTimer = setInterval(updateProgress, 250);
+  const syncTimer = setInterval(() => {
     const p = room.snapshot?.playback;
-    progress.value = p ? Math.min(1, (target() * 1000) / p.durationMs) : 0;
     if (p && enabled.value && !failedRound && !document.hidden) {
       seek();
       if (audio.paused && !audio.ended) void start();
@@ -219,7 +235,8 @@ export function useAudio(useDeviceVolume = () => false) {
   }
   onBeforeUnmount(() => {
     generation++;
-    clearInterval(timer);
+    clearInterval(progressTimer);
+    clearInterval(syncTimer);
     clearTimeout(scheduled);
     audio.pause();
     audio.removeAttribute('src');

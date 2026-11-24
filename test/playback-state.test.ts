@@ -267,12 +267,25 @@ test('playback revision fences stale deltas, full snapshots and a held sync ackn
   if (!f) return;
   f.peers[0]!.emit('room:snapshot', snapshot(2));
   await waitFor(() => f.room.snapshot?.revision === 2);
-  f.peers[0]!.emit('playback:updated', playbackState(4));
+  const initial = playbackState(4);
+  f.peers[0]!.emit('playback:updated', initial);
   await waitFor(() => f.room.snapshot?.revision === 4);
+  const seek = {
+    ...initial,
+    revision: 5,
+    playback: {
+      ...initial.playback!,
+      startedAt: initial.playback!.startedAt - 15_000,
+    },
+  };
+  f.peers[0]!.emit('playback:updated', seek);
+  await waitFor(() => f.room.snapshot?.revision === 5);
+  assert.deepEqual(f.room.snapshot!.playback, seek.playback);
   const current = f.room.snapshot;
-  f.peers[0]!.emit('playback:updated', playbackState(3));
+  f.peers[0]!.emit('playback:updated', initial);
   f.peers[0]!.emit('room:snapshot', {
-    ...snapshot(3),
+    ...snapshot(4),
+    playback: initial.playback,
     users: [],
     stage: [],
   });
@@ -281,16 +294,16 @@ test('playback revision fences stale deltas, full snapshots and a held sync ackn
   assert.equal(f.room.snapshot, current);
 
   f.peers[0]!.emit('playback:updated', {
-    ...playbackState(4),
+    ...seek,
     notice: 'same revision',
   });
   await waitFor(() => f.room.snapshot?.notice === 'same revision');
   f.peers[0]!.emit('room:snapshot', {
-    ...snapshot(5),
+    ...snapshot(6),
     stage: [],
-    users: snapshot(5).users.slice(0, 1),
+    users: snapshot(6).users.slice(0, 1),
   });
-  await waitFor(() => f.room.snapshot?.revision === 5);
+  await waitFor(() => f.room.snapshot?.revision === 6);
   assert.equal(f.room.snapshot!.playback, null);
   assert.equal(f.room.snapshot!.users.length, 1);
   assert.deepEqual(f.room.snapshot!.stage, []);

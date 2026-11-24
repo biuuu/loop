@@ -6,6 +6,7 @@ import {
   onMounted,
   onBeforeUnmount,
   ref,
+  shallowRef,
   watch,
 } from 'vue';
 import { createKeyboardMovement, movementPosition } from './keyboard-movement';
@@ -90,6 +91,32 @@ const searched = ref(false);
 let searchVersion = 0;
 const operation = ref(false);
 const playback = computed(() => room.snapshot?.playback);
+const duration = computed(() => playback.value?.durationMs ?? 0);
+const elapsed = computed(() => duration.value * progress.value);
+const seekKey = computed(() =>
+  room.canSeek ? `${room.roomGeneration}:${playback.value?.roundId}` : '',
+);
+const seekPreview = ref<number | null>(null);
+const pendingSeek = shallowRef<{ position: number } | null>(null);
+const shownPosition = computed(() =>
+  Math.min(
+    duration.value,
+    Math.max(
+      elapsed.value,
+      seekPreview.value ?? 0,
+      pendingSeek.value?.position ?? 0,
+    ),
+  ),
+);
+const seekValue = computed(() => Math.floor(shownPosition.value));
+watch(
+  seekKey,
+  () => {
+    seekPreview.value = null;
+    pendingSeek.value = null;
+  },
+  { flush: 'sync' },
+);
 const canSkip = computed(() => {
   const guestId = room.guest?.id;
   return !!(
@@ -244,6 +271,71 @@ async function search() {
 }
 function time(ms: number) {
   return `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
+}
+function activeSeekInput(event: Event) {
+  const input = event.currentTarget as HTMLInputElement;
+  return seekKey.value && input.dataset.seekKey === seekKey.value
+    ? input
+    : null;
+}
+function previewSeek(event: Event) {
+  const input = activeSeekInput(event);
+  if (!input) return;
+  seekPreview.value = input.valueAsNumber;
+  if (input.valueAsNumber < seekValue.value)
+    input.valueAsNumber = seekValue.value;
+}
+function resetSeekPreview(event: Event) {
+  const input = activeSeekInput(event);
+  if (!input) return;
+  seekPreview.value = null;
+  input.valueAsNumber = seekValue.value;
+}
+async function commitSeek(value: number) {
+  const current = playback.value;
+  const position = Math.min(value, duration.value);
+  if (
+    !current ||
+    !room.canSeek ||
+    position <= Math.max(elapsed.value, pendingSeek.value?.position ?? 0)
+  )
+    return;
+  const request = { position };
+  pendingSeek.value = request;
+  try {
+    await room.seek(current.roundId, position);
+  } finally {
+    if (pendingSeek.value === request) pendingSeek.value = null;
+  }
+}
+function seekFromRange(event: Event) {
+  const input = activeSeekInput(event);
+  if (!input) return;
+  void commitSeek(input.valueAsNumber);
+  resetSeekPreview(event);
+}
+function seekFromKey(event: KeyboardEvent) {
+  if (!activeSeekInput(event)) return;
+  switch (event.key) {
+    case 'ArrowLeft':
+    case 'ArrowDown':
+    case 'PageDown':
+    case 'Home':
+      event.preventDefault();
+      return;
+    case 'ArrowRight':
+    case 'ArrowUp':
+    case 'PageUp':
+    case 'End': {
+      event.preventDefault();
+      if (event.repeat) return;
+      const step = event.key === 'PageUp' ? duration.value / 10 : 5000;
+      const position =
+        event.key === 'End' ? duration.value : shownPosition.value + step;
+      seekPreview.value = null;
+      void commitSeek(position);
+    }
+  }
 }
 function walk(dx: number, dy: number) {
   const me = room.me;
@@ -459,8 +551,26 @@ onBeforeUnmount(() => {
               }}<span v-if="dj"> · {{ dj.nickname }} 的回合</span>
             </p>
             <div class="timeline">
-              <span>{{ time((playback?.durationMs || 0) * progress) }}</span>
+              <span>{{ time(shownPosition) }}</span>
+              <input
+                v-if="seekKey"
+                :key="seekKey"
+                :data-seek-key="seekKey"
+                class="timeline-seek"
+                type="range"
+                min="0"
+                :max="Math.ceil(duration)"
+                :value="seekValue"
+                aria-label="向前调整歌曲进度"
+                :aria-valuetext="`${time(shownPosition)}，总时长 ${time(duration)}`"
+                @input="previewSeek"
+                @change="seekFromRange"
+                @keydown="seekFromKey"
+                @pointercancel="resetSeekPreview"
+                @blur="resetSeekPreview"
+              />
               <div
+                v-else
                 role="progressbar"
                 aria-label="歌曲进度"
                 :aria-valuenow="Math.round(progress * 100)"
@@ -469,7 +579,7 @@ onBeforeUnmount(() => {
               >
                 <i :style="{ width: `${progress * 100}%` }" />
               </div>
-              <span>{{ time(playback?.durationMs || 0) }}</span>
+              <span>{{ time(duration) }}</span>
             </div>
           </div>
           <div

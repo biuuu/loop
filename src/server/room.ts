@@ -68,6 +68,9 @@ function playbackFailureNotice(failures: FailedAttempt[]) {
 const spawnSeatXs = stageSeatXs(STAGE_CAPACITY);
 const SPAWN_ATTEMPTS = 24;
 const SPAWN_SEPARATION = 32;
+const seekSchema = z
+  .object({ roundId: z.string().uuid(), positionMs: z.number().nonnegative() })
+  .strict();
 export class Room {
   private users = new Map<string, Participant>();
   private connections = new Map<string, Connection>();
@@ -498,6 +501,36 @@ export class Room {
       await this.advance();
     });
   }
+  seek(id: string, input: unknown, connectionId?: string) {
+    return this.enqueue(() => {
+      this.user(id, connectionId);
+      const { roundId, positionMs } = seekSchema.parse(input);
+      const playback = this.playback;
+      if (playback?.djId !== id || playback.roundId !== roundId)
+        throw new Error('只能调整自己当前歌曲的播放进度');
+      if (positionMs > playback.durationMs) throw new Error('播放进度超出范围');
+      const target =
+        positionMs === playback.durationMs
+          ? Math.max(0, playback.durationMs - 1)
+          : positionMs;
+      const now = Date.now();
+      if (target <= Math.max(0, now - playback.startedAt)) return;
+      this.playback = { ...playback, startedAt: now - target };
+      this.schedulePlaybackEnd(this.playback, playback.durationMs - target);
+      this.publishPlayback();
+    });
+  }
+  private schedulePlaybackEnd(playback: Playback, remainingMs: number) {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(
+      () => {
+        void this.enqueue(async () => {
+          if (this.playback === playback) await this.advance();
+        }).catch(() => {});
+      },
+      Math.min(Math.ceil(remainingMs), 2_147_483_647),
+    );
+  }
   private async advance() {
     this.invalidateResolution();
     const generation = this.resolutionGeneration;
@@ -574,15 +607,7 @@ export class Room {
               : {}),
           };
           this.resolving = false;
-          const roundId = this.playback.roundId;
-          this.timer = setTimeout(
-            () => {
-              void this.enqueue(async () => {
-                if (this.playback?.roundId === roundId) await this.advance();
-              }).catch(() => {});
-            },
-            Math.min(result.durationMs, 2_147_483_647),
-          );
+          this.schedulePlaybackEnd(this.playback, result.durationMs);
         } catch (error) {
           if (this.closed || generation !== this.resolutionGeneration) return;
           this.pendingDj = null;

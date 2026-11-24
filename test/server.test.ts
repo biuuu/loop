@@ -15,6 +15,7 @@ import { io as connect } from 'socket.io-client';
 import { Store, hashToken } from '../src/server/db.js';
 import { createServer } from '../src/server/app.js';
 import type {
+  Ack,
   MusicService,
   PlaybackState,
   PlaylistState,
@@ -1665,6 +1666,115 @@ test('playlist rotation events reach only the current authenticated owner and ca
     assert.equal(room.snapshot().playback!.roundId, currentRound);
     await other.socket.timeout(1000).emitWithAck('room:sync');
     assert.equal(other.initial.length, 1);
+  } finally {
+    sockets.forEach((socket) => socket.disconnect());
+    await app.close();
+  }
+});
+test('a DJ seek broadcasts compact playback in the room and preserves playlist and directory data', async (context) => {
+  const { app, db, io, registry } = await createServer({
+    dbPath: ':memory:',
+    music,
+  });
+  try {
+    await app.listen({ port: 0, host: '127.0.0.1' });
+  } catch (error) {
+    await app.close();
+    if ((error as NodeJS.ErrnoException).code === 'EPERM') {
+      context.skip('Sandbox forbids TCP listeners');
+      return;
+    }
+    throw error;
+  }
+  const address = app.server.address();
+  assert.ok(address && typeof address !== 'string');
+  const url = `http://127.0.0.1:${address.port}`;
+  const sockets: ReturnType<typeof connect>[] = [];
+  try {
+    const owner = db.createGuest('Owner');
+    const dj = db.createGuest('DJ');
+    const { id: roomId } = db.createRoom(owner.guest.id, 'Room', 'cozy');
+    for (const id of ['1', '2']) db.add(dj.guest.id, track(id));
+    const open = async (token: string) => {
+      const socket = connect(url, {
+        auth: { roomId },
+        transports: ['websocket'],
+        extraHeaders: { cookie: `loop_guest=${token}` },
+        reconnection: false,
+      });
+      sockets.push(socket);
+      const events: Array<[string, unknown]> = [];
+      socket.onAny((event, payload) => events.push([event, payload]));
+      await new Promise<void>((resolve, reject) => {
+        socket.once('playlist:updated', () => resolve());
+        socket.once('connect_error', reject);
+      });
+      return { socket, events };
+    };
+    const observer = await open(owner.token);
+    const replaced = await open(dj.token);
+    const replacedSeek = io.sockets.sockets
+      .get(replaced.socket.id!)!
+      .listeners('playback:seek')[0]!;
+    assert.deepEqual(
+      await replaced.socket.timeout(1000).emitWithAck('stage:join', {}),
+      { ok: true },
+    );
+    const sender = await open(dj.token);
+    await observer.socket.timeout(1000).emitWithAck('room:sync');
+    const before = registry.snapshot(roomId);
+    const playlist = db.playlist(dj.guest.id);
+    const directory = db.roomsForDirectory();
+    assert.ok(directory[0]?.lastPlayedAt);
+    observer.events.length = 0;
+    sender.events.length = 0;
+    const payload = { roundId: before.playback!.roundId, positionMs: 20_000 };
+
+    const denied: Ack = await observer.socket
+      .timeout(1000)
+      .emitWithAck('playback:seek', payload);
+    assert.equal(denied.ok, false);
+    assert.match(denied.error!, /当前歌曲/);
+    const staleAck = await new Promise<Ack>((resolve) =>
+      replacedSeek(payload, resolve),
+    );
+    assert.equal(staleAck.ok, false);
+    assert.match(staleAck.error!, /替换/);
+    assert.equal(registry.snapshot(roomId).revision, before.revision);
+
+    assert.deepEqual(
+      await sender.socket.timeout(1000).emitWithAck('playback:seek', payload),
+      { ok: true },
+    );
+    await observer.socket.timeout(1000).emitWithAck('room:sync');
+    assert.deepEqual(observer.events, sender.events);
+    assert.deepEqual(
+      sender.events.map(([event]) => event),
+      ['playback:updated'],
+    );
+    const update = sender.events[0]![1] as PlaybackState;
+    const after = registry.snapshot(roomId);
+    assert.ok(
+      update.serverTime - after.playback!.startedAt >= payload.positionMs,
+    );
+    assert.deepEqual(update, {
+      roomId,
+      revision: before.revision + 1,
+      serverTime: update.serverTime,
+      playback: { ...before.playback!, startedAt: after.playback!.startedAt },
+      resolving: false,
+      notice: null,
+    });
+    assert.deepEqual(after.users, before.users);
+    assert.deepEqual(after.stage, before.stage);
+    assert.deepEqual(db.playlist(dj.guest.id), playlist);
+    assert.deepEqual(db.roomsForDirectory(), directory);
+    assert.deepEqual(
+      await observer.socket.timeout(1000).emitWithAck('playback:skip', {
+        roundId: payload.roundId,
+      }),
+      { ok: true },
+    );
   } finally {
     sockets.forEach((socket) => socket.disconnect());
     await app.close();

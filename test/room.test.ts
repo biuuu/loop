@@ -1258,6 +1258,136 @@ test('trial status propagates and playback advances at the preview duration', as
     close();
   }
 });
+test('only the current DJ can seek forward within the playable duration', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+  let resolves = 0;
+  const {
+    db,
+    room,
+    guests: [a, b, c],
+    close,
+  } = setup({
+    ...music,
+    resolve: async (item) => {
+      resolves++;
+      return item.id === '1'
+        ? {
+            url: 'https://example.com/trial.mp3',
+            durationMs: 30_000,
+            isTrial: true,
+            lyricOffsetMs: 60_000,
+          }
+        : music.resolve(item);
+    },
+  });
+  try {
+    db.add(a!.id, track('4'));
+    await room.join(a!.id);
+    await room.join(b!.id);
+    const before = room.snapshot();
+    const { roundId } = before.playback!;
+    const playlist = db.playlist(a!.id);
+    const playback = collectPlayback(room);
+    const snapshots = collectSnapshots(room);
+    const orders: PlaylistOrder[] = [];
+    room.onPlaylistChange = (_id, order) => orders.push(order);
+    const seek = { roundId, positionMs: 20_000.5 };
+
+    await assert.rejects(room.seek(b!.id, seek, b!.id), /当前歌曲/);
+    await assert.rejects(room.seek(c!.id, seek, c!.id), /当前歌曲/);
+    await assert.rejects(room.seek(a!.id, seek, 'replaced'), /重新连接/);
+    await assert.rejects(
+      room.seek(a!.id, { ...seek, positionMs: 30_001 }, a!.id),
+      /超出范围/,
+    );
+    for (const payload of [
+      null,
+      [roundId, 1000],
+      { roundId },
+      { ...seek, djId: a!.id },
+      { ...seek, positionMs: '1000' },
+      { ...seek, positionMs: null },
+      { ...seek, positionMs: -1 },
+      { ...seek, positionMs: NaN },
+      { ...seek, positionMs: Infinity },
+    ])
+      await assert.rejects(room.seek(a!.id, payload, a!.id));
+
+    context.mock.timers.tick(1_000);
+    for (const positionMs of [0, 999, 1_000])
+      await room.seek(a!.id, { roundId, positionMs }, a!.id);
+    assert.equal(room.snapshot().revision, before.revision);
+    assert.equal(playback.length, 0);
+
+    await room.seek(a!.id, seek, a!.id);
+    const after = room.snapshot();
+    assert.deepEqual(after, {
+      ...before,
+      revision: before.revision + 1,
+      serverTime: Date.now(),
+      playback: {
+        ...before.playback!,
+        startedAt: Date.now() - seek.positionMs,
+      },
+    });
+    assert.deepEqual(playback, [
+      {
+        revision: after.revision,
+        serverTime: after.serverTime,
+        resolving: after.resolving,
+        notice: after.notice,
+        playback: after.playback,
+      },
+    ]);
+    assert.deepEqual(snapshots, []);
+    assert.deepEqual(orders, []);
+    assert.deepEqual(db.playlist(a!.id), playlist);
+    assert.equal(resolves, 1);
+
+    await room.seek(a!.id, seek, a!.id);
+    context.mock.timers.tick(9_999);
+    assert.equal(room.snapshot().playback!.roundId, roundId);
+    assert.equal(playback.length, 1);
+    context.mock.timers.tick(1);
+    await room.join(b!.id);
+    assert.equal(room.snapshot().playback!.djId, b!.id);
+    await assert.rejects(room.seek(b!.id, seek, b!.id), /当前歌曲/);
+  } finally {
+    close();
+  }
+});
+test('seeking to the end supersedes a queued end callback from the same round', async (context) => {
+  // Advance the timer clock independently of room time to queue the old end
+  // callback behind a seek that has entered the room queue.
+  context.mock.method(Date, 'now', () => 1_000_000);
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const {
+    room,
+    guests: [a, b],
+    close,
+  } = setup();
+  try {
+    await room.join(a!.id);
+    await room.join(b!.id);
+    const before = room.snapshot().playback!;
+    const seeking = room.seek(a!.id, {
+      roundId: before.roundId,
+      positionMs: before.durationMs,
+    });
+    context.mock.timers.tick(before.durationMs);
+    await seeking;
+    await room.join(b!.id);
+    assert.deepEqual(room.snapshot().playback, {
+      ...before,
+      startedAt: Date.now() - (before.durationMs - 1),
+    });
+    context.mock.timers.tick(1);
+    await room.join(b!.id);
+    assert.equal(room.snapshot().playback!.djId, b!.id);
+  } finally {
+    close();
+  }
+});
 test('lyric offsets propagate without changing the preview resource timeline or rejecting playback', async () => {
   for (const offset of [
     undefined,

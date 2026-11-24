@@ -153,6 +153,12 @@ export const useRoom = defineStore('room', () => {
     snapshot.value?.users.find((user) => user.id === guest.value?.id),
   );
   const onStage = computed(() => me.value?.seat != null);
+  const canSeek = computed(
+    () =>
+      connection.value === 'connected' &&
+      !!guest.value &&
+      snapshot.value?.playback?.djId === guest.value.id,
+  );
   let movementGeneration = 0;
   const localMovement = createLocalMovement();
   function movementContext() {
@@ -654,6 +660,42 @@ export const useRoom = defineStore('room', () => {
         },
       );
   }
+  async function seek(roundId: string, positionMs: number) {
+    const active = socket;
+    const playback = snapshot.value?.playback;
+    if (
+      !active?.connected ||
+      !canSeek.value ||
+      playback?.roundId !== roundId ||
+      !Number.isFinite(positionMs)
+    )
+      return;
+    const target = Math.min(positionMs, playback.durationMs);
+    if (target <= Math.max(0, Date.now() + offset.value - playback.startedAt))
+      return;
+    const generation = emoteGeneration;
+    await new Promise<void>((resolve) => {
+      active
+        .timeout(5000)
+        .emit(
+          'playback:seek',
+          { roundId, positionMs: target },
+          (err, result) => {
+            if (
+              socket === active &&
+              active.connected &&
+              canSeek.value &&
+              generation === emoteGeneration &&
+              snapshot.value?.playback?.roundId === roundId
+            ) {
+              if (err) error.value = '进度调整尚未确认，请等待房间状态更新';
+              else ack(result);
+            }
+            resolve();
+          },
+        );
+    });
+  }
   async function loadPlaylist() {
     const context = playlistReceiver.context();
     applyPlaylist(await request<PlaylistState>('/api/playlist'), context);
@@ -953,6 +995,7 @@ export const useRoom = defineStore('room', () => {
     offset,
     me,
     onStage,
+    canSeek,
     initialize,
     enter,
     enterFromNetease,
@@ -972,6 +1015,7 @@ export const useRoom = defineStore('room', () => {
     joinStage,
     leaveStage,
     skip,
+    seek,
     selectPlaylist,
     add,
     importPlaylist,
