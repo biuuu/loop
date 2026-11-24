@@ -16,7 +16,7 @@ const song = (id: string): Track => ({
 });
 const ids = (tracks: Track[]) => tracks.map((track) => track.id);
 
-test('version 13 queues migrate to slot one and an account keeps its active slot after reopening', () => {
+test('upgrading version 13 and 14 preserves playlist order and the saved selection', () => {
   const directory = mkdtempSync(join(tmpdir(), 'loop-personal-playlists-'));
   const path = join(directory, 'test.sqlite');
   const oldMigrations = join(directory, 'migrations');
@@ -38,39 +38,47 @@ test('version 13 queues migrate to slot one and an account keeps its active slot
       .run(guest.id);
     db.close();
 
-    db = new Store(path);
+    const slotMigration = '014-personal-playlists.sql';
+    copyFileSync(
+      join('migrations', slotMigration),
+      join(oldMigrations, slotMigration),
+    );
+    db = new Store(path, oldMigrations);
     assert.equal(db.sql.pragma('user_version', { simple: true }), 14);
-    assert.deepEqual(db.guest(token), guest);
-    assert.deepEqual(db.playlist(guest.id), {
-      tracks: [song('2'), song('1')],
-      revision: 12,
-      slot: 1,
-      count: 1,
-    });
-    assert.deepEqual(db.createPlaylist(guest.id), {
-      tracks: [],
-      revision: 13,
-      slot: 2,
-      count: 2,
-    });
-    db.add(guest.id, song('1'));
+    db.sql
+      .prepare(
+        'UPDATE guests SET playlist_count=2,playlist_slot=2,playlist_revision=14 WHERE id=?',
+      )
+      .run(guest.id);
+    db.sql
+      .prepare(
+        'INSERT INTO playlist (guest_id,track_id,position,track_json,slot) VALUES (?,?,?,?,?)',
+      )
+      .run(guest.id, '1', 0, JSON.stringify(song('1')), 2);
     db.close();
 
     db = new Store(path);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 15);
     assert.deepEqual(db.guest(token), guest);
     assert.deepEqual(db.playlist(guest.id), {
       tracks: [song('1')],
       revision: 14,
       slot: 2,
-      count: 2,
+      count: 3,
     });
+    assert.deepEqual(db.tracks(guest.id, 3), []);
     assert.deepEqual(db.selectPlaylist(guest.id, 1), {
       tracks: [song('2'), song('1')],
       revision: 15,
       slot: 1,
-      count: 2,
+      count: 3,
     });
     assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
+    db.close();
+
+    db = new Store(path);
+    assert.equal(db.playlistSlot(guest.id), 1);
+    assert.deepEqual(db.tracks(guest.id, 2), [song('1')]);
   } finally {
     db.close();
     rmSync(directory, { recursive: true, force: true });
@@ -82,20 +90,26 @@ test('slots only belong to their account and share one monotonic revision', () =
   try {
     const owner = db.createGuest('First').guest.id;
     const other = db.createGuest('Second').guest.id;
+    assert.deepEqual(db.playlist(owner), {
+      tracks: [],
+      revision: 0,
+      slot: 1,
+      count: 3,
+    });
+    for (const slot of [1, 2, 3]) assert.deepEqual(db.tracks(owner, slot), []);
     db.add(owner, song('1'));
     db.add(other, song('1'));
-    for (const slot of [0, 1.5, 2, 4]) {
+    for (const slot of [0, 1.5, 4]) {
       assert.throws(() => db.selectPlaylist(owner, slot), /歌单不存在/);
       assert.throws(() => db.add(owner, song('2'), slot), /歌单不存在/);
     }
     assert.throws(() => db.playlistSlot('missing'), /游客不存在/);
-    assert.equal(db.createPlaylist(owner).slot, 2);
+    assert.equal(db.selectPlaylist(owner, 2).slot, 2);
     db.add(owner, song('1'));
     db.add(owner, song('2'));
-    assert.equal(db.createPlaylist(owner).slot, 3);
-    assert.throws(() => db.createPlaylist(owner), /最多创建 3 个歌单/);
-    assert.throws(() => db.selectPlaylist(other, 2), /歌单不存在/);
-    assert.throws(() => db.tracks(other, 2), /歌单不存在/);
+    assert.equal(db.selectPlaylist(owner, 3).slot, 3);
+    assert.deepEqual(db.tracks(other, 2), []);
+    assert.deepEqual(db.tracks(other, 3), []);
 
     const selected = db.selectPlaylist(owner, 2);
     assert.equal(selected.revision, 6);
@@ -116,7 +130,7 @@ test('slots only belong to their account and share one monotonic revision', () =
       tracks: [song('1')],
       revision: 1,
       slot: 1,
-      count: 1,
+      count: 3,
     });
   } finally {
     db.close();
@@ -128,7 +142,7 @@ test('each slot can hold 100 tracks and import still targets the original slot a
   try {
     const owner = db.createGuest('Playlist owner').guest.id;
     const originalSlot = db.playlistSlot(owner);
-    db.createPlaylist(owner);
+    db.selectPlaylist(owner, 2);
     const tracks = Array.from({ length: 102 }, (_, index) =>
       song(String(index + 1)),
     );

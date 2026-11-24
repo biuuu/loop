@@ -232,7 +232,7 @@ test('replace imports a selected source window into a full queue without treatin
       tracks: [track('999')],
       revision: 1,
       slot: 1,
-      count: 1,
+      count: 3,
     });
   } finally {
     await app.close();
@@ -341,7 +341,7 @@ test('replace caps selected source IDs at 100 and persists the one revision', ()
       tracks: result.tracks,
       revision: result.revision,
       slot: 1,
-      count: 1,
+      count: 3,
     });
   } finally {
     if (db.sql.open) db.sql.close();
@@ -423,7 +423,7 @@ test('batch import appends a fixed source window, summarizes each position, isol
         tracks: undefined,
         revision: 99,
         slot: 1,
-        count: 1,
+        count: 3,
         imported: 2,
         duplicates: 2,
         unavailable: 1,
@@ -438,7 +438,7 @@ test('batch import appends a fixed source window, summarizes each position, isol
       tracks: [track('999')],
       revision: 1,
       slot: 1,
-      count: 1,
+      count: 3,
     });
     assert.equal(calls, 1);
   } finally {
@@ -710,18 +710,12 @@ test('concurrent single additions cannot bypass store cap after upstream await',
   }
 });
 
-test('playlist creation and selection apply per account and reject unavailable slots', async () => {
+test('all three playlists are available immediately and selection stays private to the account', async () => {
   const { app, db } = await createServer({ dbPath: ':memory:', music: base });
   try {
     const a = db.createGuest('A');
     const b = db.createGuest('B');
     fill(db, a.guest.id, PLAYLIST_LIMIT);
-    const create = (token: string) =>
-      app.inject({
-        method: 'POST',
-        url: '/api/playlists',
-        headers: headers(token),
-      });
     const select = (token: string, slot: number) =>
       app.inject({
         method: 'PUT',
@@ -736,24 +730,28 @@ test('playlist creation and selection apply per account and reject unavailable s
         headers: headers(token),
         payload: { id },
       });
-    assert.equal((await create('invalid')).statusCode, 401);
-    assert.equal((await select(a.token, 2)).statusCode, 404);
+    assert.equal((await select('invalid', 2)).statusCode, 401);
     assert.equal((await select(a.token, 4)).statusCode, 400);
-    const second = await create(a.token);
-    assert.equal(second.statusCode, 201);
+    const second = await select(a.token, 2);
+    assert.equal(second.statusCode, 200);
     assert.deepEqual(second.json(), {
       tracks: [],
       slot: 2,
-      count: 2,
+      count: 3,
       revision: 101,
     });
     assert.equal((await add(a.token, '1', '2')).statusCode, 200);
-    assert.equal((await add(b.token, '1', '2')).statusCode, 404);
+    assert.deepEqual((await select(b.token, 2)).json().tracks, []);
+    assert.equal((await select(b.token, 1)).statusCode, 200);
     assert.equal((await add(a.token, '7', 'bad')).statusCode, 400);
-    const third = await create(a.token);
-    assert.equal(third.statusCode, 201);
-    assert.equal(third.json().slot, 3);
-    assert.equal((await create(a.token)).statusCode, 400);
+    const third = await select(a.token, 3);
+    assert.equal(third.statusCode, 200);
+    assert.deepEqual(third.json(), {
+      tracks: [],
+      slot: 3,
+      count: 3,
+      revision: 103,
+    });
     const selected = await select(a.token, 1);
     assert.equal(selected.json().tracks.length, PLAYLIST_LIMIT);
     assert.equal(selected.json().slot, 1);
@@ -763,8 +761,8 @@ test('playlist creation and selection apply per account and reject unavailable s
     assert.deepEqual(db.playlist(b.guest.id), {
       tracks: [],
       slot: 1,
-      count: 1,
-      revision: 0,
+      count: 3,
+      revision: 2,
     });
   } finally {
     await app.close();
@@ -806,12 +804,13 @@ test('an in-flight import keeps its original slot and returns the latest active 
     assert.equal(
       (
         await app.inject({
-          method: 'POST',
-          url: '/api/playlists',
+          method: 'PUT',
+          url: '/api/playlists/active',
           headers: credentials,
+          payload: { slot: 2 },
         })
       ).statusCode,
-      201,
+      200,
     );
     assert.equal(
       (
@@ -901,7 +900,7 @@ test('empty source playlists reject import, while final partial windows report e
       tracks: [],
       revision: 0,
       slot: 1,
-      count: 1,
+      count: 3,
     });
     empty = false;
     const imported = await app.inject({

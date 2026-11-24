@@ -36,7 +36,7 @@ type GuestRow = {
   coat: CatAppearance['coat'];
   pattern: CatAppearance['pattern'];
 };
-type PlaylistSettings = Pick<PlaylistState, 'slot' | 'count' | 'revision'>;
+type PlaylistSettings = Pick<PlaylistState, 'slot' | 'revision'>;
 const readGuest = ({ id, nickname, coat, pattern }: GuestRow): Guest => ({
   id,
   nickname,
@@ -264,7 +264,11 @@ export class Store {
   playlist(id: string): PlaylistState {
     return this.sql.transaction(() => {
       const settings = this.guestPlaylistSettings(id);
-      return { ...settings, tracks: this.tracksAt(id, settings.slot) };
+      return {
+        ...settings,
+        count: PLAYLIST_COUNT_LIMIT,
+        tracks: this.tracksAt(id, settings.slot),
+      };
     })();
   }
   playlistOrder(id: string): PlaylistOrder {
@@ -281,27 +285,9 @@ export class Store {
   playlistSlot(id: string, slot?: number): number {
     const settings = this.guestPlaylistSettings(id);
     if (slot === undefined) return settings.slot;
-    if (!Number.isInteger(slot) || slot < 1 || slot > settings.count)
+    if (!Number.isInteger(slot) || slot < 1 || slot > PLAYLIST_COUNT_LIMIT)
       throw new Error('歌单不存在');
     return slot;
-  }
-  createPlaylist(id: string): PlaylistState {
-    return this.sql
-      .transaction(() => {
-        const { count } = this.guestPlaylistSettings(id);
-        if (count >= PLAYLIST_COUNT_LIMIT)
-          throw new Error(`最多创建 ${PLAYLIST_COUNT_LIMIT} 个歌单`);
-        this.sql
-          .prepare(
-            `UPDATE guests
-             SET playlist_count=playlist_count+1,playlist_slot=playlist_count+1,
-                 playlist_revision=playlist_revision+1
-             WHERE id=?`,
-          )
-          .run(id);
-        return this.playlist(id);
-      })
-      .immediate();
   }
   selectPlaylist(id: string, slot: number): PlaylistState {
     return this.sql
@@ -309,8 +295,8 @@ export class Store {
         this.playlistSlot(id, slot);
         this.sql
           .prepare(
-            `UPDATE guests SET playlist_slot=?,playlist_revision=playlist_revision+1
-             WHERE id=? AND playlist_slot<>?`,
+            `UPDATE guests SET active_playlist_slot=?,playlist_revision=playlist_revision+1
+             WHERE id=? AND active_playlist_slot<>?`,
           )
           .run(slot, id, slot);
         return this.playlist(id);
@@ -320,7 +306,7 @@ export class Store {
   private playlistSettings(id: string): PlaylistSettings | undefined {
     return this.sql
       .prepare(
-        `SELECT playlist_slot AS slot,playlist_count AS count,playlist_revision AS revision
+        `SELECT active_playlist_slot AS slot,playlist_revision AS revision
          FROM guests WHERE id=?`,
       )
       .get(id) as PlaylistSettings | undefined;

@@ -371,14 +371,6 @@ export async function createServer(
       throw new ApiError(404, '歌单不存在');
     }
   }
-  app.post('/api/playlists', async (request, reply) => {
-    const { id } = identity(request);
-    if (db.playlist(id).count >= PLAYLIST_COUNT_LIMIT)
-      throw new ApiError(400, `最多创建 ${PLAYLIST_COUNT_LIMIT} 个歌单`);
-    const state = db.createPlaylist(id);
-    registry.publishPlaylist(id, state);
-    return reply.code(201).send(state);
-  });
   app.put('/api/playlists/active', async (request) => {
     const { id } = identity(request);
     const { slot } = z
@@ -386,7 +378,6 @@ export async function createServer(
       .strict()
       .parse(request.body);
     const current = db.playlist(id);
-    if (slot > current.count) throw new ApiError(404, '歌单不存在');
     if (slot === current.slot) return current;
     const state = db.selectPlaylist(id, slot);
     registry.publishPlaylist(id, state);

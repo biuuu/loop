@@ -80,7 +80,7 @@ test('nickname cooldown survives a restart, applies to both endpoints, and allow
 
     server = await createServer({ dbPath, music });
     const firstApp = server.app;
-    assert.equal(server.db.sql.pragma('user_version', { simple: true }), 14);
+    assert.equal(server.db.sql.pragma('user_version', { simple: true }), 15);
     const initial = await profile();
     assert.deepEqual(initial, { ...owner.guest, registered: false });
     const noChange = await patch(' Original ');
@@ -186,7 +186,7 @@ test('nickname cooldown survives a restart, applies to both endpoints, and allow
       tracks: [track],
       revision: 1,
       slot: 1,
-      count: 1,
+      count: 3,
     });
     assert.deepEqual(server.db.rooms(), [
       { ...owner.createdRoom, ownerNickname: named },

@@ -101,7 +101,6 @@ export const useRoom = defineStore('room', () => {
   const playlist = computed(() => playlistState.value?.tracks ?? []);
   const playlistRevision = computed(() => playlistState.value?.revision ?? -1);
   const playlistSlot = computed(() => playlistState.value?.slot);
-  const playlistCount = computed(() => playlistState.value?.count ?? 0);
   const playlistReceiver = createPlaylistReceiver((state) => {
     playlistState.value = state;
   });
@@ -663,13 +662,6 @@ export const useRoom = defineStore('room', () => {
     const slot = playlistSlot.value;
     return slot === undefined ? path : `${path}?slot=${slot}`;
   }
-  async function createPlaylist() {
-    const context = playlistReceiver.context();
-    applyPlaylist(
-      await request<PlaylistState>('/api/playlists', { method: 'POST' }),
-      context,
-    );
-  }
   async function selectPlaylist(slot: number) {
     if (slot === playlistSlot.value) return;
     const context = playlistReceiver.context();
@@ -954,7 +946,6 @@ export const useRoom = defineStore('room', () => {
     playlist,
     playlistRevision,
     playlistSlot,
-    playlistCount,
     snapshot,
     connection,
     stagePending,
@@ -981,7 +972,6 @@ export const useRoom = defineStore('room', () => {
     joinStage,
     leaveStage,
     skip,
-    createPlaylist,
     selectPlaylist,
     add,
     importPlaylist,

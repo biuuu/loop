@@ -28,13 +28,8 @@ function track(id: string): Track {
     durationMs: 60_000,
   };
 }
-function state(
-  ids: string[],
-  revision: number,
-  slot = 1,
-  count = slot,
-): PlaylistState {
-  return { tracks: ids.map(track), revision, slot, count };
+function state(ids: string[], revision: number, slot = 1): PlaylistState {
+  return { tracks: ids.map(track), revision, slot, count: 3 };
 }
 async function waitFor(predicate: () => boolean) {
   const deadline = performance.now() + 3000;
@@ -170,15 +165,12 @@ test('playlist edits target the visible slot and a delayed import response can r
         return Response.json({ guest: { id: 'a', nickname: 'A' } });
       if (input === '/api/playlist') return Response.json(current);
       mutations.push([input, init?.method]);
-      if (input === '/api/playlists') {
-        current = state([], 2, 2);
-      } else if (input === '/api/playlists/active') {
+      if (input === '/api/playlists/active') {
         const { slot } = JSON.parse(String(init?.body));
         current = state(
           slot === 1 ? ['1', '2'] : [],
           current.revision + 1,
           slot,
-          2,
         );
       } else if (input === '/api/playlist/import?slot=1') {
         return new Promise<Response>((resolve) => {
@@ -201,10 +193,8 @@ test('playlist edits target the visible slot and a delayed import response can r
 
   await room.initialize();
   assert.equal(room.playlistSlot, 1);
-  assert.equal(room.playlistCount, 1);
-  await room.createPlaylist();
+  await room.selectPlaylist(2);
   assert.equal(room.playlistSlot, 2);
-  assert.equal(room.playlistCount, 2);
   assert.deepEqual(room.playlist, []);
   await room.add('3');
   await room.selectPlaylist(1);
@@ -219,7 +209,7 @@ test('playlist edits target the visible slot and a delayed import response can r
   assert.equal(room.playlistRevision, 5);
   assert.deepEqual(room.playlist, []);
   assert.deepEqual(mutations, [
-    ['/api/playlists', 'POST'],
+    ['/api/playlists/active', 'PUT'],
     ['/api/playlist?slot=2', 'POST'],
     ['/api/playlists/active', 'PUT'],
     ['/api/playlist/2?slot=1', 'DELETE'],

@@ -99,8 +99,7 @@ test('upgrading from version 11 preserves saved data and persists room playback 
         ? rows.map((row) => ({
             ...row,
             nickname_changed_at: null,
-            playlist_slot: 1,
-            playlist_count: 1,
+            active_playlist_slot: 1,
           }))
         : table === 'playlist'
           ? rows.map((row) => ({ ...row, slot: 1 }))
@@ -109,7 +108,7 @@ test('upgrading from version 11 preserves saved data and persists room playback 
     db.close();
     db = undefined;
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 14);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 15);
     assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
     assert.deepEqual(db.rooms(), expected);
     assert.deepEqual(

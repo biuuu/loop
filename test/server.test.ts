@@ -56,7 +56,7 @@ test('guest appearance has schema defaults, checks enums and persists edits thro
       .run('legacy', 'Legacy', hashToken('legacy-token'));
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 14);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 15);
     assert.deepEqual(
       db.guest('legacy-token')!.appearance,
       DEFAULT_CAT_APPEARANCE,
@@ -128,7 +128,7 @@ test('all black and white coat variants preserve identities and playlists across
       .all();
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 14);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 15);
     assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
     assert.deepEqual(
       db.sql.prepare('SELECT * FROM guests ORDER BY id').all(),
@@ -336,7 +336,7 @@ test('tokens are hashed and identities and playlists survive reopening', () => {
       tracks: [track('1'), track('2')],
       revision: 4,
       slot: 1,
-      count: 1,
+      count: 3,
     });
     assert.notEqual(
       (
@@ -348,7 +348,7 @@ test('tokens are hashed and identities and playlists survive reopening', () => {
     );
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 14);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 15);
     assert.deepEqual(db.guest(a.token), a.guest);
     assert.equal(db.firstTrack(a.guest.id)!.id, '1');
     assert.equal(db.playlist(a.guest.id).revision, 4);
@@ -423,7 +423,7 @@ test('startup rejects unversioned data and unsupported schema versions without m
       [0, /Unversioned database is not empty/i],
       [1, /Unsupported database version 1; first supported version is 11/i],
       [10, /Unsupported database version 10; first supported version is 11/i],
-      [15, /Database version 15 is newer than supported version 14/i],
+      [16, /Database version 16 is newer than supported version 15/i],
     ] as const) {
       const path = join(root, `version-${version}.sqlite`);
       const fixture = new Database(path);
@@ -489,7 +489,7 @@ test('playlist edits and rotation use physical order with monotonic revisions an
       tracks: [],
       revision: 0,
       slot: 1,
-      count: 1,
+      count: 3,
     });
     assert.equal(db.firstTrack(guest.id), null);
     ['1', '2', '3', '4'].forEach((id) => db.add(guest.id, track(id)));
@@ -658,7 +658,7 @@ test('HTTP validates input, secures identity and keeps playlists isolated', asyn
       tracks: [track('1')],
       revision: 4,
       slot: 1,
-      count: 1,
+      count: 3,
     });
     assert.equal(
       (
@@ -685,7 +685,7 @@ test('HTTP validates input, secures identity and keeps playlists isolated', asyn
           },
         })
       ).json(),
-      { tracks: [], revision: 0, slot: 1, count: 1 },
+      { tracks: [], revision: 0, slot: 1, count: 3 },
     );
     assert.equal(
       (
@@ -1270,13 +1270,13 @@ test('slow first stage join sends a full loading snapshot and playback-only comp
       tracks: [track('1'), track('2')],
       revision: 2,
       slot: 1,
-      count: 1,
+      count: 3,
     });
     assert.deepEqual(observer.playlist, {
       tracks: [track('9')],
       revision: 1,
       slot: 1,
-      count: 1,
+      count: 3,
     });
     const sync = () =>
       Promise.all(
@@ -1552,7 +1552,7 @@ test('playlist rotation events reach only the current authenticated owner and ca
         tracks: [track('1'), track('2'), track('3')],
         revision: 3,
         slot: 1,
-        count: 1,
+        count: 3,
       },
     ]);
     const headers = { cookie: `loop_guest=${a.token}` };
@@ -1613,7 +1613,7 @@ test('playlist rotation events reach only the current authenticated owner and ca
       tracks: [track('1'), track('3'), track('2')],
       revision: 6,
       slot: 1,
-      count: 1,
+      count: 3,
     });
     assert.equal(
       (
@@ -1636,7 +1636,7 @@ test('playlist rotation events reach only the current authenticated owner and ca
     assert.equal(stale.initial.length, 1);
     assert.equal(stale.updates.length, 0);
     assert.deepEqual(other.initial, [
-      { tracks: [track('9')], revision: 1, slot: 1, count: 1 },
+      { tracks: [track('9')], revision: 1, slot: 1, count: 3 },
     ]);
     assert.equal(other.updates.length, 0);
     assert.equal(current.initial.length, 1);
@@ -1647,20 +1647,21 @@ test('playlist rotation events reach only the current authenticated owner and ca
       tracks: [track('9')],
       revision: 1,
       slot: 1,
-      count: 1,
+      count: 3,
     });
     assert.equal('playlist' in room.snapshot(), false);
     const currentRound = room.snapshot().playback!.roundId;
-    const created = await app.inject({
-      method: 'POST',
-      url: '/api/playlists',
+    const switched = await app.inject({
+      method: 'PUT',
+      url: '/api/playlists/active',
       headers,
+      payload: { slot: 2 },
     });
-    assert.equal(created.statusCode, 201);
+    assert.equal(switched.statusCode, 200);
     await current.socket.timeout(1000).emitWithAck('room:sync');
     assert.equal(current.initial.length, 2);
-    assert.deepEqual(current.initial.at(-1), created.json());
-    assert.equal(created.json().slot, 2);
+    assert.deepEqual(current.initial.at(-1), switched.json());
+    assert.equal(switched.json().slot, 2);
     assert.equal(room.snapshot().playback!.roundId, currentRound);
     await other.socket.timeout(1000).emitWithAck('room:sync');
     assert.equal(other.initial.length, 1);

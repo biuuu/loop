@@ -92,7 +92,7 @@ test('Netease signup imports first 100 source positions into the default playlis
     assert.equal(state.tracks.length, 100);
     assert.equal(state.tracks.at(-1)?.id, '100');
     assert.equal(state.slot, 1);
-    assert.equal(state.count, 1);
+    assert.equal(state.count, 3);
     assert.deepEqual(calls, ['user:123:20', 'playlist:7:0:100']);
     const cookie = (response.headers['set-cookie'] as string).split(';')[0]!;
     const restored = await app.inject({ url: '/api/me', headers: { cookie } });

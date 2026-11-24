@@ -1852,7 +1852,7 @@ test('changing playlists during resolution keeps the pending song and rotates it
   try {
     const id = a!.id;
     db.add(id, track('4'));
-    db.createPlaylist(id);
+    db.selectPlaylist(id, 2);
     for (const trackId of ['7', '1', '8']) db.add(id, track(trackId));
     db.selectPlaylist(id, 1);
 
@@ -1903,7 +1903,7 @@ test('selecting an empty playlist during playback leaves the DJ seated until the
     await room.join(b!.id);
     const playing = room.snapshot().playback!;
 
-    db.createPlaylist(id);
+    db.selectPlaylist(id, 2);
     assert.deepEqual(room.snapshot().playback, playing);
     assert.deepEqual(room.snapshot().stage, [id, b!.id]);
 

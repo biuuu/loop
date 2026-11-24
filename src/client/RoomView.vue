@@ -747,28 +747,22 @@ onBeforeUnmount(() => {
               </template>
             </template>
             <template v-else>
-              <div v-if="room.playlistCount" class="playlist-selector">
-                <div class="segmented-tabs" role="group" aria-label="播放歌单">
-                  <button
-                    v-for="slot in room.playlistCount"
-                    :key="slot"
-                    type="button"
-                    :class="{ selected: room.playlistSlot === slot }"
-                    :aria-pressed="room.playlistSlot === slot"
-                    :disabled="operation"
-                    @click="act(() => room.selectPlaylist(slot))"
-                  >
-                    歌单 {{ slot }}
-                  </button>
-                </div>
+              <div
+                v-if="room.playlistSlot !== undefined"
+                class="segmented-tabs playlist-selector"
+                role="group"
+                aria-label="播放歌单"
+              >
                 <button
-                  v-if="room.playlistCount < PLAYLIST_COUNT_LIMIT"
+                  v-for="slot in PLAYLIST_COUNT_LIMIT"
+                  :key="slot"
                   type="button"
-                  class="outline new-playlist"
+                  :class="{ selected: room.playlistSlot === slot }"
+                  :aria-pressed="room.playlistSlot === slot"
                   :disabled="operation"
-                  @click="act(() => room.createPlaylist())"
+                  @click="act(() => room.selectPlaylist(slot))"
                 >
-                  <Plus aria-hidden="true" />新建歌单
+                  歌单 {{ slot }}
                 </button>
               </div>
               <div v-if="playlistDisplay.pinned" class="playlist-current">
@@ -852,18 +846,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .playlist-selector {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
   margin: 15px 0;
-}
-.playlist-selector .segmented-tabs {
-  flex: 1 0 auto;
-}
-.new-playlist {
-  min-height: 38px;
-  padding: 6px 9px;
-  font-size: 13px;
 }
 </style>
