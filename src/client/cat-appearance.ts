@@ -79,10 +79,7 @@ const SPOT_PALETTES = {
   },
   cow: { 2: { main: 0x38353b, shadow: 0x29262c } },
   orange_white: { 1: { main: 0xeda251, shadow: 0xd57836 } },
-  tortoiseshell: {
-    1: { main: 0xc7794a, shadow: 0xa7613a },
-    2: { main: 0x905a40, shadow: 0x72432f },
-  },
+  tortoiseshell: { 1: { main: 0xa97a54, shadow: 0x8e6144 } },
 } satisfies Record<CatPresetPattern | 'socks', SpotPalette>;
 
 // Separate the connected silhouette from enclosed facial details using the

@@ -27,7 +27,7 @@ const patternMarkings = {
   calico: [1, 2],
   cow: [2],
   orange_white: [1],
-  tortoiseshell: [1, 2],
+  tortoiseshell: [1],
 } as const satisfies Record<CatPattern, readonly number[]>;
 const marked = (
   pattern: 'socks' | 'tabby',
@@ -98,6 +98,8 @@ test('all 41 source frames have bounded anatomical patches that select only actu
       for (const pattern of Object.keys(patternMarkings) as CatPattern[]) {
         const patches = CAT_PATTERN_PATCHES[animation][frame]![pattern];
         assert.ok(patches.length > 0);
+        if (pattern === 'tortoiseshell')
+          assert.equal(patches.length, animation === 'down' ? 1 : 2);
         const mask = getPatternMask(pattern, animation, frame);
         assert.equal(mask.length, 4096);
         let selected = 0;
@@ -181,20 +183,20 @@ test('all 41 source frames have bounded anatomical patches that select only actu
   assert.equal(frames, 41);
 });
 
-test('coat preset portraits show an asymmetric cow cap, an orange cap with a blaze, and mixed tortoiseshell spots', () => {
+test('coat preset portraits show a cow cap, an orange blaze, and a tortoiseshell ear patch', () => {
   const frame = CAT_IDLE_UP_COLUMN;
   assert.deepEqual(presetMarkings('idle', frame, 26, 32), [0, 1, 1]);
-  assert.deepEqual(presetMarkings('idle', frame, 33, 32), [2, 1, 2]);
-  assert.deepEqual(presetMarkings('idle', frame, 30, 36), [2, 0, 2]);
+  assert.deepEqual(presetMarkings('idle', frame, 33, 32), [2, 1, 0]);
+  assert.deepEqual(presetMarkings('idle', frame, 30, 36), [2, 0, 0]);
   assert.deepEqual(presetMarkings('idle', frame, 29, 36), [0, 0, 0]);
-  assert.deepEqual(presetMarkings('idle', frame, 34, 36), [2, 1, 1]);
-  assert.deepEqual(presetMarkings('idle', frame, 26, 39), [0, 0, 2]);
+  assert.deepEqual(presetMarkings('idle', frame, 34, 36), [2, 1, 0]);
+  assert.deepEqual(presetMarkings('idle', frame, 26, 39), [0, 0, 0]);
   for (const x of [28, 32]) {
     assert.equal(frameRgb(source, 'idle', frame, x, 37), ink);
     assert.deepEqual(presetMarkings('idle', frame, x, 37), [0, 0, 0]);
   }
   assert.deepEqual(presetMarkings('idle', frame, 35, 44), [2, 1, 1]);
-  assert.deepEqual(presetMarkings('idle', frame, 29, 43), [0, 0, 2]);
+  assert.deepEqual(presetMarkings('idle', frame, 29, 43), [0, 0, 0]);
   assert.deepEqual(presetMarkings('idle', frame, 27, 46), [0, 0, 0]);
 });
 
@@ -212,28 +214,28 @@ test('new preset caps follow pose height while back markings follow the visible 
       assert.equal(frameRgb(source, animation, frame, 33, ear), ink);
       assert.deepEqual(
         presetMarkings(animation, frame, 33, ear + 1),
-        [2, 1, 2],
+        [2, 1, 0],
       );
       assert.deepEqual(
         presetMarkings(animation, frame, 30, ear + 4),
-        [2, 0, 2],
+        [2, 0, 1],
       );
     }
   }
   for (const [frame, ear] of poses[0].ears.entries()) {
-    assert.deepEqual(presetMarkings('side', frame, 32, ear + 10), [0, 1, 1]);
-    assert.deepEqual(presetMarkings('side', frame, 35, ear + 13), [2, 1, 0]);
+    assert.deepEqual(presetMarkings('side', frame, 32, ear + 10), [0, 1, 0]);
+    assert.deepEqual(presetMarkings('side', frame, 35, ear + 13), [2, 1, 1]);
   }
   for (const [frame, ear] of [32, 31, 32, 31].entries()) {
-    assert.deepEqual(presetMarkings('up', frame, 26, ear + 1), [2, 1, 2]);
+    assert.deepEqual(presetMarkings('up', frame, 26, ear + 1), [2, 1, 0]);
     assert.deepEqual(presetMarkings('up', frame, 34, ear + 1), [0, 1, 1]);
-    assert.deepEqual(presetMarkings('up', frame, 27, 43), [2, 1, 1]);
-    assert.deepEqual(presetMarkings('up', frame, 33, 42), [0, 1, 2]);
+    assert.deepEqual(presetMarkings('up', frame, 27, 43), [2, 1, 0]);
+    assert.deepEqual(presetMarkings('up', frame, 33, 42), [0, 1, 1]);
     assert.deepEqual(presetMarkings('up', frame, 30, 43), [0, 0, 0]);
   }
   for (const frame of poses[2].ears.keys()) {
-    assert.deepEqual(presetMarkings('sleep', frame, 35, 44), [2, 1, 0]);
-    assert.deepEqual(presetMarkings('sleep', frame, 37, 44), [2, 1, 2]);
+    assert.deepEqual(presetMarkings('sleep', frame, 35, 44), [2, 1, 1]);
+    assert.deepEqual(presetMarkings('sleep', frame, 37, 44), [2, 1, 1]);
     assert.deepEqual(presetMarkings('sleep', frame, 27, 46), [0, 0, 0]);
   }
 });

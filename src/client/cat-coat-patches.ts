@@ -31,25 +31,19 @@ const ORANGE_CAP: MaskPatch = {
     '##.......##',
   ],
 };
-const TORTIE_FACE: readonly MaskPatch[] = [
-  { part: 'ear', x: 25, y: 32, rows: ['.#.', '.##', '..#'] },
-  { part: 'ear', marking: 2, x: 32, y: 32, rows: ['.##', '..#'] },
-  {
-    part: 'forehead',
-    marking: 2,
-    x: 29,
-    y: 34,
-    rows: ['##.', '.##', '.#.'],
-  },
-  { part: 'temple', x: 32, y: 34, rows: ['.#..', '..##', '..#.'] },
-  {
-    part: 'temple',
-    marking: 2,
-    x: 26,
-    y: 38,
-    rows: ['#.', '##', '.#'],
-  },
-];
+// Keep the warm fur connected from one ear into the upper forehead.
+const TORTIE_CAP: MaskPatch = {
+  part: 'forehead',
+  x: 25,
+  y: 32,
+  rows: ['.##...', '.###..', '.####.', '######', '####..'],
+};
+const IDLE_TORTIE_SADDLE: MaskPatch = {
+  part: 'back',
+  x: 31,
+  y: 42,
+  rows: ['..#.....', '..###...', '..####..', '...####.', '.....#..'],
+};
 
 const SIDE_COW_SADDLE: MaskPatch = {
   part: 'back',
@@ -64,17 +58,12 @@ const SIDE_ORANGE_SADDLE: MaskPatch = {
   y: 41,
   rows: ['.##.#...', '#######.', '########', '.######.', '...###..'],
 };
-const SIDE_TORTIE_BODY: readonly MaskPatch[] = [
-  { part: 'back', x: 31, y: 41, rows: ['.#.', '###', '..#'] },
-  {
-    part: 'flank',
-    marking: 2,
-    x: 29,
-    y: 43,
-    rows: ['.#.', '##.', '.##'],
-  },
-  { part: 'flank', x: 35, y: 43, rows: ['..#.', '.###', '##..'] },
-];
+const SIDE_TORTIE_SADDLE: MaskPatch = {
+  part: 'back',
+  x: 31,
+  y: 41,
+  rows: ['....#...', '...####.', '..######', '....###.', '.....#..'],
+};
 
 const REAR_COW_CAP: MaskPatch = {
   part: 'back',
@@ -119,18 +108,18 @@ const REAR_ORANGE_SADDLE: MaskPatch = {
     '##...##',
   ],
 };
-const REAR_TORTIE_HEAD: readonly MaskPatch[] = [
-  { part: 'ear', x: 32, y: 33, rows: ['..#', '.##', '.#.'] },
-  { part: 'ear', marking: 2, x: 26, y: 33, rows: ['##.', '#..'] },
-  { part: 'back', x: 27, y: 35, rows: ['.##', '##.'] },
-  { part: 'back', marking: 2, x: 31, y: 35, rows: ['##.', '.##'] },
-];
-const REAR_TORTIE_BODY: readonly MaskPatch[] = [
-  { part: 'back', marking: 2, x: 32, y: 40, rows: ['#.', '##', '.#'] },
-  { part: 'flank', x: 27, y: 42, rows: ['.#', '##', '#.'] },
-  { part: 'flank', x: 31, y: 45, rows: ['.#.', '###', '..#'] },
-  { part: 'flank', marking: 2, x: 28, y: 46, rows: ['.#', '##'] },
-];
+const REAR_TORTIE_CAP: MaskPatch = {
+  part: 'ear',
+  x: 30,
+  y: 33,
+  rows: ['...##.', '..###.', '.####.', '#####.'],
+};
+const REAR_TORTIE_SADDLE: MaskPatch = {
+  part: 'back',
+  x: 29,
+  y: 41,
+  rows: ['...#.', '...##', '...##', '...##', '...#.', '.####', '...##'],
+};
 
 const SLEEP_COW_SADDLE: MaskPatch = {
   part: 'back',
@@ -145,12 +134,12 @@ const SLEEP_ORANGE_SADDLE: MaskPatch = {
   y: 43,
   rows: ['.####.##', '.#######', '..#####.'],
 };
-const SLEEP_TORTIE_BODY: readonly MaskPatch[] = [
-  { part: 'flank', x: 32, y: 43, rows: ['#..', '##.', '.##'] },
-  { part: 'back', marking: 2, x: 36, y: 43, rows: ['.#.', '###'] },
-  { part: 'flank', x: 36, y: 45, rows: ['..#', '##.'] },
-  { part: 'flank', marking: 2, x: 28, y: 44, rows: ['.##', '.#.'] },
-];
+const SLEEP_TORTIE_SADDLE: MaskPatch = {
+  part: 'back',
+  x: 32,
+  y: 43,
+  rows: ['.....#.', '...####', '..####.', '..#....'],
+};
 
 function shiftRows(patches: readonly MaskPatch[], dy: number) {
   return patches.map((patch) => ({ ...patch, y: patch.y + dy }));
@@ -179,32 +168,27 @@ export const CAT_COAT_PATCHES = {
         rows: ['.##.....', '####....', '#####...', '.#####..', '...####.'],
       },
     ],
-    tortoiseshell: [
-      ...TORTIE_FACE,
-      { part: 'back', x: 31, y: 41, rows: ['.#.', '###', '..#'] },
-      { part: 'flank', marking: 2, x: 28, y: 43, rows: ['.#.', '###', '..#'] },
-      { part: 'flank', x: 34, y: 44, rows: ['.##.', '..##', '..#.'] },
-    ],
+    tortoiseshell: [TORTIE_CAP, IDLE_TORTIE_SADDLE],
   },
   side: {
     cow: [COW_CAP, SIDE_COW_SADDLE],
     orange_white: [ORANGE_CAP, SIDE_ORANGE_SADDLE],
-    tortoiseshell: [...TORTIE_FACE, ...SIDE_TORTIE_BODY],
+    tortoiseshell: [TORTIE_CAP, SIDE_TORTIE_SADDLE],
   },
   sideHigh: {
     cow: shiftRows([COW_CAP, SIDE_COW_SADDLE], -1),
     orange_white: shiftRows([ORANGE_CAP, SIDE_ORANGE_SADDLE], -1),
-    tortoiseshell: shiftRows([...TORTIE_FACE, ...SIDE_TORTIE_BODY], -1),
+    tortoiseshell: shiftRows([TORTIE_CAP, SIDE_TORTIE_SADDLE], -1),
   },
   rear: {
     cow: [REAR_COW_CAP, REAR_COW_SADDLE],
     orange_white: [REAR_ORANGE_CAP, REAR_ORANGE_SADDLE],
-    tortoiseshell: [...REAR_TORTIE_HEAD, ...REAR_TORTIE_BODY],
+    tortoiseshell: [REAR_TORTIE_CAP, REAR_TORTIE_SADDLE],
   },
   rearHigh: {
     cow: [...shiftRows([REAR_COW_CAP], -1), REAR_COW_SADDLE],
     orange_white: [...shiftRows([REAR_ORANGE_CAP], -1), REAR_ORANGE_SADDLE],
-    tortoiseshell: [...shiftRows(REAR_TORTIE_HEAD, -1), ...REAR_TORTIE_BODY],
+    tortoiseshell: [...shiftRows([REAR_TORTIE_CAP], -1), REAR_TORTIE_SADDLE],
   },
   front: {
     cow: shiftRows([COW_CAP], 1),
@@ -212,7 +196,7 @@ export const CAT_COAT_PATCHES = {
       ...shiftRows([ORANGE_CAP], 1),
       { part: 'back', x: 28, y: 32, rows: ['##.##', '.#.#.'] },
     ],
-    tortoiseshell: shiftRows(TORTIE_FACE, 1),
+    tortoiseshell: shiftRows([TORTIE_CAP], 1),
   },
   frontHigh: {
     cow: [COW_CAP],
@@ -220,16 +204,16 @@ export const CAT_COAT_PATCHES = {
       ORANGE_CAP,
       { part: 'back', x: 28, y: 31, rows: ['##.##', '.#.#.'] },
     ],
-    tortoiseshell: TORTIE_FACE,
+    tortoiseshell: [TORTIE_CAP],
   },
   sleep: {
     cow: [...shiftRows([COW_CAP], 4), SLEEP_COW_SADDLE],
     orange_white: [...shiftRows([ORANGE_CAP], 4), SLEEP_ORANGE_SADDLE],
-    tortoiseshell: [...shiftRows(TORTIE_FACE, 4), ...SLEEP_TORTIE_BODY],
+    tortoiseshell: [...shiftRows([TORTIE_CAP], 4), SLEEP_TORTIE_SADDLE],
   },
   sleepLow: {
     cow: [...shiftRows([COW_CAP], 5), SLEEP_COW_SADDLE],
     orange_white: [...shiftRows([ORANGE_CAP], 5), SLEEP_ORANGE_SADDLE],
-    tortoiseshell: [...shiftRows(TORTIE_FACE, 5), ...SLEEP_TORTIE_BODY],
+    tortoiseshell: [...shiftRows([TORTIE_CAP], 5), SLEEP_TORTIE_SADDLE],
   },
 } satisfies Record<string, PresetFramePatterns>;

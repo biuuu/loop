@@ -38,8 +38,7 @@ export const CAT_APPEARANCE_PRESETS = [
   {
     appearance: { coat: 'black', pattern: 'tortoiseshell' },
     label: '玳瑁',
-    swatch:
-      'conic-gradient(#50515a 0 168deg, #c7794a 168deg 282deg, #905a40 282deg)',
+    swatch: 'linear-gradient(125deg, #a97a54 37%, #50515a 37%)',
   },
 ] as const;
 

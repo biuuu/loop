@@ -157,7 +157,7 @@ test('each preset keeps its base and shades its spots across all poses while pre
     calico: { 1: [0xd98947, 0xb96b36], 2: [0x554b4e, 0x41383c] },
     cow: { 2: [0x38353b, 0x29262c] },
     orange_white: { 1: [0xeda251, 0xd57836] },
-    tortoiseshell: { 1: [0xc7794a, 0xa7613a], 2: [0x905a40, 0x72432f] },
+    tortoiseshell: { 1: [0xa97a54, 0x8e6144] },
   };
   for (const { appearance } of CAT_APPEARANCE_PRESETS) {
     const base = recolorCatPixels(original, {
