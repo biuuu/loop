@@ -106,6 +106,27 @@ function fixture() {
   };
 }
 
+test('a local tap and immediate stop wake a sleeping cat before the server echo', () => {
+  const f = fixture();
+  f.authoritative = { ...initial(), sleepAt: f.now - 1 };
+  assert.equal(catFrame(f.view(), f.now).animation, 'sleep');
+  f.direction('right');
+  assert.equal(catFrame(f.view(), f.now).animation, 'side');
+  f.stop();
+  assert.equal(catFrame(f.view(), f.now).animation, 'idle');
+  assert.equal(Object.hasOwn(f.sent.at(-1)!, 'sleepAt'), false);
+
+  const { at, ...report } = f.sent.at(-1)!;
+  const sleepAt = f.now + 125_000;
+  f.authoritative = {
+    ...initial(),
+    ...report,
+    movingSince: at,
+    sleepAt,
+  };
+  assert.equal(f.view().sleepAt, sleepAt);
+});
+
 test('every rapid direction and stop rebases immediately from current local interpolation', () => {
   const f = fixture();
   f.direction('right');

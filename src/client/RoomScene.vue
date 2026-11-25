@@ -27,8 +27,6 @@ import {
   CAT_IDLE_UP_COLUMN,
   CAT_SCALE,
   catFrame,
-  catActivity,
-  type CatActivity,
   type CatAnimation,
 } from './cat-sprite';
 import { CAT_PACKED_ROWS, createAppearanceSheet } from './cat-appearance';
@@ -367,7 +365,6 @@ const cats = new Map<
     notes: { layer: Container; glyphs: Graphics[] };
     fullLabel: string;
     facingRight: boolean;
-    activity?: CatActivity;
     remoteMovement: ReturnType<typeof createRemoteMovement>;
   }
 >();
@@ -699,19 +696,11 @@ onMounted(async () => {
         )
           cat.facingRight = displayUser.targetX > displayUser.x;
         const emote = room.emoteFor(user.id, localNow);
-        cat.activity = catActivity(
-          cat.activity,
-          user,
-          now,
-          room.snapshot?.serverTime,
-          emote?.receivedAt,
-        );
         const frame = catFrame(
           displayUser,
           now,
           motionPreference.matches,
           cat.facingRight,
-          cat.activity.inactiveSince,
           remote?.walkStartedAt,
         );
         cat.body.texture = appearanceTexture(

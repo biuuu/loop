@@ -220,6 +220,9 @@ export const useRoom = defineStore('room', () => {
     )
       roomInfo.value = state.room;
     if (!snapshot.value || state.revision >= snapshot.value.revision) {
+      // Seed the room clock for the first frame while the round-trip sync is pending.
+      if (!snapshot.value && !clockSamples.length)
+        offset.value = state.serverTime - Date.now();
       snapshot.value = state;
       localEmotes.retain(
         state.users.filter((user) => user.connected).map((user) => user.id),
@@ -420,6 +423,7 @@ export const useRoom = defineStore('room', () => {
         movingSince: state.movingSince,
         durationMs: state.durationMs,
         facingRight: state.facingRight,
+        sleepAt: state.sleepAt,
       };
       // Legacy move/stop commands have no prediction marker. Do not retain one
       // from an earlier report, or it could acknowledge unrelated local input.
@@ -447,6 +451,7 @@ export const useRoom = defineStore('room', () => {
       snapshot.value = applyPlaybackUpdate(snapshot.value, state);
     });
     active.on('room:emote', (event) => {
+      const current = snapshot.value;
       if (
         !matchesRoom(event) ||
         !isActive() ||
@@ -454,11 +459,24 @@ export const useRoom = defineStore('room', () => {
         connection.value !== 'connected' ||
         !guest.value ||
         !me.value?.connected ||
-        !snapshot.value?.users.some(
-          (user) => user.id === event?.userId && user.connected,
-        )
+        !current
       )
         return;
+      const index = current.users.findIndex(
+        (user) => user.id === event.userId && user.connected,
+      );
+      if (index < 0) return;
+      const user = current.users[index]!;
+      const { activity } = event;
+      if (
+        activity &&
+        activity.revision >= current.revision &&
+        user.seat === null
+      ) {
+        const users = [...current.users];
+        users[index] = { ...user, sleepAt: activity.sleepAt };
+        snapshot.value = { ...current, users, revision: activity.revision };
+      }
       localEmotes.receive(event, Date.now(), emoteUrl(event.id));
     });
     active.on('emotes:updated', (event) => {

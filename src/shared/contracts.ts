@@ -211,6 +211,8 @@ export interface Participant extends Guest {
   movingSince: number;
   durationMs: number;
   seat: number | null;
+  // Server timeline. Stage members have no sleep deadline.
+  sleepAt?: number;
   // Optional for compatibility with older snapshots; stop preserves this facing.
   facingRight?: boolean;
   clientMoveId?: number;
@@ -229,14 +231,16 @@ export interface RoomMotion {
   movingSince: number;
   durationMs: number;
   facingRight: boolean;
+  sleepAt?: number;
   // Omitted by legacy move/stop commands; clients must clear the prior marker.
   clientMoveId?: number;
 }
-// Transient notification only. Clients own display timing; snapshots omit emotes.
+// Clients own bubble timing; only the member activity update enters snapshots.
 export interface RoomEmote {
   roomId?: string;
   userId: string;
   id: EmoteId;
+  activity?: { sleepAt: number; revision: number };
 }
 export interface Playback {
   roundId: string;

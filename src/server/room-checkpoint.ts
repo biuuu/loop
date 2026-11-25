@@ -13,6 +13,7 @@ const timestamp = z.number().nonnegative();
 const member = stageJoinSchema.shape.from.unwrap().extend({
   id: participantId,
   facingRight: z.boolean(),
+  sleepAt: timestamp.optional(),
   reconnectUntil: timestamp.optional(),
   stageJoinedAt: timestamp.optional(),
 });

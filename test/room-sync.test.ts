@@ -204,20 +204,23 @@ test('reconnect and identity replacement create fresh requests while rejecting o
   assert.equal(f.room.me?.id, 'b');
 });
 
-test('slower subsequent syncs retain the quickest recent clock sample', async (context) => {
+test('the first snapshot seeds the clock and round-trip syncs keep the quickest sample', async (context) => {
   let now = 100_000;
   context.mock.method(Date, 'now', () => now);
   const f = await fixture(context);
   if (!f) return;
-  now += 10;
-  f.requests[0]!.ack({ ...snapshot(), serverTime: 100_100 });
+  f.peers[0]!.emit('room:snapshot', { ...snapshot(), serverTime: 100_090 });
   await waitFor(() => f.room.snapshot !== null);
+  assert.equal(f.room.offset, 90);
+  now += 10;
+  f.requests[0]!.ack({ ...snapshot(2), serverTime: 100_100 });
+  await waitFor(() => f.room.snapshot?.revision === 2);
   assert.equal(f.room.offset, 95);
   f.room.sync();
   await waitFor(() => f.requests.length === 2);
   now += 200;
-  f.requests[1]!.ack({ ...snapshot(2), serverTime: 100_500 });
-  await waitFor(() => f.room.snapshot?.revision === 2);
+  f.requests[1]!.ack({ ...snapshot(3), serverTime: 100_500 });
+  await waitFor(() => f.room.snapshot?.revision === 3);
   assert.equal(f.room.offset, 95);
 });
 

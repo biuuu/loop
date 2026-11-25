@@ -14,6 +14,7 @@ import Database from 'better-sqlite3';
 import { io as connect } from 'socket.io-client';
 import { Store, hashToken } from '../src/server/db.js';
 import { createServer } from '../src/server/app.js';
+import { catSleepDelay } from '../src/shared/cat-activity.js';
 import type {
   Ack,
   MusicService,
@@ -819,8 +820,11 @@ test('socket stop and client motion only affect the authenticated current connec
     other.on('room:snapshot', (state: RoomSnapshot) => snapshots.push(state));
     const revision = room.snapshot().revision;
     assert.equal(
-      (await current.timeout(1000).emitWithAck('room:move', { x: 850, y: 500 }))
-        .ok,
+      (
+        await current
+          .timeout(1000)
+          .emitWithAck('room:move', { x: SCENE.walk.right, y: 500 })
+      ).ok,
       true,
     );
     const me = () =>
@@ -927,6 +931,7 @@ test('socket stop and client motion only affect the authenticated current connec
         'movingSince',
         'revision',
         'serverTime',
+        'sleepAt',
         'targetX',
         'targetY',
         'userId',
@@ -934,6 +939,10 @@ test('socket stop and client motion only affect the authenticated current connec
         'y',
       ]);
       assert.equal(typeof event.facingRight, 'boolean');
+      assert.equal(
+        event.sleepAt,
+        event.movingSince + event.durationMs + catSleepDelay(event.userId),
+      );
     }
     const restored = synced.users.find((user) => user.id === a.guest.id)!;
     for (const key of [
@@ -946,6 +955,7 @@ test('socket stop and client motion only affect the authenticated current connec
     ] as const)
       assert.equal(restored[key], final[key]);
     assert.equal(restored.durationMs, 0);
+    assert.equal(restored.sleepAt, senderMotions.at(-1)!.sleepAt);
     assert.equal(synced.revision, senderMotions.at(-1)!.revision);
   } finally {
     sockets.forEach((socket) => socket.disconnect());
@@ -1027,9 +1037,11 @@ test('socket authentication, replacement, capacity and shared room snapshots', a
       true,
     );
     const emoted = await emoteBroadcast;
+    const state = room.snapshot();
     assert.deepEqual(emoted, {
-      userId: room.snapshot().users[0]!.id,
+      userId: state.users[0]!.id,
       id: 'nahida-3',
+      activity: { sleepAt: state.users[0]!.sleepAt, revision: state.revision },
     });
     assert.equal(
       (await second.timeout(1000).emitWithAck('room:emote', { id: 'nahida-2' }))
@@ -1437,18 +1449,27 @@ test('emotes reach sender and observer exactly once without snapshots, expiry tr
       apis: ['setTimeout', 'Date'],
       now: Date.now(),
     });
+    const activity = {
+      sleepAt: Date.now() + catSleepDelay(a.guest.id),
+      revision: before.revision + 1,
+    };
+    const expectedUsers = before.users.map((user) =>
+      user.id === a.guest.id ? { ...user, sleepAt: activity.sleepAt } : user,
+    );
     const assertQuiet = async () => {
       const states = await sync();
       assert.deepEqual(
         [sender.snapshots.length, observer.snapshots.length],
         snapshotCounts,
       );
-      assert.deepEqual(sender.emotes, [{ userId: a.guest.id, id: 'nahida-3' }]);
+      assert.deepEqual(sender.emotes, [
+        { userId: a.guest.id, id: 'nahida-3', activity },
+      ]);
       assert.deepEqual(observer.emotes, sender.emotes);
       assert.deepEqual(stale.emotes, []);
       for (const state of states) {
-        assert.equal(state.revision, before.revision);
-        assert.deepEqual(state.users, before.users);
+        assert.equal(state.revision, activity.revision);
+        assert.deepEqual(state.users, expectedUsers);
       }
     };
     assert.deepEqual(
@@ -1486,8 +1507,13 @@ test('emotes reach sender and observer exactly once without snapshots, expiry tr
       .emitWithAck('room:sync');
     assert.deepEqual(late.emotes, []);
     assert.ok(late.snapshots.length > 0);
-    for (const state of [...late.snapshots, lateState])
+    for (const state of [...late.snapshots, lateState]) {
       assert.ok(state.users.every((user) => !('emote' in user)));
+      assert.equal(
+        state.users.find(({ id }) => id === a.guest.id)?.sleepAt,
+        activity.sleepAt,
+      );
+    }
     await sync();
     assert.equal(sender.emotes.length, 1);
     assert.equal(observer.emotes.length, 1);

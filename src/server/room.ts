@@ -26,6 +26,7 @@ import {
   type RoomMotion,
   type StageJoin,
 } from '../shared/contracts.js';
+import { catSleepDelay } from '../shared/cat-activity.js';
 import type { Store } from './db.js';
 import { EmoteCatalog } from './emote-catalog.js';
 import {
@@ -182,6 +183,7 @@ export class Room {
           id: user.id,
           ...position,
           facingRight: user.facingRight ?? false,
+          ...(user.sleepAt === undefined ? {} : { sleepAt: user.sleepAt }),
           ...(grace ? { reconnectUntil: grace.until } : {}),
           ...(entry ? { stageJoinedAt: entry.joinedAt } : {}),
         };
@@ -235,6 +237,7 @@ export class Room {
         facingRight,
         seat: null,
         connected: false,
+        sleepAt: member.sleepAt ?? now + catSleepDelay(id),
       });
       this.reserveMember(id, until, now);
     }
@@ -315,6 +318,8 @@ export class Room {
   }
   private publishMotion(user: Participant) {
     if (this.closed) return;
+    const sleepAt = user.movingSince + user.durationMs + catSleepDelay(user.id);
+    user.sleepAt = sleepAt;
     this.revision++;
     this.onMotion({
       revision: this.revision,
@@ -327,6 +332,7 @@ export class Room {
       movingSince: user.movingSince,
       durationMs: user.durationMs,
       facingRight: user.facingRight ?? false,
+      sleepAt,
       ...(user.clientMoveId === undefined
         ? {}
         : { clientMoveId: user.clientMoveId }),
@@ -424,17 +430,19 @@ export class Room {
     if (existing) Object.assign(existing, guest, { connected: true });
     else {
       const { x, y } = this.spawnPosition();
+      const now = Date.now();
       this.users.set(guest.id, {
         ...guest,
         x,
         y,
         targetX: x,
         targetY: y,
-        movingSince: Date.now(),
+        movingSince: now,
         durationMs: 0,
         facingRight: false,
         seat: null,
         connected: true,
+        sleepAt: now + catSleepDelay(guest.id),
       });
     }
     const resume =
@@ -553,13 +561,20 @@ export class Room {
       .object({ id: z.string().min(1).max(80) })
       .strict()
       .parse(input);
-    this.user(id);
+    const user = this.user(id);
     if (!this.emoteCatalog.allows(emote.id)) throw new Error('表情不可用');
     const now = Date.now();
     if (now - (this.emoteTimes.get(id) ?? -Infinity) < EMOTE_COOLDOWN_MS)
       throw new Error('表情发送太快');
     this.emoteTimes.set(id, now);
-    this.onEmote({ userId: id, id: emote.id });
+    const event: RoomEmote = { userId: id, id: emote.id };
+    if (user.seat === null) {
+      const arrival = user.movingSince + user.durationMs;
+      const sleepAt = Math.max(now, arrival) + catSleepDelay(id);
+      user.sleepAt = sleepAt;
+      event.activity = { sleepAt, revision: ++this.revision };
+    }
+    this.onEmote(event);
   }
   join(
     id: string,
@@ -615,6 +630,7 @@ export class Room {
     this.stage.forEach((id, seat) => {
       const user = this.users.get(id)!;
       const x = positions[seat]!;
+      delete user.sleepAt;
       Object.assign(user, { seat, x, targetX: x });
     });
   }
@@ -635,6 +651,7 @@ export class Room {
     const user = this.users.get(id);
     if (user) {
       const { x, y } = returnPosition;
+      const now = Date.now();
       delete user.clientMoveId;
       Object.assign(user, {
         seat: null,
@@ -643,7 +660,8 @@ export class Room {
         targetX: x,
         targetY: y,
         durationMs: 0,
-        movingSince: Date.now(),
+        movingSince: now,
+        sleepAt: now + catSleepDelay(id),
       });
     }
   }

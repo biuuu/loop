@@ -175,7 +175,7 @@ test('the actual store receives only live events and clears them across membersh
   let state: RoomSnapshot = {
     revision: 1,
     serverTime: Date.now() + 60_000,
-    users: [participant('a'), participant('b')],
+    users: [participant('a'), { ...participant('b'), sleepAt: 1 }],
     stage: [],
     playback: null,
     resolving: false,
@@ -210,12 +210,28 @@ test('the actual store receives only live events and clears them across membersh
     await waitFor(() => room.snapshot !== null);
     assert.ok(room.offset > 50_000, 'server clock differs from local clock');
     const before = Date.now();
-    peers[0]!.emit('room:emote', { userId: 'b', id: 'nahida-2' });
+    const previous = state;
+    const sleepAt = state.serverTime + 130_000;
+    state = {
+      ...state,
+      revision: state.revision + 1,
+      users: [state.users[0]!, { ...state.users[1]!, sleepAt }],
+    };
+    peers[0]!.emit('room:emote', {
+      userId: 'b',
+      id: 'nahida-2',
+      activity: { sleepAt, revision: state.revision },
+    });
     await waitFor(() => room.emoteFor('b') !== undefined);
     const first = room.emoteFor('b')!;
     assert.ok(first.receivedAt >= before && first.receivedAt <= Date.now());
     assert.equal(first.expiresAt - first.receivedAt, 3000);
     assert.equal('emote' in room.snapshot!.users[1]!, false);
+    assert.equal(room.snapshot!.users[1]!.sleepAt, sleepAt);
+    assert.equal(room.snapshot!.revision, state.revision);
+    peers[0]!.emit('room:snapshot', previous);
+    await delay(20);
+    assert.equal(room.snapshot!.users[1]!.sleepAt, sleepAt);
     snapshot();
     await waitFor(() => room.snapshot?.revision === state.revision);
     assert.equal(room.emoteFor('b'), first);

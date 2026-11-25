@@ -1,4 +1,5 @@
 import type { Participant } from '../shared/contracts';
+import { identityHash } from '../shared/cat-activity';
 
 export const CAT_CELL_SIZE = 64;
 export const CAT_SHEET_COLUMNS = 16;
@@ -6,8 +7,6 @@ export const CAT_SHEET_ROWS = 14;
 export const CAT_FRAME_MS = 200;
 export const CAT_SCALE = 3;
 export const CAT_IDLE_UP_COLUMN = 0;
-export const CAT_SLEEP_AFTER_MS = 120_000;
-const CAT_SLEEP_SPREAD_MS = 30_000;
 // Loop the quiet frames and the growing Zs, skipping the source fade-out.
 const SLEEP_LOOP_FRAMES = 12;
 // Rows and timing come from the supplied Cat.aseprite animation tags.
@@ -25,64 +24,7 @@ type Movement = Pick<
   Participant,
   'id' | 'x' | 'y' | 'targetX' | 'targetY' | 'movingSince' | 'durationMs'
 > &
-  Partial<Pick<Participant, 'seat' | 'facingRight'>>;
-
-export interface CatActivity {
-  inactiveSince: number;
-  movement: string;
-  emoteReceivedAt: number | undefined;
-  seat: Participant['seat'];
-}
-
-/** Scene-local activity, independent of unrelated room snapshot revisions. */
-export function catActivity(
-  previous: CatActivity | undefined,
-  user: Movement & Pick<Participant, 'seat'>,
-  now: number,
-  snapshotTime = now,
-  emoteReceivedAt?: number,
-): CatActivity {
-  const movement = [
-    user.x,
-    user.y,
-    user.targetX,
-    user.targetY,
-    user.movingSince,
-    user.durationMs,
-  ].join(':');
-  let inactiveSince = previous?.inactiveSince ?? now;
-  if (previous && previous.movement !== movement)
-    inactiveSince = Math.max(inactiveSince, user.movingSince + user.durationMs);
-  if (previous && previous.seat !== user.seat)
-    inactiveSince = Math.max(inactiveSince, snapshotTime);
-  if (
-    emoteReceivedAt !== undefined &&
-    emoteReceivedAt !== previous?.emoteReceivedAt
-  )
-    inactiveSince = Math.max(inactiveSince, now);
-  // A newly observed walk must finish before its inactivity countdown starts.
-  inactiveSince = Math.max(inactiveSince, user.movingSince + user.durationMs);
-  return {
-    inactiveSince,
-    movement,
-    emoteReceivedAt: emoteReceivedAt ?? previous?.emoteReceivedAt,
-    seat: user.seat,
-  };
-}
-
-// Stable per-cat phases avoid lockstep animations without timers or random frame state.
-function identityHash(id: string, salt: string) {
-  let hash = 2166136261;
-  for (const character of `${salt}:${id}`)
-    hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
-  return hash >>> 0;
-}
-
-export function catSleepDelay(id: string) {
-  return (
-    CAT_SLEEP_AFTER_MS + (identityHash(id, 'sleep') % (CAT_SLEEP_SPREAD_MS + 1))
-  );
-}
+  Partial<Pick<Participant, 'seat' | 'facingRight' | 'sleepAt'>>;
 
 /** Play the untouched source loop, then wait on its raised-tail first frame. */
 export function idleColumn(id: string, elapsed: number, reducedMotion = false) {
@@ -101,7 +43,6 @@ export function catFrame(
   now: number,
   reducedMotion = false,
   lastFacingRight = false,
-  inactiveSince?: number,
   walkStartedAt?: number,
 ) {
   const dx = user.targetX - user.x;
@@ -112,9 +53,7 @@ export function catFrame(
     now < user.movingSince + user.durationMs &&
     (dx !== 0 || dy !== 0);
   const sleepElapsed =
-    !moving && user.seat == null && inactiveSince !== undefined
-      ? now - inactiveSince - catSleepDelay(user.id)
-      : -1;
+    user.seat == null && user.sleepAt !== undefined ? now - user.sleepAt : -1;
   let animation: CatAnimation = 'idle';
   if (moving) {
     if (Math.abs(dx) >= Math.abs(dy)) animation = 'side';

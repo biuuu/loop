@@ -8,10 +8,7 @@ import {
   CAT_IDLE_UP_COLUMN,
   CAT_SHEET_COLUMNS,
   CAT_SHEET_ROWS,
-  CAT_SLEEP_AFTER_MS,
-  catActivity,
   catFrame,
-  catSleepDelay,
   idleColumn,
 } from '../src/client/cat-sprite';
 
@@ -76,13 +73,8 @@ test('server stop retains authoritative facing even with no remaining movement',
     false,
   );
   assert.equal(
-    catFrame(
-      { ...stopped, facingRight: true, seat: null },
-      catSleepDelay(stopped.id),
-      false,
-      false,
-      0,
-    ).flipX,
+    catFrame({ ...stopped, facingRight: true, seat: null, sleepAt: 4000 }, 4000)
+      .flipX,
     true,
   );
 });
@@ -123,7 +115,6 @@ test('upward floor traversal never plays the source front-facing fifth cell', ()
         user.movingSince + elapsed,
         false,
         false,
-        undefined,
         walkStartedAt,
       );
       assert.equal(frame.animation, 'up');
@@ -147,14 +138,14 @@ test('reduced motion freezes animation frames while preserving direction selecti
 test('an optional remote gait clock only changes walking columns, leaving motion and idle timing intact', () => {
   const report = { ...movement, movingSince: 1800, durationMs: 2000 };
   assert.equal(catFrame(report, 1800).column, 0);
-  const remote = catFrame(report, 1800, false, false, undefined, 1000);
+  const remote = catFrame(report, 1800, false, false, 1000);
   assert.equal(remote.column, 4);
   assert.equal(remote.animation, 'side');
   assert.equal(remote.flipX, true);
-  assert.equal(catFrame(report, 1800, true, false, undefined, 1000).column, 0);
+  assert.equal(catFrame(report, 1800, true, false, 1000).column, 0);
   for (const now of [1799, 3800, 5000, 16000])
     assert.deepEqual(
-      catFrame(report, now, false, false, undefined, 1000),
+      catFrame(report, now, false, false, 1000),
       catFrame(report, now),
     );
 });
@@ -221,116 +212,28 @@ test('movement arrival, spawn and stage placement begin with a full raised-tail 
 });
 
 test('sleep loops from the full Zs directly back to the quiet frames', () => {
-  const user = { ...movement, durationMs: 0, seat: null };
-  const activity = catActivity(undefined, user, 5000);
-  const start = activity.inactiveSince + catSleepDelay(user.id);
-  assert.equal(
-    catFrame(user, start - 1, false, false, activity.inactiveSince).animation,
-    'idle',
-  );
+  const start = 123_000;
+  const user = { ...movement, durationMs: 0, seat: null, sleepAt: start };
+  assert.equal(catFrame(user, start - 1).animation, 'idle');
   for (let frame = 0; frame < 25; frame++) {
     const now = start + frame * CAT_FRAME_MS;
-    const result = catFrame(user, now, false, true, activity.inactiveSince);
+    const result = catFrame(user, now, false, true);
     assert.equal(result.animation, 'sleep');
     assert.equal(result.row, 0);
     assert.equal(result.column, frame % 12);
     assert.equal(result.flipX, true);
-    assert.equal(
-      catFrame(user, now, true, true, activity.inactiveSince).column,
-      0,
-    );
+    assert.equal(catFrame(user, now, true, true).column, 0);
   }
-  assert.equal(
-    catFrame({ ...user, seat: 0 }, start, false, false, activity.inactiveSince)
-      .animation,
-    'idle',
-  );
+  assert.equal(catFrame({ ...user, seat: 0 }, start).animation, 'idle');
 });
 
-test('cats first observed together have stable, staggered sleep deadlines', () => {
-  const users = ['cat-one', 'cat-two', 'cat-three'].map((id) => ({
-    ...movement,
-    id,
-    durationMs: 0,
-    seat: null,
-  }));
-  const since = 5000;
-  const ordered = users.sort(
-    (a, b) => catSleepDelay(a.id) - catSleepDelay(b.id),
-  );
-  const delays = ordered.map(({ id }) => catSleepDelay(id));
-  assert.equal(new Set(delays).size, users.length);
-  assert.ok(delays[0]! >= CAT_SLEEP_AFTER_MS);
-  assert.ok(delays.at(-1)! <= CAT_SLEEP_AFTER_MS + 30_000);
-  const firstDeadline = since + delays[0]!;
-  assert.deepEqual(
-    ordered.map((user) => {
-      const activity = catActivity(undefined, user, since);
-      return catFrame(user, firstDeadline, false, false, activity.inactiveSince)
-        .animation;
-    }),
-    ['sleep', 'idle', 'idle'],
-  );
-});
-
-test('activity initializes on arrival in the scene and ignores unrelated snapshot changes', () => {
-  const user = { ...movement, durationMs: 0, seat: null };
-  const initial = catActivity(undefined, user, 50_000);
-  assert.equal(initial.inactiveSince, 50_000);
-  const renamed = { ...user, nickname: 'renamed' };
-  const unchanged = catActivity(initial, renamed, 90_000, 89_000);
-  assert.equal(unchanged.inactiveSince, initial.inactiveSince);
-  const newArrival = catActivity(undefined, user, 200_000);
-  assert.equal(newArrival.inactiveSince, 200_000);
-});
-
-test('authoritative movement, local emote events and stage changes wake cats and restart their own idle countdown', () => {
-  const user = { ...movement, durationMs: 0, seat: null };
-  const initial = catActivity(undefined, user, 5000);
-  const wakeAt = 200_000;
-  const walking = { ...user, movingSince: wakeAt, durationMs: 2000 };
-  const moved = catActivity(initial, walking, wakeAt);
-  assert.equal(moved.inactiveSince, wakeAt + 2000);
-  assert.equal(
-    catFrame(walking, wakeAt, false, false, moved.inactiveSince).animation,
-    'side',
-  );
-  assert.equal(
-    catFrame(walking, wakeAt + 2000, false, false, moved.inactiveSince)
-      .animation,
-    'idle',
-  );
-  const observedAt = wakeAt + 500;
-  const emoted = catActivity(initial, user, observedAt, observedAt, wakeAt);
-  assert.equal(emoted.inactiveSince, observedAt);
-  assert.equal(
-    catFrame(user, observedAt, false, false, emoted.inactiveSince).animation,
-    'idle',
-  );
-  assert.equal(
-    catActivity(emoted, user, wakeAt + 1000, wakeAt + 1000, wakeAt)
-      .inactiveSince,
-    observedAt,
-  );
-  // Expiry and later unrelated snapshots cannot restart the inactivity clock.
-  const expired = catActivity(emoted, user, wakeAt + 3000);
-  assert.equal(expired.inactiveSince, observedAt);
-  assert.equal(expired.emoteReceivedAt, wakeAt);
-  const repeated = catActivity(
-    expired,
-    user,
-    wakeAt + 4000,
-    wakeAt + 4000,
-    wakeAt + 4000,
-  );
-  assert.equal(repeated.inactiveSince, wakeAt + 4000);
-  const onStage = catActivity(
-    initial,
-    { ...user, seat: 2 },
-    wakeAt + 500,
-    wakeAt,
-  );
-  assert.equal(onStage.inactiveSince, wakeAt);
-  const leftStage = catActivity(onStage, user, wakeAt + 10_000, wakeAt + 9000);
-  assert.equal(leftStage.inactiveSince, wakeAt + 9000);
+test('a late observer renders the current sleep phase from the server deadline', () => {
+  const sleeping = { ...movement, durationMs: 0, seat: null, sleepAt: 130_000 };
+  const observedAt = 131_700;
+  assert.equal(catFrame(sleeping, observedAt).animation, 'sleep');
+  assert.equal(catFrame(sleeping, observedAt).column, 8);
+  const { sleepAt, ...legacy } = sleeping;
+  assert.equal(catFrame(legacy, observedAt).animation, 'idle');
+  const waking = { ...sleeping, sleepAt: 251_700 };
+  assert.equal(catFrame(waking, observedAt).animation, 'idle');
 });

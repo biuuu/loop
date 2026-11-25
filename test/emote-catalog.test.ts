@@ -182,9 +182,9 @@ test('live rooms use the current catalog for send permission without snapshots',
     const b = db.createGuest('B').guest;
     room.connect(a, { id: 'a', replaced() {} });
     room.connect(b, { id: 'b', replaced() {} });
-    const events: unknown[] = [];
+    const events: { userId: string; id: string }[] = [];
     let snapshots = 0;
-    room.onEmote = (event) => events.push(event);
+    room.onEmote = ({ userId, id }) => events.push({ userId, id });
     room.onChange = () => snapshots++;
     const before = catalog.get();
     const oldId = before.groups[0]!.items[0]!.id;

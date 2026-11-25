@@ -42,7 +42,15 @@ export function createLocalMovement() {
     // Keep the settled segment as a fence against older echoes after catch-up.
     return overriding ||
       (authoritative.clientMoveId ?? -1) < latest.clientMoveId
-      ? { ...authoritative, ...latest }
+      ? {
+          ...authoritative,
+          ...latest,
+          // Wake locally even for a quick stop before the server echo arrives.
+          sleepAt:
+            authoritative.clientMoveId === latest.clientMoveId
+              ? authoritative.sleepAt
+              : undefined,
+        }
       : authoritative;
   }
   function set(authoritative: Participant, point: Point, now: number) {

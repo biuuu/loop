@@ -14,6 +14,7 @@ import {
   ROOM_CHECKPOINT_MAX_AGE_MS,
   type RoomCheckpoint,
 } from '../src/server/room-checkpoint.js';
+import { catSleepDelay } from '../src/shared/cat-activity.js';
 import type {
   Guest,
   MusicService,
@@ -136,6 +137,9 @@ test('graceful restart restores the current round, seek, queue and approximate p
       clientMoveId: 3,
     });
     now += 500;
+    room.emote(owner.guest.id, { id: 'nahida-1' });
+    const ownerSleepAt = now + catSleepDelay(owner.guest.id);
+    const sleepAt = now + 500 + catSleepDelay(audience.guest.id);
     await server.app.close();
     server = undefined;
 
@@ -160,8 +164,13 @@ test('graceful restart restores the current round, seek, queue and approximate p
         position.durationMs,
         position.facingRight,
         position.clientMoveId,
+        position.sleepAt,
       ],
-      [570, 410, 0, true, undefined],
+      [570, 410, 0, true, undefined, sleepAt],
+    );
+    assert.equal(
+      restored.users.find(({ id }) => id === owner.guest.id)?.sleepAt,
+      ownerSleepAt,
     );
     assert.deepEqual(server.db.playlist(dj.guest.id), queue);
     assert.equal(
@@ -182,6 +191,7 @@ test('graceful restart restores the current round, seek, queue and approximate p
       [down.x, down.y, down.seat],
       [returnPoint.x, returnPoint.y, null],
     );
+    assert.equal(down.sleepAt, now + catSleepDelay(dj.guest.id));
     assert.deepEqual(server.db.playlist(dj.guest.id), queue);
   } finally {
     await server?.app.close();

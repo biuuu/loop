@@ -243,6 +243,7 @@ test('peer motion merges explicit fields, preserves transient state and keeps re
   const presentation = createRemoteMovement();
   const before = presentation.view(peer, START + 100);
   const update = motion();
+  update.sleepAt = START + 130_000;
   delete update.clientMoveId;
   f.peers[0]!.emit('room:motion', {
     ...update,
@@ -269,6 +270,7 @@ test('peer motion merges explicit fields, preserves transient state and keeps re
     movingSince: update.movingSince,
     durationMs: update.durationMs,
     facingRight: true,
+    sleepAt: update.sleepAt,
   });
   assert.equal(Object.hasOwn(moved, 'clientMoveId'), false);
   assert.equal(current.serverTime, update.serverTime);

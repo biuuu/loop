@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Store } from '../src/server/db.js';
 import { Room } from '../src/server/room.js';
+import { catSleepDelay } from '../src/shared/cat-activity.js';
 import type { Guest, Track } from '../src/shared/contracts.js';
 
 const track = (id: string): Track => ({
@@ -108,7 +109,13 @@ test('checkpoints sample movement once and load current public profiles without 
         facingRight: true,
         stageJoinedAt: 1_000_000,
       },
-      { id: listener.id, x: 290, y: 400, facingRight: true },
+      {
+        id: listener.id,
+        x: 290,
+        y: 400,
+        facingRight: true,
+        sleepAt: 1_001_000 + catSleepDelay(listener.id),
+      },
     ]);
 
     room.close();
@@ -123,8 +130,48 @@ test('checkpoints sample movement once and load current public profiles without 
     const snapshot = restored.snapshot();
     assert.equal(snapshot.users[0]!.nickname, 'New DJ');
     assert.deepEqual(snapshot.users[0]!.appearance, appearance);
+    assert.equal(snapshot.users[0]!.sleepAt, undefined);
+    assert.equal(snapshot.users[1]!.sleepAt, checkpoint.members[1]!.sleepAt);
     assert.equal(snapshots.mock.callCount(), 0);
     assert.equal(playbackUpdates.mock.callCount(), 0);
+  } finally {
+    close();
+  }
+});
+
+test('checkpoint restore preserves expired sleep deadlines and supplies them for legacy audience members', (context) => {
+  const now = 1_000_000;
+  context.mock.timers.enable({ apis: ['Date', 'setTimeout'], now });
+  const { db, dj, listener, open, connect, load, close } = fixture();
+  try {
+    const legacy = db.createGuest('Legacy audience').guest;
+    const room = open();
+    const position = { x: 500, y: 450, facingRight: false };
+    const expired = now - 500;
+    room.restoreCheckpoint({
+      savedAt: now - 100,
+      members: [
+        { ...position, id: dj.id, sleepAt: expired },
+        { ...position, id: listener.id, sleepAt: expired },
+        { ...position, id: legacy.id },
+      ],
+      stage: [dj.id],
+      playback: null,
+    });
+    const sleepDeadlines = [undefined, expired, now + catSleepDelay(legacy.id)];
+    assert.deepEqual(
+      room.snapshot().users.map(({ sleepAt }) => sleepAt),
+      sleepDeadlines,
+    );
+    assert.deepEqual(
+      load().members.map(({ sleepAt }) => sleepAt),
+      sleepDeadlines,
+    );
+    connect(room, listener);
+    assert.equal(
+      room.snapshot().users.find(({ id }) => id === listener.id)?.sleepAt,
+      expired,
+    );
   } finally {
     close();
   }

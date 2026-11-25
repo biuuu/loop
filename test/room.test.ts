@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Store } from '../src/server/db.js';
 import { Room } from '../src/server/room.js';
 import { MusicPlaybackError } from '../src/server/music-errors.js';
+import { catSleepDelay } from '../src/shared/cat-activity.js';
 import {
   EMOTE_DURATION_MS,
   EMOTE_COOLDOWN_MS,
@@ -93,6 +94,7 @@ function assertStageConsistent(snapshot: RoomSnapshot) {
       assert.equal(user.targetY, user.y);
       assert.equal(user.durationMs, 0);
       assert.equal(user.clientMoveId, undefined);
+      assert.equal(user.sleepAt, undefined);
     }
   }
   if (snapshot.playback)
@@ -718,6 +720,7 @@ test('client motion broadcasts the bounded local segment and exact final stop po
   } = setup();
   const me = () => room.snapshot().users.find((user) => user.id === a!.id)!;
   try {
+    const sleepDelay = catSleepDelay(a!.id);
     const snapshots = collectSnapshots(room);
     const playback = collectPlayback(room);
     const events = collectMotion(room);
@@ -740,6 +743,7 @@ test('client motion broadcasts the bounded local segment and exact final stop po
       serverTime: now,
       movingSince: now,
       durationMs: 1000,
+      sleepAt: now + 1000 + sleepDelay,
     });
     assert.equal(room.snapshot().revision, revision + 1);
     assert.deepEqual(me(), {
@@ -747,6 +751,7 @@ test('client motion broadcasts the bounded local segment and exact final stop po
       ...motion,
       movingSince: now,
       durationMs: 1000,
+      sleepAt: now + 1000 + sleepDelay,
     });
     assert.deepEqual(
       room.snapshot().users.find((user) => user.id === b!.id),
@@ -767,6 +772,7 @@ test('client motion broadcasts the bounded local segment and exact final stop po
       ...final,
       movingSince: now,
       durationMs: 0,
+      sleepAt: now + sleepDelay,
     });
     now += 10000;
     room.stop(a!.id);
@@ -776,6 +782,8 @@ test('client motion broadcasts the bounded local segment and exact final stop po
     assert.equal(me().clientMoveId, undefined);
     assert.equal(events.length, 3);
     assert.equal(events[2]!.revision, revision + 3);
+    assert.equal(events[2]!.sleepAt, now + sleepDelay);
+    assert.equal(me().sleepAt, now + sleepDelay);
     assert.equal('clientMoveId' in events[2]!, false);
     assert.equal(snapshots.length, 0);
     assert.equal(playback.length, 0);
@@ -785,6 +793,7 @@ test('client motion broadcasts the bounded local segment and exact final stop po
       'movingSince',
       'revision',
       'serverTime',
+      'sleepAt',
       'targetX',
       'targetY',
       'userId',
@@ -1535,13 +1544,70 @@ test('allowlisted emotes, cooldown and authoritative movement bounds', () => {
     room.move(a!.id, target);
     const duration = room.snapshot().users[0]!.durationMs;
     assert.ok(Math.abs(duration - 1000) < 1e-6);
+    const moving = room.snapshot().users[0]!;
+    assert.equal(
+      moving.sleepAt,
+      moving.movingSince + moving.durationMs + catSleepDelay(a!.id),
+    );
     room.move(a!.id, { x: start.x, y: start.y });
     assert.ok(room.snapshot().users[0]!.x < target.x);
   } finally {
     close();
   }
 });
-test('all emote presets broadcast only a tiny identity-bound event without state or expiry timers', (context) => {
+test('audience sleep follows movement and emotes, survives reconnect, and restarts on stage exit', async (context) => {
+  let now = 1_000_000;
+  context.mock.method(Date, 'now', () => now);
+  const {
+    room,
+    guests: [a],
+    close,
+  } = setup();
+  const id = a!.id;
+  const sleepDelay = catSleepDelay(id);
+  const member = () => room.snapshot().users.find((user) => user.id === id)!;
+  const events: RoomEmote[] = [];
+  room.onEmote = (event) => events.push(event);
+  try {
+    assert.equal(member().sleepAt, now + sleepDelay);
+    const initial = member().sleepAt;
+    now += sleepDelay + 1;
+    room.disconnect(id, id);
+    room.connect(a!, { id: 'reconnected', replaced() {} });
+    assert.equal(member().sleepAt, initial);
+
+    room.motion(id, {
+      x: SCENE.walk.left,
+      y: SCENE.walk.top,
+      targetX: SCENE.walk.left + 3 * SCENE.speed,
+      targetY: SCENE.walk.top,
+      facingRight: true,
+      clientMoveId: 1,
+    });
+    const arrival = now + 3000;
+    now += 500;
+    room.emote(id, { id: 'nahida-1' });
+    assert.equal(events.at(-1)?.activity?.sleepAt, arrival + sleepDelay);
+    assert.equal(member().sleepAt, arrival + sleepDelay);
+    now = arrival + EMOTE_COOLDOWN_MS;
+    room.emote(id, { id: 'nahida-2' });
+    assert.equal(events.at(-1)?.activity?.sleepAt, now + sleepDelay);
+    assert.equal(member().sleepAt, now + sleepDelay);
+
+    await room.join(id, 'reconnected');
+    assert.equal(member().sleepAt, undefined);
+    const seated = room.snapshot();
+    now += EMOTE_COOLDOWN_MS;
+    room.emote(id, { id: 'nahida-3' });
+    assert.deepEqual(events.at(-1), { userId: id, id: 'nahida-3' });
+    assert.deepEqual(room.snapshot(), { ...seated, serverTime: now });
+    await room.leave(id, 'reconnected');
+    assert.equal(member().sleepAt, now + sleepDelay);
+  } finally {
+    close();
+  }
+});
+test('all emote presets update only the sender deadline and use one event without expiry timers', (context) => {
   context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000000 });
   const {
     db,
@@ -1555,7 +1621,7 @@ test('all emote presets broadcast only a tiny identity-bound event without state
     const publish = context.mock.fn();
     room.onChange = publish;
     const timers = context.mock.method(globalThis, 'setTimeout');
-    const before = room.snapshot();
+    const expected = room.snapshot();
     const groupsJson = (
       db.sql
         .prepare('SELECT groups_json FROM emote_catalog WHERE id=1')
@@ -1564,11 +1630,21 @@ test('all emote presets broadcast only a tiny identity-bound event without state
     const presets = (
       JSON.parse(groupsJson) as { items: { id: string }[] }[]
     ).flatMap((group) => group.items);
+    function send(userId: string, id: string) {
+      const activity = {
+        sleepAt: Date.now() + catSleepDelay(userId),
+        revision: ++expected.revision,
+      };
+      expected.serverTime = Date.now();
+      expected.users.find((user) => user.id === userId)!.sleepAt =
+        activity.sleepAt;
+      room.emote(userId, { id });
+      assert.deepEqual(events.at(-1), { userId, id, activity });
+      assert.deepEqual(room.snapshot(), expected);
+    }
     for (const [index, preset] of presets.entries()) {
-      room.emote(a!.id, { id: preset.id });
+      send(a!.id, preset.id);
       assert.equal(events.length, index + 1);
-      assert.deepEqual(events.at(-1), { userId: a!.id, id: preset.id });
-      assert.deepEqual(room.snapshot(), { ...before, serverTime: Date.now() });
       assert.throws(
         () => room.emote(a!.id, { id: 'nahida-2' }),
         /表情发送太快/,
@@ -1576,12 +1652,11 @@ test('all emote presets broadcast only a tiny identity-bound event without state
       if (index < presets.length - 1)
         context.mock.timers.tick(EMOTE_COOLDOWN_MS);
     }
-    room.emote(b!.id, { id: 'nahida-2' });
-    assert.deepEqual(events.at(-1), { userId: b!.id, id: 'nahida-2' });
+    send(b!.id, 'nahida-2');
     const sent = [...events];
     context.mock.timers.tick(EMOTE_DURATION_MS + 1);
     assert.deepEqual(events, sent);
-    assert.deepEqual(room.snapshot(), { ...before, serverTime: Date.now() });
+    assert.deepEqual(room.snapshot(), { ...expected, serverTime: Date.now() });
     assert.equal(publish.mock.callCount(), 0);
     assert.equal(timers.mock.callCount(), 0);
     for (const input of [
@@ -1591,12 +1666,12 @@ test('all emote presets broadcast only a tiny identity-bound event without state
       { id: 'nahida-2', url: 'https://example.com/sticker.png' },
       { id: 'nahida-2', userId: b!.id },
       { id: 'nahida-2', expiresAt: Date.now() + EMOTE_DURATION_MS },
+      { id: 'nahida-2', activity: { sleepAt: 1, revision: 100 } },
     ])
       assert.throws(() => room.emote(a!.id, input));
     assert.deepEqual(events, sent);
     // Invalid payloads do not consume a valid sender's next cooldown slot.
-    room.emote(a!.id, { id: 'nahida-2' });
-    assert.deepEqual(events.at(-1), { userId: a!.id, id: 'nahida-2' });
+    send(a!.id, 'nahida-2');
   } finally {
     close();
   }
@@ -1628,11 +1703,14 @@ test('emotes reject absent, disconnected and closed identities and discard depar
     // Actual departure clears cooldown even though less than two seconds passed.
     room.emote(a!.id, { id: 'nahida-3' });
     room.emote(b!.id, { id: 'nahida-1' });
-    assert.deepEqual(events, [
-      { userId: a!.id, id: 'nahida-2' },
-      { userId: a!.id, id: 'nahida-3' },
-      { userId: b!.id, id: 'nahida-1' },
-    ]);
+    assert.deepEqual(
+      events.map(({ userId, id }) => ({ userId, id })),
+      [
+        { userId: a!.id, id: 'nahida-2' },
+        { userId: a!.id, id: 'nahida-3' },
+        { userId: b!.id, id: 'nahida-1' },
+      ],
+    );
     room.close();
     assert.equal(
       (Reflect.get(room, 'emoteTimes') as Map<string, number>).size,

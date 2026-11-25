@@ -47,7 +47,7 @@ function closePoint(
   );
 }
 function frame(user: Participant, now: number, walkStartedAt?: number) {
-  return catFrame(user, now, false, false, undefined, walkStartedAt);
+  return catFrame(user, now, false, false, walkStartedAt);
 }
 function displayedFrame(
   user: Participant,
