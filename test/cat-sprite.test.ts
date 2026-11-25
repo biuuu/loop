@@ -9,9 +9,8 @@ import {
   CAT_SHEET_COLUMNS,
   CAT_SHEET_ROWS,
   catFrame,
-  idleFrame,
+  idleColumn,
 } from '../src/client/cat-sprite';
-import { identityHash } from '../src/shared/cat-activity';
 
 const movement = {
   id: 'cat-one',
@@ -167,7 +166,7 @@ test('idle preserves all original frames and pauses 8–12 seconds between loops
     const changes: { time: number; column: number }[] = [];
     let previous = 0;
     for (let time = 0; time < 40000; time++) {
-      const { column } = idleFrame(id, time);
+      const column = idleColumn(id, time);
       if (column !== previous) changes.push({ time, column });
       previous = column;
     }
@@ -188,45 +187,17 @@ test('idle preserves all original frames and pauses 8–12 seconds between loops
 
 test('idle timing is deterministic, differs by cat, and reduced motion stays upright', () => {
   const times = Array.from({ length: 600 }, (_, index) => index * 100);
-  const first = times.map((time) => idleFrame('cat-one', time));
+  const first = times.map((time) => idleColumn('cat-one', time));
   assert.deepEqual(
     first,
-    times.map((time) => idleFrame('cat-one', time)),
+    times.map((time) => idleColumn('cat-one', time)),
   );
   assert.notDeepEqual(
     first,
-    times.map((time) => idleFrame('cat-two', time)),
+    times.map((time) => idleColumn('cat-two', time)),
   );
   for (const time of times)
-    assert.deepEqual(idleFrame('cat-one', time, true), {
-      animation: 'idle',
-      column: CAT_IDLE_UP_COLUMN,
-    });
-});
-
-test('grooming inserts two short loops after the second tail action and yields to movement and sleep', () => {
-  const user = { ...movement, facingRight: true, seat: null, durationMs: 0 };
-  const pause = 8000 + (identityHash(user.id, 'idle') % 4001);
-  const start = user.movingSince + pause * 3 + CAT_FRAME_MS * 24;
-  assert.equal(catFrame(user, start - 1).animation, 'idle');
-  for (let step = 0; step < 8; step++) {
-    const time = start + step * CAT_FRAME_MS;
-    assert.deepEqual(catFrame(user, time), {
-      animation: 'groom',
-      column: step % 4,
-      row: 3,
-      footY: 48,
-      flipX: true,
-    });
-  }
-  assert.equal(catFrame(user, start + 8 * CAT_FRAME_MS).animation, 'idle');
-  assert.equal(catFrame(user, start, true).animation, 'idle');
-  assert.equal(catFrame({ ...user, sleepAt: start }, start).animation, 'sleep');
-  assert.equal(
-    catFrame({ ...user, movingSince: start, durationMs: 1000 }, start)
-      .animation,
-    'side',
-  );
+    assert.equal(idleColumn('cat-one', time, true), CAT_IDLE_UP_COLUMN);
 });
 
 test('movement arrival, spawn and stage placement begin with a full raised-tail pause', () => {
@@ -253,7 +224,7 @@ test('sleep loops from the full Zs directly back to the quiet frames', () => {
     assert.equal(result.flipX, true);
     assert.equal(catFrame(user, now, true, true).column, 0);
   }
-  assert.notEqual(catFrame({ ...user, seat: 0 }, start).animation, 'sleep');
+  assert.equal(catFrame({ ...user, seat: 0 }, start).animation, 'idle');
 });
 
 test('a late observer renders the current sleep phase from the server deadline', () => {
@@ -262,7 +233,7 @@ test('a late observer renders the current sleep phase from the server deadline',
   assert.equal(catFrame(sleeping, observedAt).animation, 'sleep');
   assert.equal(catFrame(sleeping, observedAt).column, 8);
   const { sleepAt, ...legacy } = sleeping;
-  assert.notEqual(catFrame(legacy, observedAt).animation, 'sleep');
+  assert.equal(catFrame(legacy, observedAt).animation, 'idle');
   const waking = { ...sleeping, sleepAt: 251_700 };
-  assert.notEqual(catFrame(waking, observedAt).animation, 'sleep');
+  assert.equal(catFrame(waking, observedAt).animation, 'idle');
 });

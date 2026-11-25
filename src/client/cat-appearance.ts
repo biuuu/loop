@@ -8,11 +8,9 @@ export const CAT_PACKED_ROWS: Record<CatAnimation, number> = {
   up: 2,
   down: 3,
   sleep: 4,
-  groom: 5,
 };
 export const CAT_APPEARANCE_WIDTH = CAT_ANIMATIONS.sleep.frames * CAT_CELL_SIZE;
-export const CAT_APPEARANCE_HEIGHT =
-  Object.keys(CAT_PACKED_ROWS).length * CAT_CELL_SIZE;
+export const CAT_APPEARANCE_HEIGHT = 5 * CAT_CELL_SIZE;
 const ORIGINAL = {
   main: 0xfb8c00,
   shadow: 0xef6c00,

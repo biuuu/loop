@@ -17,14 +17,14 @@ import {
   DEFAULT_CAT_APPEARANCE,
 } from '../src/shared/appearance';
 
-import { frameIndex, sourcePixels, rgb } from './helpers/cat-source';
+import { sourcePixels, rgb } from './helpers/cat-source';
 
 const original = sourcePixels();
 const isCoat = (color: number) => color === 0xfb8c00 || color === 0xef6c00;
 
 test('packed appearance sheet includes all sixteen sleep frames from the original first row', () => {
   assert.equal(CAT_APPEARANCE_WIDTH, 1024);
-  assert.equal(CAT_APPEARANCE_HEIGHT, 384);
+  assert.equal(CAT_APPEARANCE_HEIGHT, 320);
   assert.equal(CAT_ANIMATIONS.sleep.row, 0);
   assert.equal(CAT_ANIMATIONS.sleep.frames, 16);
   assert.equal(CAT_PACKED_ROWS.sleep, 4);
@@ -32,19 +32,6 @@ test('packed appearance sheet includes all sixteen sleep frames from the origina
     const index = ((4 * 64 + 46) * 1024 + column * 64 + 30) * 4;
     assert.equal(original[index + 3], 255);
     assert.ok(isCoat(rgb(original, index)));
-  }
-});
-
-test('all coat palettes retain the tongue color in the grooming frames', () => {
-  assert.equal(CAT_PACKED_ROWS.groom, 5);
-  for (const coat of CAT_COATS) {
-    const result = recolorCatPixels(original, {
-      coat: coat.id,
-      pattern: 'solid',
-    });
-    const tongue = frameIndex('groom', 1, 30, 40);
-    assert.equal(rgb(original, tongue), 0xe84e40);
-    assert.equal(rgb(result, tongue), 0xe84e40);
   }
 });
 
@@ -202,7 +189,6 @@ test('original dark and ivory coats retain their distinct palettes and original 
       [0xef6c00, shadow],
       [0xffdeb1, light],
       [0x482a00, 0x482a00],
-      [0xe84e40, 0xe84e40],
     ]);
     for (let index = 0; index < original.length; index += 4) {
       if (original[index + 3] === 0) continue;

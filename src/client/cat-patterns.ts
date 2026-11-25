@@ -111,34 +111,6 @@ const SLEEP_LOW: FramePatterns = {
   ],
 };
 
-// The grooming body and raised paw stay in place while the head lifts.
-const GROOM_SOCKS: readonly MaskPatch[] = [
-  { part: 'bib', x: 30, y: 41, rows: ['.##', '###', '..#'] },
-  { part: 'frontPaw', x: 27, y: 41, rows: ['###', '#..'] },
-  { part: 'frontPaw', x: 29, y: 46, rows: ['##'] },
-  { part: 'rearPaw', x: 36, y: 45, rows: ['.#', '##'] },
-];
-const GROOM_FLANK: MaskPatch = {
-  part: 'flank',
-  x: 34,
-  y: 43,
-  rows: ['#..', '#.#', '..#'],
-};
-const GROOM_LOW: FramePatterns = {
-  socks: GROOM_SOCKS,
-  tabby: [
-    { part: 'forehead', x: 28, y: 34, rows: ['#.....#', '#.....#'] },
-    GROOM_FLANK,
-  ],
-};
-const GROOM_HIGH: FramePatterns = {
-  socks: GROOM_SOCKS,
-  tabby: [
-    { part: 'forehead', x: 28, y: 33, rows: ['#.....#', '#.....#'] },
-    GROOM_FLANK,
-  ],
-};
-
 export const CAT_PATTERN_PATCHES: Readonly<
   Record<CatAnimation, readonly FramePatterns[]>
 > = {
@@ -257,7 +229,6 @@ export const CAT_PATTERN_PATCHES: Readonly<
     SLEEP_LOW,
     SLEEP_LOW,
   ],
-  groom: [GROOM_LOW, GROOM_LOW, GROOM_HIGH, GROOM_HIGH],
 };
 
 const PARTS = new Set<MaskPatch['part']>([
