@@ -17,6 +17,7 @@ import {
 import type { Store } from './db.js';
 import { Auth, COOKIE, HttpError } from './auth.js';
 import type { RoomRegistry } from './room-registry.js';
+import { assertTextAllowed, type TextFilter } from './text-filter.js';
 const fields = {
   name: z
     .string()
@@ -44,6 +45,7 @@ export function roomRoutes(
   auth: Auth,
   registry: RoomRegistry,
   allow: (key: string) => boolean,
+  textFilter?: TextFilter,
 ) {
   app.get('/api/rooms', async (request) => {
     const { offset, limit, owner, filter } = z
@@ -92,9 +94,9 @@ export function roomRoutes(
   app.get('/api/rooms/:id/settings', async (request, reply) => {
     const user = auth.identity(request.cookies[COOKIE]),
       id = roomId(request.params);
-    registry.owner(id, user.id);
+    const room = registry.owner(id, user.id);
     reply.header('Cache-Control', 'no-store');
-    return { room: registry.details(id) };
+    return { room };
   });
   app.post('/api/rooms', async (request) => {
     const user = auth.identity(request.cookies[COOKIE]);
@@ -110,6 +112,7 @@ export function roomRoutes(
       .parse(request.body);
     if (db.rooms().some((room) => room.ownerId === user.id))
       throw new HttpError(409, '每个账号最多拥有一个房间');
+    assertTextAllowed(textFilter, '房间名', name);
     try {
       return {
         room: db.createRoom(user.id, name, environmentId, stageCapacity),
@@ -145,6 +148,13 @@ export function roomRoutes(
       .parse(request.body);
     if (!allow(`edit:${user.id}`))
       throw new HttpError(429, '操作太快，请稍后重试');
+    if (changes.name !== undefined && changes.name !== before.name)
+      assertTextAllowed(textFilter, '房间名', changes.name);
+    if (
+      changes.description !== undefined &&
+      changes.description !== before.description
+    )
+      assertTextAllowed(textFilter, '房间简介', changes.description);
     const stageCapacity = changes.stageCapacity ?? before.stageCapacity;
     // Validation and commit remain synchronous so membership cannot change in between.
     registry.assertStageCapacity(id, stageCapacity);

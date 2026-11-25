@@ -128,7 +128,7 @@ export class RoomRegistry {
     return details;
   }
   owner(id: string, userId: string) {
-    const info = this.info(id);
+    const info = this.details(id);
     if (info.ownerId !== userId)
       throw new HttpError(403, '只有房主可以执行此操作');
     return info;

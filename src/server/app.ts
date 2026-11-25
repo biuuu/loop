@@ -27,6 +27,7 @@ import { smtpMail, type SendMail } from './mail.js';
 import { RoomRegistry } from './room-registry.js';
 import { EmoteCatalog, EmoteConflictError } from './emote-catalog.js';
 import { roomRoutes } from './room-routes.js';
+import { assertTextAllowed, type TextFilter } from './text-filter.js';
 import { createMusicService } from './music.js';
 import {
   createNeteaseRequest,
@@ -106,12 +107,14 @@ export async function createServer(
     authSecret?: string;
     authNow?: () => number;
     adminKey?: string;
+    textFilter?: TextFilter;
     neteaseCookieFile?: string;
     neteaseQrFetch?: NeteaseFetch;
     neteaseMusicFetch?: NeteaseFetch;
     neteaseNow?: () => number;
   } = {},
 ) {
+  const { textFilter } = options;
   const app = Fastify({ logger: false, bodyLimit: 16_384 });
   const db = new Store(options.dbPath);
   const emoteCatalog = new EmoteCatalog(db);
@@ -284,16 +287,25 @@ export async function createServer(
       throw new ApiError(429, '操作太快，请稍后重试');
   });
   authRoutes(app, auth);
-  roomRoutes(app, db, auth, registry, (key) => roomLimit.allow(key));
-  const rename = (id: string, nickname: string) => {
-    const { guest, changed } = db.rename(id, nickname);
-    if (changed) registry.updateNickname(id, guest.nickname);
+  roomRoutes(
+    app,
+    db,
+    auth,
+    registry,
+    (key) => roomLimit.allow(key),
+    textFilter,
+  );
+  const rename = (current: Guest, nickname: string) => {
+    if (nickname !== current.nickname)
+      assertTextAllowed(textFilter, '昵称', nickname);
+    const { guest, changed } = db.rename(current.id, nickname);
+    if (changed) registry.updateNickname(current.id, guest.nickname);
     return { guest: auth.profile(guest) };
   };
   app.patch('/api/me/nickname', async (request) => {
     const current = identity(request);
     const { nickname } = nicknameBody.parse(request.body);
-    return rename(current.id, nickname);
+    return rename(current, nickname);
   });
   app.patch('/api/me/appearance', async (request) => {
     const current = identity(request);
@@ -307,7 +319,8 @@ export async function createServer(
       throw new ApiError(429, '操作太快，请稍后重试');
     const { nickname } = nicknameBody.parse(request.body);
     const existing = db.guest(request.cookies[COOKIE]);
-    if (existing) return rename(existing.id, nickname);
+    if (existing) return rename(existing, nickname);
+    assertTextAllowed(textFilter, '昵称', nickname);
     const { guest, token, createdRoom } = db.createUser(nickname);
     setSession(reply, token);
     return { guest: auth.profile(guest), createdRoom };
@@ -331,6 +344,7 @@ export async function createServer(
       throw new ApiError(409, '当前已有身份，请先退出再创建新身份');
     if (!guestLimit.allow(request.ip) || !neteaseSignupLimit.allow(request.ip))
       throw new ApiError(429, '操作太快，请稍后重试');
+    assertTextAllowed(textFilter, '昵称', nickname);
     if (!music.userPlaylists || !music.playlist)
       throw new ApiError(503, '网易云歌单导入暂时不可用');
     // Verify the selected playlist against the same user-list page shown by

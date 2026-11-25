@@ -11,6 +11,7 @@
     "check": "vue-tsc --noEmit",
     "format": "prettier --write src test scripts *.json *.ts *.html *.md docs/*.md",
     "test": "node scripts/test.mjs",
+    "scan:text": "node --env-file-if-exists=.env --import tsx scripts/scan-text.ts",
     "build": "node scripts/build.mjs",
     "start": "node --env-file-if-exists=.env dist/server/index.js"
   },
