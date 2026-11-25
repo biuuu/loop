@@ -11,6 +11,7 @@ import {
   CAT_SLEEP_AFTER_MS,
   catActivity,
   catFrame,
+  catSleepDelay,
   idleColumn,
 } from '../src/client/cat-sprite';
 
@@ -77,7 +78,7 @@ test('server stop retains authoritative facing even with no remaining movement',
   assert.equal(
     catFrame(
       { ...stopped, facingRight: true, seat: null },
-      130000,
+      catSleepDelay(stopped.id),
       false,
       false,
       0,
@@ -219,20 +220,21 @@ test('movement arrival, spawn and stage placement begin with a full raised-tail 
   }
 });
 
-test('audience cats sleep after two minutes, looping the source frames and freezing for reduced motion', () => {
+test('sleep plays the quiet intro once then loops only the growing Zs', () => {
   const user = { ...movement, durationMs: 0, seat: null };
   const activity = catActivity(undefined, user, 5000);
-  const start = activity.inactiveSince + CAT_SLEEP_AFTER_MS;
+  const start = activity.inactiveSince + catSleepDelay(user.id);
   assert.equal(
     catFrame(user, start - 1, false, false, activity.inactiveSince).animation,
     'idle',
   );
-  for (let frame = 0; frame < 32; frame++) {
+  const columns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 6, 7, 8, 9, 10, 11, 6];
+  for (const [frame, column] of columns.entries()) {
     const now = start + frame * CAT_FRAME_MS;
     const result = catFrame(user, now, false, true, activity.inactiveSince);
     assert.equal(result.animation, 'sleep');
     assert.equal(result.row, 0);
-    assert.equal(result.column, frame % 16);
+    assert.equal(result.column, column);
     assert.equal(result.flipX, true);
     assert.equal(
       catFrame(user, now, true, true, activity.inactiveSince).column,
@@ -243,6 +245,32 @@ test('audience cats sleep after two minutes, looping the source frames and freez
     catFrame({ ...user, seat: 0 }, start, false, false, activity.inactiveSince)
       .animation,
     'idle',
+  );
+});
+
+test('cats first observed together have stable, staggered sleep deadlines', () => {
+  const users = ['cat-one', 'cat-two', 'cat-three'].map((id) => ({
+    ...movement,
+    id,
+    durationMs: 0,
+    seat: null,
+  }));
+  const since = 5000;
+  const ordered = users.sort(
+    (a, b) => catSleepDelay(a.id) - catSleepDelay(b.id),
+  );
+  const delays = ordered.map(({ id }) => catSleepDelay(id));
+  assert.equal(new Set(delays).size, users.length);
+  assert.ok(delays[0]! >= CAT_SLEEP_AFTER_MS);
+  assert.ok(delays.at(-1)! <= CAT_SLEEP_AFTER_MS + 30_000);
+  const firstDeadline = since + delays[0]!;
+  assert.deepEqual(
+    ordered.map((user) => {
+      const activity = catActivity(undefined, user, since);
+      return catFrame(user, firstDeadline, false, false, activity.inactiveSince)
+        .animation;
+    }),
+    ['sleep', 'idle', 'idle'],
   );
 });
 

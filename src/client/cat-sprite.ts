@@ -7,6 +7,11 @@ export const CAT_FRAME_MS = 200;
 export const CAT_SCALE = 3;
 export const CAT_IDLE_UP_COLUMN = 0;
 export const CAT_SLEEP_AFTER_MS = 120_000;
+const CAT_SLEEP_SPREAD_MS = 30_000;
+// Sleep opens with six quiet frames. Columns 6–11 build Z, ZZ, ZZZ;
+// columns 12–15 remove the last two letters again.
+const SLEEP_LOOP_FIRST_COLUMN = 6;
+const SLEEP_LOOP_FRAMES = 6;
 // Rows and timing come from the supplied Cat.aseprite animation tags.
 export const CAT_ANIMATIONS = {
   idle: { row: 6, frames: 12, footY: 48 },
@@ -75,6 +80,12 @@ function identityHash(id: string, salt: string) {
   return hash >>> 0;
 }
 
+export function catSleepDelay(id: string) {
+  return (
+    CAT_SLEEP_AFTER_MS + (identityHash(id, 'sleep') % (CAT_SLEEP_SPREAD_MS + 1))
+  );
+}
+
 /** Play the untouched source loop, then wait on its raised-tail first frame. */
 export function idleColumn(id: string, elapsed: number, reducedMotion = false) {
   if (reducedMotion) return CAT_IDLE_UP_COLUMN;
@@ -102,32 +113,35 @@ export function catFrame(
     now >= user.movingSince &&
     now < user.movingSince + user.durationMs &&
     (dx !== 0 || dy !== 0);
+  const sleepElapsed =
+    !moving && user.seat == null && inactiveSince !== undefined
+      ? now - inactiveSince - catSleepDelay(user.id)
+      : -1;
   let animation: CatAnimation = 'idle';
   if (moving) {
     if (Math.abs(dx) >= Math.abs(dy)) animation = 'side';
     else animation = dy < 0 ? 'up' : 'down';
-  } else if (
-    user.seat == null &&
-    inactiveSince !== undefined &&
-    now >= inactiveSince + CAT_SLEEP_AFTER_MS
-  ) {
+  } else if (sleepElapsed >= 0) {
     animation = 'sleep';
   }
   const sequence = CAT_ANIMATIONS[animation];
-  const arrivedAt = user.movingSince + user.durationMs;
-  const idleElapsed = Math.max(0, now - arrivedAt);
-  const column = moving
-    ? reducedMotion
+  let column: number;
+  if (moving) {
+    column = reducedMotion
       ? 0
       : Math.floor((now - (walkStartedAt ?? user.movingSince)) / CAT_FRAME_MS) %
-        sequence.frames
-    : animation === 'sleep'
-      ? reducedMotion
-        ? 0
-        : Math.floor(
-            (now - inactiveSince! - CAT_SLEEP_AFTER_MS) / CAT_FRAME_MS,
-          ) % sequence.frames
-      : idleColumn(user.id, idleElapsed, reducedMotion);
+        sequence.frames;
+  } else if (animation === 'sleep') {
+    const frame = reducedMotion ? 0 : Math.floor(sleepElapsed / CAT_FRAME_MS);
+    column =
+      frame < SLEEP_LOOP_FIRST_COLUMN
+        ? frame
+        : SLEEP_LOOP_FIRST_COLUMN +
+          ((frame - SLEEP_LOOP_FIRST_COLUMN) % SLEEP_LOOP_FRAMES);
+  } else {
+    const arrivedAt = user.movingSince + user.durationMs;
+    column = idleColumn(user.id, now - arrivedAt, reducedMotion);
+  }
   return {
     animation,
     column,
