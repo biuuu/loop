@@ -39,13 +39,13 @@ export class RoomRegistry {
     }
     const restored = new Set<string>();
     for (const { roomId, checkpoint } of db.roomCheckpoints(Date.now())) {
-      const info = db.room(roomId);
+      const info = db.roomDetails(roomId);
       if (!info) {
         db.saveRoomCheckpoint(roomId, null);
         continue;
       }
       const members = checkpoint.members.filter(({ id }) => !restored.has(id));
-      const room = this.runtime(roomId, info.stageCapacity);
+      const room = this.runtime(roomId, info);
       room.restoreCheckpoint({ ...checkpoint, members });
       for (const { id } of members) if (room.hasMember(id)) restored.add(id);
     }
@@ -54,19 +54,18 @@ export class RoomRegistry {
     }, ROOM_CHECKPOINT_INTERVAL_MS);
     this.checkpointTimer.unref();
   }
-  private runtime(id: string, stageCapacity?: number) {
+  private runtime(id: string, info?: RoomDetails) {
     let room = this.live.get(id);
     if (room) return room;
+    const settings = id === '__test__' ? undefined : (info ?? this.details(id));
     room = new Room(
       this.db,
       this.music,
       {
         ...this.options,
         roomId: id === '__test__' ? undefined : id,
-        stageCapacity:
-          id === '__test__'
-            ? 6
-            : (stageCapacity ?? this.info(id).stageCapacity),
+        stageCapacity: settings?.stageCapacity ?? 6,
+        stageTimeLimitMinutes: settings?.stageTimeLimitMinutes,
       },
       this.options.emoteCatalog,
     );
@@ -276,7 +275,9 @@ export class RoomRegistry {
     this.remove(id, targetId, '你已被房主禁止进入此房间');
   }
   updated(info: RoomDetails) {
-    this.live.get(info.id)?.configureStage(info.stageCapacity);
+    const room = this.live.get(info.id);
+    room?.configureStage(info.stageCapacity);
+    room?.configureStageTimeLimit(info.stageTimeLimitMinutes);
     this.io.to(channel(info.id)).emit('room:updated', info);
   }
   assertStageCapacity(id: string, capacity: number) {

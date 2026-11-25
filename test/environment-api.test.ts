@@ -7,11 +7,13 @@ import type { Socket } from 'socket.io';
 import { createServer } from '../src/server/app.js';
 import { Store } from '../src/server/db.js';
 import type { RoomRegistry } from '../src/server/room-registry.js';
-import type {
-  Guest,
-  MusicService,
-  RoomInfo,
-  Track,
+import {
+  DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+  type Guest,
+  type MusicService,
+  type RoomDetails,
+  type RoomInfo,
+  type Track,
 } from '../src/shared/contracts.js';
 import { ENVIRONMENTS } from '../src/shared/environments.js';
 
@@ -214,7 +216,7 @@ test('every preset can be created and edited, persists after reopening and survi
     dbPath = join(root, 'rooms.sqlite');
   let server = await createServer({ dbPath, music });
   try {
-    const saved: Array<{ room: RoomInfo; owner: Guest }> = [];
+    const saved: Array<{ room: RoomDetails; owner: Guest }> = [];
     for (const [index, preset] of ENVIRONMENTS.entries()) {
       const owner = server.db.createGuest(`Owner ${index}`);
       const create = await server.app.inject({
@@ -247,8 +249,9 @@ test('every preset can be created and edited, persists after reopening and survi
     const directory = (await server.app.inject('/api/rooms')).json()
       .rooms as RoomInfo[];
     for (const { room, owner } of saved) {
-      const { description, ...publicInfo } = room;
+      const { description, stageTimeLimitMinutes, ...publicInfo } = room;
       assert.equal(description, '');
+      assert.equal(stageTimeLimitMinutes, DEFAULT_STAGE_TIME_LIMIT_MINUTES);
       assert.deepEqual(
         (await server.app.inject(`/api/rooms/${room.id}`)).json().room,
         publicInfo,

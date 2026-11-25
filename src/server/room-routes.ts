@@ -7,6 +7,7 @@ import {
   roomDirectoryFilterSchema,
   roomNumberSchema,
   stageCapacitySchema,
+  stageTimeLimitMinutesSchema,
 } from '../shared/contracts.js';
 import {
   DEFAULT_ENVIRONMENT,
@@ -135,6 +136,7 @@ export function roomRoutes(
         environmentId: fields.environmentId.optional(),
         joinPolicy: z.enum(['open', 'closed']).optional(),
         stageCapacity: stageCapacitySchema.optional(),
+        stageTimeLimitMinutes: stageTimeLimitMinutesSchema.optional(),
         expectedRevision: z.number().int().positive(),
       })
       .strict()
@@ -151,6 +153,7 @@ export function roomRoutes(
         environmentId: changes.environmentId ?? before.environmentId,
         joinPolicy: changes.joinPolicy ?? before.joinPolicy,
         stageCapacity,
+        stageTimeLimitMinutes: changes.stageTimeLimitMinutes,
       })
     )
       throw new HttpError(409, '房间资料已更新，请刷新后重试');

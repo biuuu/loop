@@ -14,6 +14,7 @@ const member = stageJoinSchema.shape.from.unwrap().extend({
   id: participantId,
   facingRight: z.boolean(),
   reconnectUntil: timestamp.optional(),
+  stageJoinedAt: timestamp.optional(),
 });
 const playback = z.object({
   roundId: z.string().uuid(),

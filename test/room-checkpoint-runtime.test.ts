@@ -101,7 +101,13 @@ test('checkpoints sample movement once and load current public profiles without 
     assert.equal(save.mock.callCount(), 1);
     const checkpoint = load();
     assert.deepEqual(checkpoint.members, [
-      { id: dj.id, x: 700, y: 495, facingRight: true },
+      {
+        id: dj.id,
+        x: 700,
+        y: 495,
+        facingRight: true,
+        stageJoinedAt: 1_000_000,
+      },
       { id: listener.id, x: 290, y: 400, facingRight: true },
     ]);
 

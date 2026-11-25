@@ -4,6 +4,8 @@ import { onMounted, onBeforeUnmount, ref, computed } from 'vue';
 import { X } from '@lucide/vue';
 import { request, useRoom } from './room';
 import {
+  DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+  MAX_STAGE_TIME_LIMIT_MINUTES,
   ROOM_DESCRIPTION_LIMIT,
   type RoomDetails,
   type RoomInfo,
@@ -32,6 +34,31 @@ const name = ref(info.name);
 const description = ref(info.description ?? '');
 const joinPolicy = ref(info.joinPolicy);
 const stageCapacity = ref(info.stageCapacity);
+const stageTimeLimit = ref(
+  info.stageTimeLimitMinutes ?? DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+);
+const stageTimePresets = [
+  0,
+  5,
+  15,
+  30,
+  ...Array.from(
+    { length: MAX_STAGE_TIME_LIMIT_MINUTES / 60 },
+    (_, index) => (index + 1) * 60,
+  ),
+];
+const stageTimeOptions = computed(() =>
+  stageTimePresets.includes(stageTimeLimit.value)
+    ? stageTimePresets
+    : [...stageTimePresets, stageTimeLimit.value].sort((a, b) => a - b),
+);
+function stageTimeLabel(minutes: number) {
+  if (minutes === 0) return '播一首后下台';
+  if (minutes < 60) return `${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} 小时 ${rest} 分钟` : `${hours} 小时`;
+}
 const environmentId = ref(info.environmentId);
 const occupiedStageCount = computed(() =>
   room.roomId === info.id && room.connection === 'connected'
@@ -67,6 +94,8 @@ function applySettings(settings: RoomDetails) {
   description.value = settings.description;
   joinPolicy.value = settings.joinPolicy;
   stageCapacity.value = settings.stageCapacity;
+  stageTimeLimit.value =
+    settings.stageTimeLimitMinutes ?? DEFAULT_STAGE_TIME_LIMIT_MINUTES;
   environmentId.value = settings.environmentId;
   revision.value = settings.revision;
 }
@@ -90,6 +119,7 @@ function save() {
         environmentId: environmentId.value,
         joinPolicy: joinPolicy.value,
         stageCapacity: stageCapacity.value,
+        stageTimeLimitMinutes: stageTimeLimit.value,
         expectedRevision: revision.value,
       }),
     });
@@ -165,6 +195,25 @@ function save() {
         <p v-else class="library-hint">
           可设置 1–6 个位置；缩减前请先让超出人数的成员下台。
         </p>
+        <label>
+          台上时限
+          <select
+            v-model.number="stageTimeLimit"
+            :disabled="busy || !loaded"
+            aria-describedby="stage-time-limit-hint"
+          >
+            <option
+              v-for="minutes in stageTimeOptions"
+              :key="minutes"
+              :value="minutes"
+            >
+              {{ stageTimeLabel(minutes) }}
+            </option>
+          </select>
+          <small id="stage-time-limit-hint">
+            从上台开始计时，达到时限后，会在自己的歌曲结束时自动下台。
+          </small>
+        </label>
         <label class="room-join-switch">
           <span>暂停新访客进入</span>
           <input

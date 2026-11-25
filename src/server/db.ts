@@ -527,7 +527,8 @@ export class Store {
   roomDetails(id: string): RoomDetails | null {
     const row = this.sql
       .prepare(
-        `SELECT ${ROOM_COLUMNS},r.description ${ROOM_TABLES} WHERE r.id=?`,
+        `SELECT ${ROOM_COLUMNS},r.description,r.stage_time_limit_minutes AS stageTimeLimitMinutes
+         ${ROOM_TABLES} WHERE r.id=?`,
       )
       .get(id);
     return (row as RoomDetails | undefined) ?? null;
@@ -581,13 +582,19 @@ export class Store {
     id: string,
     revision: number,
     changes: Pick<RoomDetails, 'name' | 'environmentId' | 'joinPolicy'> &
-      Partial<Pick<RoomDetails, 'stageCapacity' | 'description'>>,
+      Partial<
+        Pick<
+          RoomDetails,
+          'stageCapacity' | 'stageTimeLimitMinutes' | 'description'
+        >
+      >,
   ): boolean {
     return Boolean(
       this.sql
         .prepare(
           `UPDATE rooms SET name=?,environment_id=?,join_policy=?,
       stage_capacity=COALESCE(?,stage_capacity),description=COALESCE(?,description),
+      stage_time_limit_minutes=COALESCE(?,stage_time_limit_minutes),
       revision=revision+1,updated_at=? WHERE id=? AND revision=?`,
         )
         .run(
@@ -596,6 +603,7 @@ export class Store {
           changes.joinPolicy,
           changes.stageCapacity ?? null,
           changes.description ?? null,
+          changes.stageTimeLimitMinutes ?? null,
           Date.now(),
           id,
           revision,

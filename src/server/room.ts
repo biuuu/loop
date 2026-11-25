@@ -10,6 +10,8 @@ import {
   STAGE_CAPACITY,
   DEFAULT_STAGE_CAPACITY,
   stageCapacitySchema,
+  DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+  stageTimeLimitMinutesSchema,
   stageSeatXs,
   type Guest,
   type MusicService,
@@ -82,8 +84,12 @@ export class Room {
   private emoteTimes = new Map<string, number>();
   private emoteCatalog: EmoteCatalog;
   private stage: string[] = [];
-  private stageReturnPositions = new Map<string, { x: number; y: number }>();
+  private stageEntries = new Map<
+    string,
+    { returnPosition: { x: number; y: number }; joinedAt: number }
+  >();
   private stageCapacity: number;
+  private stageTimeLimitMinutes: number;
   private stageDirty = false;
   private publishedStage: string[] = [];
   private playback: Playback | null = null;
@@ -122,12 +128,16 @@ export class Room {
       disconnectGraceMs?: number;
       resolveTimeoutMs?: number;
       stageCapacity?: number;
+      stageTimeLimitMinutes?: number;
     } = {},
     emoteCatalog?: EmoteCatalog,
   ) {
     this.emoteCatalog = emoteCatalog ?? new EmoteCatalog(db);
     this.stageCapacity = stageCapacitySchema.parse(
       options.stageCapacity ?? DEFAULT_STAGE_CAPACITY,
+    );
+    this.stageTimeLimitMinutes = stageTimeLimitMinutesSchema.parse(
+      options.stageTimeLimitMinutes ?? DEFAULT_STAGE_TIME_LIMIT_MINUTES,
     );
   }
   assertStageCapacity(capacity: number) {
@@ -142,6 +152,9 @@ export class Room {
     this.positionStage();
     this.publish();
   }
+  configureStageTimeLimit(minutes: number): void {
+    this.stageTimeLimitMinutes = stageTimeLimitMinutesSchema.parse(minutes);
+  }
   private captureCheckpoint(
     savedAt: number,
     playback = this.playback,
@@ -150,15 +163,15 @@ export class Room {
     return {
       savedAt,
       members: [...this.users.values()].map((user) => {
-        const position =
-          this.stageReturnPositions.get(user.id) ??
-          this.position(user, savedAt);
+        const entry = this.stageEntries.get(user.id);
+        const position = entry?.returnPosition ?? this.position(user, savedAt);
         const grace = this.grace.get(user.id);
         return {
           id: user.id,
           ...position,
           facingRight: user.facingRight ?? false,
           ...(grace ? { reconnectUntil: grace.until } : {}),
+          ...(entry ? { stageJoinedAt: entry.joinedAt } : {}),
         };
       }),
       stage: [...this.stage],
@@ -185,7 +198,10 @@ export class Room {
     const roomId = this.options.roomId;
     if (this.closed || !roomId) return;
     const now = Date.now();
-    for (const member of checkpoint.members) {
+    const members = new Map(
+      checkpoint.members.map((member) => [member.id, member]),
+    );
+    for (const member of members.values()) {
       const { id, x, y, facingRight } = member;
       const until = member.reconnectUntil ?? now + this.disconnectGraceMs;
       if (until <= now || this.db.banned(roomId, id)) continue;
@@ -222,14 +238,18 @@ export class Room {
       .slice(0, this.stageCapacity);
     for (const id of this.stage) {
       const user = this.users.get(id)!;
-      this.stageReturnPositions.set(id, { x: user.x, y: user.y });
+      this.stageEntries.set(id, {
+        returnPosition: { x: user.x, y: user.y },
+        joinedAt: members.get(id)!.stageJoinedAt ?? checkpoint.savedAt,
+      });
       user.y = user.targetY = SCENE.stageY;
     }
     this.positionStage();
     const playback = checkpoint.playback;
     if (playback && this.stage[0] === playback.djId) {
       const elapsedMs = now - playback.startedAt;
-      if (elapsedMs >= playback.durationMs) this.rotateStage();
+      if (elapsedMs >= playback.durationMs)
+        this.finishPlayback(playback, playback.startedAt + playback.durationMs);
       else if (elapsedMs >= 0) {
         this.playback = playback;
         this.schedulePlaybackEnd(playback, playback.durationMs - elapsedMs);
@@ -541,10 +561,10 @@ export class Room {
       if (this.stage.length >= this.stageCapacity) throw new Error('舞台已满');
       if (!this.db.tracks(id).length) throw new Error('先添加歌曲到歌单');
       const now = Date.now();
-      this.stageReturnPositions.set(
-        id,
-        from ? { ...from } : this.position(user, now),
-      );
+      this.stageEntries.set(id, {
+        returnPosition: from ? { ...from } : this.position(user, now),
+        joinedAt: now,
+      });
       delete user.clientMoveId;
       Object.assign(user, {
         y: SCENE.stageY,
@@ -595,11 +615,11 @@ export class Room {
     this.stage.splice(index, 1);
     this.positionStage();
     this.stageDirty = true;
-    const point = this.stageReturnPositions.get(id)!;
-    this.stageReturnPositions.delete(id);
+    const { returnPosition } = this.stageEntries.get(id)!;
+    this.stageEntries.delete(id);
     const user = this.users.get(id);
     if (user) {
-      const { x, y } = point;
+      const { x, y } = returnPosition;
       delete user.clientMoveId;
       Object.assign(user, {
         seat: null,
@@ -629,7 +649,7 @@ export class Room {
         this.playback.roundId !== input.roundId
       )
         throw new Error('只能跳过自己当前的歌曲');
-      await this.advance();
+      await this.advance(Date.now());
     });
   }
   seek(id: string, input: unknown, connectionId?: string) {
@@ -657,18 +677,30 @@ export class Room {
     this.timer = setTimeout(
       () => {
         void this.enqueue(async () => {
-          if (this.playback === playback) await this.advance();
+          if (this.playback === playback)
+            await this.advance(playback.startedAt + playback.durationMs);
         }).catch(() => {});
       },
       Math.min(Math.ceil(remainingMs), 2_147_483_647),
     );
   }
-  private async advance() {
+  private finishPlayback(playback: Playback, endedAt: number) {
+    const id = playback.djId;
+    if (this.stage[0] !== id) return;
+    const { joinedAt } = this.stageEntries.get(id)!;
+    if (
+      this.stageTimeLimitMinutes === 0 ||
+      endedAt - joinedAt >= this.stageTimeLimitMinutes * 60_000
+    )
+      this.removeStage(id);
+    else this.rotateStage();
+  }
+  private async advance(endedAt?: number) {
     this.invalidateResolution();
     const generation = this.resolutionGeneration;
     clearTimeout(this.timer);
-    if (this.playback && this.stage[0] === this.playback.djId)
-      this.rotateStage();
+    if (this.playback && endedAt !== undefined)
+      this.finishPlayback(this.playback, endedAt);
     this.playback = null;
     this.resolving = !this.waitingForReconnect;
     this.notice = null;
@@ -809,7 +841,7 @@ export class Room {
     this.invalidateResolution();
     clearTimeout(this.timer);
     this.emoteTimes.clear();
-    this.stageReturnPositions.clear();
+    this.stageEntries.clear();
     for (const { timer } of this.grace.values()) clearTimeout(timer);
     for (const timer of this.pendingTimers) clearTimeout(timer);
     this.grace.clear();
