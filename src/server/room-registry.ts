@@ -66,6 +66,7 @@ export class RoomRegistry {
         roomId: id === '__test__' ? undefined : id,
         stageCapacity: settings?.stageCapacity ?? 6,
         stageTimeLimitMinutes: settings?.stageTimeLimitMinutes,
+        trackTimeLimitMinutes: settings?.trackTimeLimitMinutes,
       },
       this.options.emoteCatalog,
     );
@@ -278,6 +279,7 @@ export class RoomRegistry {
     const room = this.live.get(info.id);
     room?.configureStage(info.stageCapacity);
     room?.configureStageTimeLimit(info.stageTimeLimitMinutes);
+    room?.configureTrackTimeLimit(info.trackTimeLimitMinutes);
     this.io.to(channel(info.id)).emit('room:updated', info);
   }
   assertStageCapacity(id: string, capacity: number) {

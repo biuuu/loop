@@ -12,6 +12,8 @@ import {
   stageCapacitySchema,
   DEFAULT_STAGE_TIME_LIMIT_MINUTES,
   stageTimeLimitMinutesSchema,
+  DEFAULT_TRACK_TIME_LIMIT_MINUTES,
+  trackTimeLimitMinutesSchema,
   stageSeatXs,
   type Guest,
   type MusicService,
@@ -90,6 +92,7 @@ export class Room {
   >();
   private stageCapacity: number;
   private stageTimeLimitMinutes: number;
+  private trackTimeLimitMinutes: number;
   private stageDirty = false;
   private publishedStage: string[] = [];
   private playback: Playback | null = null;
@@ -129,6 +132,7 @@ export class Room {
       resolveTimeoutMs?: number;
       stageCapacity?: number;
       stageTimeLimitMinutes?: number;
+      trackTimeLimitMinutes?: number;
     } = {},
     emoteCatalog?: EmoteCatalog,
   ) {
@@ -138,6 +142,9 @@ export class Room {
     );
     this.stageTimeLimitMinutes = stageTimeLimitMinutesSchema.parse(
       options.stageTimeLimitMinutes ?? DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+    );
+    this.trackTimeLimitMinutes = trackTimeLimitMinutesSchema.parse(
+      options.trackTimeLimitMinutes ?? DEFAULT_TRACK_TIME_LIMIT_MINUTES,
     );
   }
   assertStageCapacity(capacity: number) {
@@ -154,6 +161,9 @@ export class Room {
   }
   configureStageTimeLimit(minutes: number): void {
     this.stageTimeLimitMinutes = stageTimeLimitMinutesSchema.parse(minutes);
+  }
+  configureTrackTimeLimit(minutes: number): void {
+    this.trackTimeLimitMinutes = trackTimeLimitMinutesSchema.parse(minutes);
   }
   private captureCheckpoint(
     savedAt: number,
@@ -754,7 +764,9 @@ export class Room {
             djId: id,
             url: result.url,
             startedAt,
-            durationMs: result.durationMs,
+            durationMs: this.trackTimeLimitMinutes
+              ? Math.min(result.durationMs, this.trackTimeLimitMinutes * 60_000)
+              : result.durationMs,
             ...(result.isTrial ? { isTrial: true as const } : {}),
             ...(result.lyricOffsetMs !== undefined
               ? {

@@ -527,7 +527,9 @@ export class Store {
   roomDetails(id: string): RoomDetails | null {
     const row = this.sql
       .prepare(
-        `SELECT ${ROOM_COLUMNS},r.description,r.stage_time_limit_minutes AS stageTimeLimitMinutes
+        `SELECT ${ROOM_COLUMNS},r.description,
+          r.stage_time_limit_minutes AS stageTimeLimitMinutes,
+          r.track_time_limit_minutes AS trackTimeLimitMinutes
          ${ROOM_TABLES} WHERE r.id=?`,
       )
       .get(id);
@@ -585,7 +587,10 @@ export class Store {
       Partial<
         Pick<
           RoomDetails,
-          'stageCapacity' | 'stageTimeLimitMinutes' | 'description'
+          | 'stageCapacity'
+          | 'stageTimeLimitMinutes'
+          | 'trackTimeLimitMinutes'
+          | 'description'
         >
       >,
   ): boolean {
@@ -595,6 +600,7 @@ export class Store {
           `UPDATE rooms SET name=?,environment_id=?,join_policy=?,
       stage_capacity=COALESCE(?,stage_capacity),description=COALESCE(?,description),
       stage_time_limit_minutes=COALESCE(?,stage_time_limit_minutes),
+      track_time_limit_minutes=COALESCE(?,track_time_limit_minutes),
       revision=revision+1,updated_at=? WHERE id=? AND revision=?`,
         )
         .run(
@@ -604,6 +610,7 @@ export class Store {
           changes.stageCapacity ?? null,
           changes.description ?? null,
           changes.stageTimeLimitMinutes ?? null,
+          changes.trackTimeLimitMinutes ?? null,
           Date.now(),
           id,
           revision,

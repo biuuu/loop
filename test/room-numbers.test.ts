@@ -14,6 +14,7 @@ import { createServer } from '../src/server/app.js';
 import { Store } from '../src/server/db.js';
 import {
   DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+  DEFAULT_TRACK_TIME_LIMIT_MINUTES,
   type MusicService,
   type Track,
 } from '../src/shared/contracts.js';
@@ -111,7 +112,7 @@ test('upgrading from version 11 preserves saved data and persists room playback 
     db.close();
     db = undefined;
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 18);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 19);
     assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
     assert.deepEqual(db.rooms(), expected);
     assert.deepEqual(
@@ -287,6 +288,7 @@ test('numeric room reads preserve UUID identity and current metadata while manag
       ...numeric.json().room,
       description: '',
       stageTimeLimitMinutes: DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+      trackTimeLimitMinutes: DEFAULT_TRACK_TIME_LIMIT_MINUTES,
     });
     const directory = (await app.inject('/api/rooms')).json().rooms;
     assert.equal(directory[0].number, info.number);

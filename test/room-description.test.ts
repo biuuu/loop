@@ -14,6 +14,7 @@ import { createServer } from '../src/server/app.js';
 import { Store } from '../src/server/db.js';
 import {
   DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+  DEFAULT_TRACK_TIME_LIMIT_MINUTES,
   ROOM_DESCRIPTION_LIMIT,
   type MusicService,
   type RoomDetails,
@@ -57,11 +58,12 @@ test('version 16 adds empty descriptions to existing rooms and saves edits acros
     db.close();
     db = undefined;
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 18);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 19);
     assert.deepEqual(db.roomDetails(createdRoom.id), {
       ...createdRoom,
       description: '',
       stageTimeLimitMinutes: DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+      trackTimeLimitMinutes: DEFAULT_TRACK_TIME_LIMIT_MINUTES,
     });
     const description = '欢迎来听歌。\n请随意选歌。';
     assert.equal(
@@ -110,6 +112,7 @@ test('room settings require ownership and use revisioned plain-text description 
       ...room,
       description: '',
       stageTimeLimitMinutes: DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+      trackTimeLimitMinutes: DEFAULT_TRACK_TIME_LIMIT_MINUTES,
     });
     assert.equal((await app.inject(settingsUrl)).statusCode, 401);
     assert.equal(

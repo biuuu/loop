@@ -9,6 +9,7 @@ import { Store } from '../src/server/db.js';
 import type { RoomRegistry } from '../src/server/room-registry.js';
 import {
   DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+  DEFAULT_TRACK_TIME_LIMIT_MINUTES,
   type Guest,
   type MusicService,
   type RoomDetails,
@@ -249,9 +250,15 @@ test('every preset can be created and edited, persists after reopening and survi
     const directory = (await server.app.inject('/api/rooms')).json()
       .rooms as RoomInfo[];
     for (const { room, owner } of saved) {
-      const { description, stageTimeLimitMinutes, ...publicInfo } = room;
+      const {
+        description,
+        stageTimeLimitMinutes,
+        trackTimeLimitMinutes,
+        ...publicInfo
+      } = room;
       assert.equal(description, '');
       assert.equal(stageTimeLimitMinutes, DEFAULT_STAGE_TIME_LIMIT_MINUTES);
+      assert.equal(trackTimeLimitMinutes, DEFAULT_TRACK_TIME_LIMIT_MINUTES);
       assert.deepEqual(
         (await server.app.inject(`/api/rooms/${room.id}`)).json().room,
         publicInfo,

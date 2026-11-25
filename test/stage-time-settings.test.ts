@@ -14,6 +14,7 @@ import { createServer } from '../src/server/app.js';
 import { Store } from '../src/server/db.js';
 import {
   DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+  DEFAULT_TRACK_TIME_LIMIT_MINUTES,
   MAX_STAGE_TIME_LIMIT_MINUTES,
   type MusicService,
   type RoomDetails,
@@ -64,11 +65,12 @@ test('migration 18 gives existing rooms a 120-minute limit and persists zero', (
     db = undefined;
 
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 18);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 19);
     assert.deepEqual(db.roomDetails(createdRoom.id), {
       ...createdRoom,
       description: '',
       stageTimeLimitMinutes: DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+      trackTimeLimitMinutes: DEFAULT_TRACK_TIME_LIMIT_MINUTES,
     });
     const update = db.sql.prepare(
       'UPDATE rooms SET stage_time_limit_minutes=? WHERE id=?',

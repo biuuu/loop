@@ -57,6 +57,8 @@ export const STAGE_CAPACITY = 6;
 export const DEFAULT_STAGE_CAPACITY = 5;
 export const DEFAULT_STAGE_TIME_LIMIT_MINUTES = 120;
 export const MAX_STAGE_TIME_LIMIT_MINUTES = 12 * 60;
+export const DEFAULT_TRACK_TIME_LIMIT_MINUTES = 10;
+export const trackTimeLimitMinutesSchema = z.number().int().nonnegative();
 export const stageTimeLimitMinutesSchema = z
   .number()
   .int()
@@ -117,6 +119,7 @@ export interface RoomInfo {
   number: number;
   stageCapacity: number;
   stageTimeLimitMinutes?: number;
+  trackTimeLimitMinutes?: number;
   id: string;
   ownerId: string;
   ownerNickname: string;
@@ -132,6 +135,7 @@ export interface RoomInfo {
 export interface RoomDetails extends RoomInfo {
   description: string;
   stageTimeLimitMinutes: number;
+  trackTimeLimitMinutes: number;
 }
 export interface RoomSummary extends RoomInfo {
   online: number;

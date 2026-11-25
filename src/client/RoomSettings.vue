@@ -5,6 +5,7 @@ import { X } from '@lucide/vue';
 import { request, useRoom } from './room';
 import {
   DEFAULT_STAGE_TIME_LIMIT_MINUTES,
+  DEFAULT_TRACK_TIME_LIMIT_MINUTES,
   MAX_STAGE_TIME_LIMIT_MINUTES,
   ROOM_DESCRIPTION_LIMIT,
   type RoomDetails,
@@ -37,6 +38,9 @@ const stageCapacity = ref(info.stageCapacity);
 const stageTimeLimit = ref(
   info.stageTimeLimitMinutes ?? DEFAULT_STAGE_TIME_LIMIT_MINUTES,
 );
+const trackTimeLimit = ref(
+  info.trackTimeLimitMinutes ?? DEFAULT_TRACK_TIME_LIMIT_MINUTES,
+);
 const stageTimePresets = [
   0,
   5,
@@ -47,13 +51,29 @@ const stageTimePresets = [
     (_, index) => (index + 1) * 60,
   ),
 ];
+const trackTimePresets = [
+  0,
+  3,
+  5,
+  DEFAULT_TRACK_TIME_LIMIT_MINUTES,
+  15,
+  20,
+  30,
+  45,
+  60,
+];
+function timeLimitOptions(presets: number[], selected: number) {
+  return presets.includes(selected)
+    ? presets
+    : [...presets, selected].sort((a, b) => a - b);
+}
 const stageTimeOptions = computed(() =>
-  stageTimePresets.includes(stageTimeLimit.value)
-    ? stageTimePresets
-    : [...stageTimePresets, stageTimeLimit.value].sort((a, b) => a - b),
+  timeLimitOptions(stageTimePresets, stageTimeLimit.value),
 );
-function stageTimeLabel(minutes: number) {
-  if (minutes === 0) return '播一首后下台';
+const trackTimeOptions = computed(() =>
+  timeLimitOptions(trackTimePresets, trackTimeLimit.value),
+);
+function durationLabel(minutes: number) {
   if (minutes < 60) return `${minutes} 分钟`;
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
@@ -96,6 +116,8 @@ function applySettings(settings: RoomDetails) {
   stageCapacity.value = settings.stageCapacity;
   stageTimeLimit.value =
     settings.stageTimeLimitMinutes ?? DEFAULT_STAGE_TIME_LIMIT_MINUTES;
+  trackTimeLimit.value =
+    settings.trackTimeLimitMinutes ?? DEFAULT_TRACK_TIME_LIMIT_MINUTES;
   environmentId.value = settings.environmentId;
   revision.value = settings.revision;
 }
@@ -116,6 +138,7 @@ function save() {
         joinPolicy: joinPolicy.value,
         stageCapacity: stageCapacity.value,
         stageTimeLimitMinutes: stageTimeLimit.value,
+        trackTimeLimitMinutes: trackTimeLimit.value,
         expectedRevision: revision.value,
       }),
     });
@@ -202,11 +225,30 @@ function save() {
               :key="minutes"
               :value="minutes"
             >
-              {{ stageTimeLabel(minutes) }}
+              {{ minutes === 0 ? '播一首后下台' : durationLabel(minutes) }}
             </option>
           </select>
           <small id="stage-time-limit-hint">
             从上台开始计时，达到时限后，会在自己的歌曲结束时自动下台。
+          </small>
+        </label>
+        <label>
+          单曲播放上限
+          <select
+            v-model.number="trackTimeLimit"
+            :disabled="busy || !loaded"
+            aria-describedby="track-time-limit-hint"
+          >
+            <option
+              v-for="minutes in trackTimeOptions"
+              :key="minutes"
+              :value="minutes"
+            >
+              {{ minutes === 0 ? '不限制' : durationLabel(minutes) }}
+            </option>
+          </select>
+          <small id="track-time-limit-hint">
+            当前曲目播到上限后自动切歌。修改从下一首起生效。
           </small>
         </label>
         <label class="room-join-switch">
