@@ -52,7 +52,7 @@ const unmarked = (
   );
 };
 
-test('all 41 source frames have bounded anatomical patches that select only actual coat pixels', () => {
+test('all 45 source frames have bounded anatomical patches that select only actual coat pixels', () => {
   assert.deepEqual(
     Object.keys(CAT_PATTERN_PATCHES).sort(),
     Object.keys(CAT_ANIMATIONS).sort(),
@@ -119,7 +119,44 @@ test('all 41 source frames have bounded anatomical patches that select only actu
       }
     }
   }
-  assert.equal(frames, 41);
+  assert.equal(frames, 45);
+});
+
+test('paw grooming preserves the tongue and white paw tips while forehead stripes follow the lift', () => {
+  const tongue = 0xe84e40;
+  const poses = [
+    { ear: 31, tongueRows: [] },
+    { ear: 31, tongueRows: [40] },
+    { ear: 30, tongueRows: [39, 40] },
+    { ear: 30, tongueRows: [39, 40] },
+  ];
+  for (const [frame, { ear, tongueRows }] of poses.entries()) {
+    assert.equal(frameRgb(source, 'groom', frame, 26, ear), ink);
+    for (const x of [28, 34]) {
+      marked('tabby', 'groom', frame, x, ear + 3);
+      marked('tabby', 'groom', frame, x, ear + 4);
+      unmarked('tabby', 'groom', frame, x, ear === 31 ? 33 : 35);
+    }
+    for (const y of [39, 40]) {
+      assert.equal(
+        frameRgb(source, 'groom', frame, 30, y) === tongue,
+        tongueRows.includes(y),
+      );
+      unmarked('socks', 'groom', frame, 30, y);
+      unmarked('tabby', 'groom', frame, 30, y);
+    }
+
+    marked('socks', 'groom', frame, 29, 41);
+    marked('socks', 'groom', frame, 27, 42);
+    assert.equal(frameRgb(source, 'groom', frame, 30, 41), ink);
+    unmarked('socks', 'groom', frame, 30, 41);
+    marked('socks', 'groom', frame, 31, 41);
+    marked('socks', 'groom', frame, 32, 43);
+    unmarked('socks', 'groom', frame, 33, 43);
+    for (const x of [29, 30, 36, 37]) marked('socks', 'groom', frame, x, 46);
+    marked('tabby', 'groom', frame, 34, 43);
+    marked('tabby', 'groom', frame, 36, 45);
+  }
 });
 
 test('sleep forehead follows independently breathing ears while flank, paw tips and bib bottom stay anchored', () => {
