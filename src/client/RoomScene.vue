@@ -37,7 +37,15 @@ import {
   DEFAULT_CAT_APPEARANCE,
   type CatAppearance,
 } from '../shared/appearance';
-import { House, Minus, Plus, Palette, LogOut, UserX } from '@lucide/vue';
+import {
+  House,
+  LoaderCircle,
+  Minus,
+  Plus,
+  Palette,
+  LogOut,
+  UserX,
+} from '@lucide/vue';
 import { useRoom } from './room';
 import { createRemoteMovement, remoteFrameUser } from './remote-movement';
 import { activeDjPlayback, DJ_NOTE_COUNT, djNotePose } from './dj-notes';
@@ -271,7 +279,14 @@ watch([menuUser, isOwner], ([user, owner]) => {
   if (menuTargetId.value && (!user || (!menuIsSelf.value && !owner)))
     closeCatMenu();
 });
+const sceneReady = ref(false);
 const unavailable = ref(false);
+let startScene: (() => void) | undefined;
+watch(
+  () => room.me?.connected,
+  () => startScene?.(),
+  { flush: 'post' },
+);
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
 let app: Application | undefined;
 let observer: ResizeObserver | undefined;
@@ -475,6 +490,7 @@ onMounted(async () => {
       backgroundAlpha: 0,
       resolution: Math.min(window.devicePixelRatio || 1, 2),
       autoDensity: true,
+      autoStart: false,
     });
     if (disposed) {
       instance.destroy(true, { children: true, context: true });
@@ -551,7 +567,7 @@ onMounted(async () => {
         current,
         target,
         deltaMs,
-        motionPreference.matches,
+        !sceneReady.value || motionPreference.matches,
       );
       cameraViewport = { ...viewport.value };
       world.scale.set(next.scale);
@@ -637,8 +653,7 @@ onMounted(async () => {
       const overlay = shell?.querySelector(selector);
       if (overlay) overlayObserver.observe(overlay);
     }
-    resize();
-    instance.ticker.add(() => {
+    const drawFrame = () => {
       const localNow = Date.now();
       const now = localNow + room.offset;
       const users = (room.snapshot?.users || []).map((user) =>
@@ -797,28 +812,30 @@ onMounted(async () => {
         bubble.style.left = `${point.x}px`;
         bubble.style.top = `${point.y}px`;
       }
-    });
+    };
+    startScene = () => {
+      if (!room.me?.connected || disposed) return;
+      startScene = undefined;
+      try {
+        resize();
+        drawFrame();
+        // Paint with the actual viewport and local cat before revealing the
+        // canvas and the HTML controls that share its camera transform.
+        instance.render();
+        instance.ticker.add(drawFrame);
+        instance.start();
+        sceneReady.value = true;
+      } catch {
+        showSceneFallback();
+      }
+    };
+    startScene();
   } catch {
-    observer?.disconnect();
-    overlayObserver?.disconnect();
-    sceneInput?.abort();
-    updateCamera = undefined;
-    if (app?.renderer) app.destroy(true, { children: true, context: true });
-    app = undefined;
-    artWorld = undefined;
-    scenery = undefined;
-    cats.clear();
-    disposeCatTextures();
-    clearEmoteImages();
-    if (!disposed) unavailable.value = true;
+    showSceneFallback();
   }
 });
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', dismissOnOutsideCatMenu, true);
-  document.removeEventListener('focusin', dismissOnOutsideCatMenu, true);
-  document.removeEventListener('keydown', escapeSelfMenu);
-  disposed = true;
-  clearTimeout(zoomControlsTimer);
+function destroyScene() {
+  startScene = undefined;
   observer?.disconnect();
   overlayObserver?.disconnect();
   sceneInput?.abort();
@@ -830,6 +847,18 @@ onBeforeUnmount(() => {
   cats.clear();
   disposeCatTextures();
   clearEmoteImages();
+}
+function showSceneFallback() {
+  destroyScene();
+  if (!disposed) unavailable.value = true;
+}
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', dismissOnOutsideCatMenu, true);
+  document.removeEventListener('focusin', dismissOnOutsideCatMenu, true);
+  document.removeEventListener('keydown', escapeSelfMenu);
+  disposed = true;
+  clearTimeout(zoomControlsTimer);
+  destroyScene();
 });
 onMounted(() => {
   document.addEventListener('pointerdown', dismissOnOutsideCatMenu, true);
@@ -842,6 +871,7 @@ onMounted(() => {
 <template>
   <div
     class="room-canvas"
+    :class="{ 'is-ready': sceneReady }"
     ref="host"
     :data-environment="environment.id"
     :data-camera-x="camera.x"
@@ -850,8 +880,8 @@ onMounted(() => {
     role="group"
     :aria-label="`共享猫咪${environment.name}。点击自己的小猫换花色或下台；房主可点击其他小猫管理成员。点击地面移动，点击空位上台，双指捏合或使用视野按钮缩放。`"
   >
-    <template v-if="!unavailable">
-      <LyricsPanel :camera="camera" />
+    <LyricsPanel v-if="!unavailable" v-show="sceneReady" :camera="camera" />
+    <template v-if="sceneReady">
       <div
         v-if="menuPosition"
         ref="selfMenu"
@@ -944,7 +974,11 @@ onMounted(() => {
         </button>
       </div>
     </template>
-    <div v-if="unavailable" class="scene-fallback">
+    <div v-if="!sceneReady && !unavailable" class="scene-loading" role="status">
+      <LoaderCircle aria-hidden="true" />
+      <span>正在布置客厅…</span>
+    </div>
+    <div v-else-if="unavailable" class="scene-fallback">
       <span><House aria-hidden="true" /></span>
       <h2>欢迎来到{{ environment.name }}</h2>
       <p>此浏览器无法显示动画房间，你仍可使用下方名单、舞台和音乐功能。</p>
@@ -996,6 +1030,38 @@ onMounted(() => {
 }
 .room-canvas {
   background: #969b99;
+}
+.room-canvas:not(.is-ready) {
+  background:
+    radial-gradient(ellipse at center, #e4eadb, transparent 65%), #f5f1e5;
+}
+.room-canvas:not(.is-ready) > :deep(canvas) {
+  visibility: hidden;
+}
+.scene-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--sage);
+  font-size: 14px;
+  pointer-events: none;
+}
+.scene-loading .lucide {
+  width: 18px;
+  height: 18px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .scene-loading .lucide {
+    animation: scene-loading-spin 1.1s linear infinite;
+  }
+}
+@keyframes scene-loading-spin {
+  to {
+    transform: rotate(1turn);
+  }
 }
 .room-canvas[data-environment='rooftop'] {
   --lyrics-color: #f3e6cd;
