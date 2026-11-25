@@ -46,6 +46,7 @@
 - Show the 1–6 stage-position choices as a compact radio group in room settings, disabling counts below the current occupied stage count.
 - Show the room's pause-new-visitors setting as a switch control while keeping its existing open/closed save behavior and keyboard accessibility.
 - Let the room owner edit an optional room introduction in room settings. Members can read the introduction inside the room.
+- Keep the room settings action row and save feedback visible along the bottom while the form fields scroll. Load the latest settings when opening the panel and show a retry action if the initial load fails.
 - Use the stage plus button or a vacant part of the stage to join the end of the stage queue when the playlist has songs. Clicking your own cat opens actions at the pointer position: change coat/pattern, plus direct leave-stage while seated. Stage occupants clicking the floor do nothing; remove the floor leave confirmation. Audience cats move freely.
 - Keep the coat/pattern action on the user's cat menu; omit it from the room members panel.
 - Put member management in 客厅成员. The owner can open a three-dot menu on another member to ban, kick, or remove them from the stage if seated. Show the room's bans and unblock actions to the owner there. Remove the stage explanation, own stage join/leave buttons and sound settings from that panel.

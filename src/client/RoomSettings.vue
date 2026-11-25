@@ -23,7 +23,7 @@ onMounted(() => {
       : null;
   dialog.value?.showModal();
   dialog.value?.querySelector<HTMLElement>('input, button')?.focus();
-  void act(reload);
+  void act(loadSettings);
 });
 onBeforeUnmount(() => {
   dialog.value?.close();
@@ -99,17 +99,13 @@ function applySettings(settings: RoomDetails) {
   environmentId.value = settings.environmentId;
   revision.value = settings.revision;
 }
-async function reload() {
+async function loadSettings() {
   const data = await request<{ room: RoomDetails }>(`${base}/settings`);
   applySettings(data.room);
   loaded.value = true;
 }
 function save() {
-  if (!loaded.value) return;
-  if (stageCapacityError.value) {
-    error.value = stageCapacityError.value;
-    return;
-  }
+  if (!loaded.value || stageCapacityError.value) return;
   void act(async () => {
     const data = await request<{ room: RoomDetails }>(base, {
       method: 'PATCH',
@@ -141,12 +137,14 @@ function save() {
     @click.self="emit('close')"
     @cancel.prevent="emit('close')"
   >
-    <section class="settings-panel" aria-labelledby="settings-title">
+    <form class="settings-panel panel-form" @submit.prevent="save">
       <header class="panel-heading">
         <h2 id="settings-title">房间设置</h2>
-        <button aria-label="关闭房间设置" @click="emit('close')"><X /></button>
+        <button type="button" aria-label="关闭房间设置" @click="emit('close')">
+          <X />
+        </button>
       </header>
-      <form class="panel-form" @submit.prevent="save">
+      <div class="settings-fields">
         <label>
           房间名称
           <input
@@ -189,10 +187,7 @@ function save() {
             </label>
           </div>
         </fieldset>
-        <p v-if="stageCapacityError" class="form-error" role="alert">
-          {{ stageCapacityError }}
-        </p>
-        <p v-else class="library-hint">
+        <p class="library-hint">
           可设置 1–6 个位置；缩减前请先让超出人数的成员下台。
         </p>
         <label>
@@ -230,24 +225,77 @@ function save() {
           /></span>
         </label>
         <p class="library-hint">已有成员及短时重连不受影响，房主仍可进入。</p>
+      </div>
+      <footer class="settings-footer">
+        <p v-if="notice" role="status">{{ notice }}</p>
+        <p v-if="stageCapacityError || error" class="form-error" role="alert">
+          {{ stageCapacityError || error }}
+        </p>
         <button
+          v-if="loaded"
           type="submit"
           class="primary"
-          :disabled="busy || !loaded || !!stageCapacityError"
+          :disabled="busy || !!stageCapacityError"
         >
-          保存设置
+          {{ busy ? '正在保存…' : '保存设置' }}
         </button>
-        <button type="button" :disabled="busy" @click="act(reload)">
-          刷新设置
+        <button
+          v-else
+          type="button"
+          class="primary"
+          :disabled="busy"
+          @click="act(loadSettings)"
+        >
+          {{ busy ? '正在加载…' : '重试加载' }}
         </button>
-      </form>
-      <p v-if="notice" role="status">{{ notice }}</p>
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-    </section>
+      </footer>
+    </form>
   </dialog>
 </template>
 
 <style scoped>
+.settings-panel.panel-form {
+  --settings-gutter: 28px;
+  gap: 0;
+  margin: 0;
+  overflow: hidden;
+  padding: 0;
+}
+.panel-heading {
+  flex: none;
+  margin: 0;
+  padding: 18px var(--settings-gutter) 10px;
+}
+.settings-fields {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px var(--settings-gutter) 18px;
+}
+.settings-fields > * {
+  flex-shrink: 0;
+}
+.settings-footer {
+  display: grid;
+  flex: none;
+  gap: 8px;
+  padding: 12px var(--settings-gutter) 16px;
+  border-top: 1px solid var(--line);
+}
+.settings-footer p {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .settings-panel.panel-form {
+    --settings-gutter: 20px;
+  }
+}
 .description-field textarea {
   resize: vertical;
 }

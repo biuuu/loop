@@ -156,7 +156,7 @@ export function roomRoutes(
         stageTimeLimitMinutes: changes.stageTimeLimitMinutes,
       })
     )
-      throw new HttpError(409, '房间资料已更新，请刷新后重试');
+      throw new HttpError(409, '房间资料已更新，请重新打开房间设置后重试');
     const room = registry.details(id);
     registry.updated(room);
     return { room };
