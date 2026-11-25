@@ -21,8 +21,16 @@ const shadow = 0xef6c00;
 const ink = 0x482a00;
 const socks = recolorCatPixels(source, { coat: 'orange', pattern: 'socks' });
 const tabby = recolorCatPixels(source, { coat: 'orange', pattern: 'tabby' });
+const patternMarkings = {
+  socks: [1],
+  tabby: [1],
+  calico: [1, 2],
+  cow: [2],
+  orange_white: [1],
+  tortoiseshell: [1, 2],
+} as const satisfies Record<CatPattern, readonly number[]>;
 const marked = (
-  pattern: Exclude<CatPattern, 'calico'>,
+  pattern: 'socks' | 'tabby',
   animation: CatAnimation,
   frame: number,
   x: number,
@@ -45,7 +53,7 @@ const marked = (
   );
 };
 const unmarked = (
-  pattern: Exclude<CatPattern, 'calico'>,
+  pattern: 'socks' | 'tabby',
   animation: CatAnimation,
   frame: number,
   x: number,
@@ -63,6 +71,16 @@ const calicoMarking = (
   x: number,
   y: number,
 ) => getPatternMask('calico', animation, frame)[y * CAT_CELL_SIZE + x];
+const presetMarkings = (
+  animation: CatAnimation,
+  frame: number,
+  x: number,
+  y: number,
+) =>
+  (['cow', 'orange_white', 'tortoiseshell'] as const).map(
+    (pattern) =>
+      getPatternMask(pattern, animation, frame)[y * CAT_CELL_SIZE + x],
+  );
 
 test('all 41 source frames have bounded anatomical patches that select only actual coat pixels', () => {
   assert.deepEqual(
@@ -77,7 +95,7 @@ test('all 41 source frames have bounded anatomical patches that select only actu
     );
     for (let frame = 0; frame < CAT_ANIMATIONS[animation].frames; frame++) {
       frames++;
-      for (const pattern of ['socks', 'tabby', 'calico'] as const) {
+      for (const pattern of Object.keys(patternMarkings) as CatPattern[]) {
         const patches = CAT_PATTERN_PATCHES[animation][frame]![pattern];
         assert.ok(patches.length > 0);
         const mask = getPatternMask(pattern, animation, frame);
@@ -132,10 +150,6 @@ test('all 41 source frames have bounded anatomical patches that select only actu
               if (isCoat) remainingCoat++;
               continue;
             }
-            assert.ok(
-              value === 1 ||
-                (pattern === 'calico' && value === CAT_CALICO_MARKINGS.dark),
-            );
             selected++;
             markings.add(value);
             const index = frameIndex(animation, frame, x, y);
@@ -149,22 +163,79 @@ test('all 41 source frames have bounded anatomical patches that select only actu
               `${pattern}/${animation}/${frame}/${x},${y} is coat`,
             );
           }
-        assert.ok(selected > 0 && selected < 64);
-        if (pattern === 'calico') {
-          assert.equal(
-            markings.size,
-            2,
-            `both calico colors in ${animation}/${frame}`,
-          );
+        assert.deepEqual(
+          [...markings].sort(),
+          patternMarkings[pattern],
+          `${pattern}/${animation}/${frame} marking values`,
+        );
+        assert.ok(selected > 0 && remainingCoat > 0);
+        if (pattern !== 'orange_white') {
           assert.ok(
             remainingCoat > selected,
-            `ivory majority in ${animation}/${frame}`,
+            `base coat majority in ${pattern}/${animation}/${frame}`,
           );
         }
       }
     }
   }
   assert.equal(frames, 41);
+});
+
+test('coat preset portraits show an asymmetric cow cap, an orange cap with a blaze, and mixed tortoiseshell spots', () => {
+  const frame = CAT_IDLE_UP_COLUMN;
+  assert.deepEqual(presetMarkings('idle', frame, 26, 32), [0, 1, 1]);
+  assert.deepEqual(presetMarkings('idle', frame, 33, 32), [2, 1, 2]);
+  assert.deepEqual(presetMarkings('idle', frame, 30, 36), [2, 0, 2]);
+  assert.deepEqual(presetMarkings('idle', frame, 29, 36), [0, 0, 0]);
+  assert.deepEqual(presetMarkings('idle', frame, 34, 36), [2, 1, 1]);
+  assert.deepEqual(presetMarkings('idle', frame, 26, 39), [0, 0, 2]);
+  for (const x of [28, 32]) {
+    assert.equal(frameRgb(source, 'idle', frame, x, 37), ink);
+    assert.deepEqual(presetMarkings('idle', frame, x, 37), [0, 0, 0]);
+  }
+  assert.deepEqual(presetMarkings('idle', frame, 35, 44), [2, 1, 1]);
+  assert.deepEqual(presetMarkings('idle', frame, 29, 43), [0, 0, 2]);
+  assert.deepEqual(presetMarkings('idle', frame, 27, 46), [0, 0, 0]);
+});
+
+test('new preset caps follow pose height while back markings follow the visible torso', () => {
+  const poses = [
+    { animation: 'side', ears: [31, 30, 31, 31, 30, 31] },
+    { animation: 'down', ears: [32, 31, 32] },
+    {
+      animation: 'sleep',
+      ears: [35, 35, 36, 36, 35, 35, 36, 36, 35, 35, 36, 36, 35, 35, 36, 36],
+    },
+  ] as const;
+  for (const { animation, ears } of poses) {
+    for (const [frame, ear] of ears.entries()) {
+      assert.equal(frameRgb(source, animation, frame, 33, ear), ink);
+      assert.deepEqual(
+        presetMarkings(animation, frame, 33, ear + 1),
+        [2, 1, 2],
+      );
+      assert.deepEqual(
+        presetMarkings(animation, frame, 30, ear + 4),
+        [2, 0, 2],
+      );
+    }
+  }
+  for (const [frame, ear] of poses[0].ears.entries()) {
+    assert.deepEqual(presetMarkings('side', frame, 32, ear + 10), [0, 1, 1]);
+    assert.deepEqual(presetMarkings('side', frame, 35, ear + 13), [2, 1, 0]);
+  }
+  for (const [frame, ear] of [32, 31, 32, 31].entries()) {
+    assert.deepEqual(presetMarkings('up', frame, 26, ear + 1), [2, 1, 2]);
+    assert.deepEqual(presetMarkings('up', frame, 34, ear + 1), [0, 1, 1]);
+    assert.deepEqual(presetMarkings('up', frame, 27, 43), [2, 1, 1]);
+    assert.deepEqual(presetMarkings('up', frame, 33, 42), [0, 1, 2]);
+    assert.deepEqual(presetMarkings('up', frame, 30, 43), [0, 0, 0]);
+  }
+  for (const frame of poses[2].ears.keys()) {
+    assert.deepEqual(presetMarkings('sleep', frame, 35, 44), [2, 1, 0]);
+    assert.deepEqual(presetMarkings('sleep', frame, 37, 44), [2, 1, 2]);
+    assert.deepEqual(presetMarkings('sleep', frame, 27, 46), [0, 0, 0]);
+  }
 });
 
 test('calico idle portrait includes a warm ear patch and an opposite dark temple with an ivory center', () => {
@@ -333,6 +404,8 @@ test('side markings follow the one-pixel torso bob and independently stepping fr
     marked('socks', 'side', frame, 28, stance.ear + 10);
     for (const [x, y] of [...stance.front, ...stance.rear])
       marked('socks', 'side', frame, x!, y!);
+    for (const [x, y] of [...stance.front, ...stance.rear])
+      assert.equal(presetMarkings('side', frame, x!, y!)[1], 0);
     marked('tabby', 'side', frame, 35, stance.ear + 11);
     marked('tabby', 'side', frame, 38, stance.ear + 12);
   }
@@ -382,6 +455,8 @@ test('rear walk hides bib and forehead; independently lifted hind paws follow th
       false,
     );
     for (const [x, y] of tips[frame]!) marked('socks', 'up', frame, x!, y!);
+    for (const [x, y] of tips[frame]!)
+      assert.equal(presetMarkings('up', frame, x!, y!)[1], 0);
     const ear = frame === 0 || frame === 2 ? 32 : 31;
     assert.equal(frameRgb(source, 'up', frame, 26, ear), ink);
     marked('tabby', 'up', frame, 28, ear + 3);

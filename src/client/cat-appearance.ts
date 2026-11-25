@@ -1,4 +1,7 @@
-import { CALICO_APPEARANCE, type CatAppearance } from '../shared/appearance';
+import {
+  type CatAppearance,
+  type CatPresetPattern,
+} from '../shared/appearance';
 import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
 import { CAT_CALICO_MARKINGS, getPatternMask } from './cat-patterns';
 
@@ -65,10 +68,22 @@ const PALETTES = {
   CatAppearance['coat'],
   { main: number; shadow: number; light: number; stripe: number; ink: number }
 >;
-const SOCK_MAIN = 0xfff7e9;
-const SOCK_SHADOW = 0xe8dbc8;
-const CALICO_ORANGE = { main: 0xd98947, shadow: 0xb96b36 };
-const CALICO_DARK = { main: 0x554b4e, shadow: 0x41383c };
+type SpotPalette = Readonly<
+  Partial<Record<number, { main: number; shadow: number }>>
+>;
+const SPOT_PALETTES = {
+  socks: { 1: { main: 0xfff7e9, shadow: 0xe8dbc8 } },
+  calico: {
+    [CAT_CALICO_MARKINGS.orange]: { main: 0xd98947, shadow: 0xb96b36 },
+    [CAT_CALICO_MARKINGS.dark]: { main: 0x554b4e, shadow: 0x41383c },
+  },
+  cow: { 2: { main: 0x38353b, shadow: 0x29262c } },
+  orange_white: { 1: { main: 0xeda251, shadow: 0xd57836 } },
+  tortoiseshell: {
+    1: { main: 0xc7794a, shadow: 0xa7613a },
+    2: { main: 0x905a40, shadow: 0x72432f },
+  },
+} satisfies Record<CatPresetPattern | 'socks', SpotPalette>;
 
 // Separate the connected silhouette from enclosed facial details using the
 // untouched frame. Eight-way connections keep diagonal one-pixel contours intact.
@@ -138,6 +153,12 @@ export function recolorCatPixels(
   if (appearance.coat === 'orange' && appearance.pattern === 'solid')
     return result;
   const palette = PALETTES[appearance.coat];
+  const spots: SpotPalette | undefined =
+    appearance.pattern === 'solid'
+      ? undefined
+      : appearance.pattern === 'tabby'
+        ? { 1: { main: palette.stripe, shadow: palette.stripe } }
+        : SPOT_PALETTES[appearance.pattern];
   for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
     const sequence = CAT_ANIMATIONS[animation];
     const row = CAT_PACKED_ROWS[animation];
@@ -178,21 +199,10 @@ export function recolorCatPixels(
                     : color;
           const mark = mask?.[y * CAT_CELL_SIZE + x];
           if (coatPixel && mark) {
-            if (appearance.pattern === CALICO_APPEARANCE.pattern) {
-              const patch =
-                mark === CAT_CALICO_MARKINGS.orange
-                  ? CALICO_ORANGE
-                  : CALICO_DARK;
+            const patch = spots?.[mark];
+            if (patch)
               replacement =
                 color === ORIGINAL.shadow ? patch.shadow : patch.main;
-            } else {
-              replacement =
-                appearance.pattern === 'socks'
-                  ? color === ORIGINAL.shadow
-                    ? SOCK_SHADOW
-                    : SOCK_MAIN
-                  : palette.stripe;
-            }
           }
           result[offset] = replacement >>> 16;
           result[offset + 1] = (replacement >>> 8) & 255;

@@ -1,4 +1,5 @@
 import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
+import { CAT_COAT_PATCHES, type PresetFramePatterns } from './cat-coat-patches';
 
 export const CAT_CALICO_MARKINGS = { orange: 1, dark: 2 } as const;
 
@@ -16,9 +17,9 @@ export interface MaskPatch {
   readonly x: number;
   readonly y: number;
   readonly rows: readonly string[];
-  readonly marking?: (typeof CAT_CALICO_MARKINGS)[keyof typeof CAT_CALICO_MARKINGS];
+  readonly marking?: 1 | 2;
 }
-export interface FramePatterns {
+export interface FramePatterns extends PresetFramePatterns {
   readonly socks: readonly MaskPatch[];
   readonly tabby: readonly MaskPatch[];
   readonly calico: readonly MaskPatch[];
@@ -109,6 +110,7 @@ const IDLE: FramePatterns = {
     { part: 'flank', x: 34, y: 43, rows: ['#..', '#.#', '..#'] },
   ],
   calico: [CALICO_EAR, CALICO_TEMPLE, CALICO_IDLE_FLANK],
+  ...CAT_COAT_PATCHES.idle,
 };
 
 const SIDE_BIB: MaskPatch = {
@@ -163,6 +165,7 @@ const FRONT_STANDING: FramePatterns = {
   socks: [{ part: 'frontPaw', x: 28, y: 43, rows: ['#...#', '#...#'] }],
   tabby: FRONT_TABBY_HIGH,
   calico: [CALICO_EAR, CALICO_TEMPLE],
+  ...CAT_COAT_PATCHES.frontHigh,
 };
 
 const SLEEP_PAWS: readonly MaskPatch[] = [
@@ -193,6 +196,7 @@ const SLEEP_HIGH: FramePatterns = {
     { ...CALICO_TEMPLE, y: 38 },
     CALICO_SLEEP_FLANK,
   ],
+  ...CAT_COAT_PATCHES.sleep,
 };
 const SLEEP_LOW: FramePatterns = {
   socks: [SLEEP_BIB, ...SLEEP_PAWS],
@@ -205,6 +209,7 @@ const SLEEP_LOW: FramePatterns = {
     { ...CALICO_TEMPLE, y: 39 },
     CALICO_SLEEP_FLANK,
   ],
+  ...CAT_COAT_PATCHES.sleepLow,
 };
 
 export const CAT_PATTERN_PATCHES: Readonly<
@@ -233,6 +238,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: SIDE_TABBY,
       calico: CALICO_SIDE,
+      ...CAT_COAT_PATCHES.side,
     },
     {
       socks: [
@@ -242,6 +248,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: SIDE_TABBY_HIGH,
       calico: CALICO_SIDE_HIGH,
+      ...CAT_COAT_PATCHES.sideHigh,
     },
     {
       socks: [
@@ -251,6 +258,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: SIDE_TABBY,
       calico: CALICO_SIDE,
+      ...CAT_COAT_PATCHES.side,
     },
     {
       socks: [
@@ -260,6 +268,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: SIDE_TABBY,
       calico: CALICO_SIDE,
+      ...CAT_COAT_PATCHES.side,
     },
     {
       socks: [
@@ -269,6 +278,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: SIDE_TABBY_HIGH,
       calico: CALICO_SIDE_HIGH,
+      ...CAT_COAT_PATCHES.sideHigh,
     },
     {
       socks: [
@@ -278,6 +288,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: SIDE_TABBY,
       calico: CALICO_SIDE,
+      ...CAT_COAT_PATCHES.side,
     },
   ],
   up: [
@@ -285,6 +296,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       socks: [{ part: 'rearPaw', x: 28, y: 50, rows: ['#...#', '#...#'] }],
       tabby: [REAR_NAPE, REAR_BACK, REAR_RUMP],
       calico: CALICO_REAR,
+      ...CAT_COAT_PATCHES.rear,
     },
     {
       socks: [
@@ -292,11 +304,13 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: [REAR_NAPE_HIGH, REAR_BACK, REAR_RUMP_STEP],
       calico: CALICO_REAR_HIGH,
+      ...CAT_COAT_PATCHES.rearHigh,
     },
     {
       socks: [{ part: 'rearPaw', x: 28, y: 50, rows: ['#...#', '#...#'] }],
       tabby: [REAR_NAPE, REAR_BACK, REAR_RUMP],
       calico: CALICO_REAR,
+      ...CAT_COAT_PATCHES.rear,
     },
     {
       socks: [
@@ -304,6 +318,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: [REAR_NAPE_HIGH, REAR_BACK, REAR_RUMP_STEP],
       calico: CALICO_REAR_HIGH,
+      ...CAT_COAT_PATCHES.rearHigh,
     },
   ],
   down: [
@@ -311,12 +326,14 @@ export const CAT_PATTERN_PATCHES: Readonly<
       socks: [{ part: 'frontPaw', x: 28, y: 43, rows: ['#', '#'] }],
       tabby: FRONT_TABBY,
       calico: CALICO_FRONT,
+      ...CAT_COAT_PATCHES.front,
     },
     FRONT_STANDING,
     {
       socks: [{ part: 'frontPaw', x: 32, y: 43, rows: ['#', '#'] }],
       tabby: FRONT_TABBY,
       calico: CALICO_FRONT,
+      ...CAT_COAT_PATCHES.front,
     },
   ],
   sleep: [
@@ -357,8 +374,7 @@ export function getPatternMask(
   animation: CatAnimation,
   frame: number,
 ): Uint8Array {
-  if (pattern !== 'socks' && pattern !== 'tabby' && pattern !== 'calico')
-    throw new Error('Unknown cat pattern');
+  if (!Object.hasOwn(IDLE, pattern)) throw new Error('Unknown cat pattern');
   if (!Object.hasOwn(CAT_ANIMATIONS, animation))
     throw new Error('Unknown cat animation');
   const frames = CAT_PATTERN_PATCHES[animation];
@@ -382,6 +398,7 @@ export function getPatternMask(
       !Number.isInteger(patch.y) ||
       patch.x < 0 ||
       patch.y < 0 ||
+      (marking !== 1 && marking !== 2) ||
       width === 0 ||
       patch.rows.length === 0 ||
       patch.x + width > CAT_CELL_SIZE ||

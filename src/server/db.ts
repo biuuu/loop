@@ -18,6 +18,7 @@ import {
 } from '../shared/contracts.js';
 import {
   CALICO_APPEARANCE,
+  CAT_APPEARANCE_PRESETS,
   CAT_COATS,
   CAT_PATTERNS,
   catAppearanceSchema,
@@ -32,10 +33,13 @@ import {
 
 const BASELINE_VERSION = 11;
 const CALICO_SCHEMA_VERSION = 20;
+const CAT_PRESETS_SCHEMA_VERSION = 21;
 const MIXABLE_CAT_APPEARANCES = CAT_COATS.flatMap(({ id: coat }) =>
   CAT_PATTERNS.map(({ id: pattern }) => ({ coat, pattern })),
 );
-const CAT_APPEARANCES = [...MIXABLE_CAT_APPEARANCES, CALICO_APPEARANCE];
+const PRESET_CAT_APPEARANCES = CAT_APPEARANCE_PRESETS.map(
+  ({ appearance }) => appearance,
+);
 const ROOM_COLUMNS = `r.id,n.number,r.owner_user_id AS ownerId,g.nickname AS ownerNickname,
   r.name,r.environment_id AS environmentId,r.join_policy AS joinPolicy,r.stage_capacity AS stageCapacity,r.revision,
   r.created_at AS createdAt,r.updated_at AS updatedAt`;
@@ -92,9 +96,13 @@ export class Store {
           throw new Error(`Missing migration ${expected}`);
       }
       const latest = migrations.at(-1)!.version;
+      const presets =
+        latest >= CAT_PRESETS_SCHEMA_VERSION
+          ? PRESET_CAT_APPEARANCES
+          : [CALICO_APPEARANCE];
       this.guestAppearances =
         latest >= CALICO_SCHEMA_VERSION
-          ? CAT_APPEARANCES
+          ? [...MIXABLE_CAT_APPEARANCES, ...presets]
           : MIXABLE_CAT_APPEARANCES;
       this.sql
         .transaction(() => {

@@ -18,24 +18,53 @@ export const CAT_PATTERNS = [
 
 export const CALICO_APPEARANCE = { coat: 'white', pattern: 'calico' } as const;
 
+export const CAT_APPEARANCE_PRESETS = [
+  {
+    appearance: CALICO_APPEARANCE,
+    label: '三花',
+    swatch:
+      'conic-gradient(#f1eee5 0 120deg, #d98947 120deg 235deg, #554b4e 235deg)',
+  },
+  {
+    appearance: { coat: 'white', pattern: 'cow' },
+    label: '奶牛猫',
+    swatch: 'linear-gradient(125deg, #38353b 44%, #f1eee5 44%)',
+  },
+  {
+    appearance: { coat: 'white', pattern: 'orange_white' },
+    label: '橘白',
+    swatch: 'linear-gradient(125deg, #eda251 52%, #f1eee5 52%)',
+  },
+  {
+    appearance: { coat: 'black', pattern: 'tortoiseshell' },
+    label: '玳瑁',
+    swatch:
+      'conic-gradient(#50515a 0 168deg, #c7794a 168deg 282deg, #905a40 282deg)',
+  },
+] as const;
+
+export type CatPresetPattern =
+  (typeof CAT_APPEARANCE_PRESETS)[number]['appearance']['pattern'];
+
+export function catAppearancePreset(pattern: string) {
+  return CAT_APPEARANCE_PRESETS.find(
+    (preset) => preset.appearance.pattern === pattern,
+  );
+}
+
 export const catAppearanceSchema = z
   .object({
-    coat: z.enum([
-      'orange',
-      'gray',
-      'cream',
-      'black',
-      'white',
-      'pure_black',
-      'pure_white',
+    coat: z.enum(CAT_COATS.map(({ id }) => id)),
+    pattern: z.enum([
+      ...CAT_PATTERNS.map(({ id }) => id),
+      ...CAT_APPEARANCE_PRESETS.map(({ appearance }) => appearance.pattern),
     ]),
-    pattern: z.enum(['solid', 'socks', 'tabby', CALICO_APPEARANCE.pattern]),
   })
   .strict()
-  .refine(
-    ({ coat, pattern }) =>
-      pattern !== CALICO_APPEARANCE.pattern || coat === CALICO_APPEARANCE.coat,
-  );
+  .refine(({ coat, pattern }) => {
+    const preset = catAppearancePreset(pattern);
+    return !preset || preset.appearance.coat === coat;
+  });
 
 export type CatAppearance = z.infer<typeof catAppearanceSchema>;
 export const DEFAULT_CAT_APPEARANCE: CatAppearance = {

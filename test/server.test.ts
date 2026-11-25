@@ -29,6 +29,7 @@ import type {
 import { NICKNAME_CHANGE_COOLDOWN_MS, SCENE } from '../src/shared/contracts.js';
 import {
   CALICO_APPEARANCE,
+  CAT_APPEARANCE_PRESETS,
   DEFAULT_CAT_APPEARANCE,
   catAppearanceSchema,
   type CatAppearance,
@@ -60,7 +61,7 @@ test('guest appearance has schema defaults, checks enums and persists edits thro
       .run('legacy', 'Legacy', hashToken('legacy-token'));
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 20);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 21);
     assert.deepEqual(
       db.guest('legacy-token')!.appearance,
       DEFAULT_CAT_APPEARANCE,
@@ -132,7 +133,7 @@ test('all black and white coat variants preserve identities and playlists across
       .all();
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 20);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 21);
     assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
     assert.deepEqual(
       db.sql.prepare('SELECT * FROM guests ORDER BY id').all(),
@@ -244,7 +245,10 @@ test('appearance API authenticates, rejects unknown fields and only edits the co
       {},
       { coat: 'blue', pattern: 'solid' },
       { coat: 'gray', pattern: 'spots' },
-      { coat: 'pure_white', pattern: 'calico' },
+      ...CAT_APPEARANCE_PRESETS.map(({ appearance }) => ({
+        ...appearance,
+        coat: 'pure_white',
+      })),
       { coat: 'gray' },
       { ...appearance, id: b.guest.id },
       { ...appearance, nickname: 'B' },
@@ -303,8 +307,11 @@ test('appearance API authenticates, rejects unknown fields and only edits the co
       appearance,
       nicknameChangeAvailableAt: now + NICKNAME_CHANGE_COOLDOWN_MS,
     });
-    for (const coat of ['pure_black', 'pure_white']) {
-      const appearance = { coat, pattern: 'solid' };
+    for (const appearance of [
+      { coat: 'pure_black', pattern: 'solid' },
+      { coat: 'pure_white', pattern: 'solid' },
+      ...CAT_APPEARANCE_PRESETS.slice(1).map(({ appearance }) => appearance),
+    ]) {
       const response = await app.inject({
         method: 'PATCH',
         url: '/api/me/appearance',
@@ -353,7 +360,7 @@ test('tokens are hashed and identities and playlists survive reopening', () => {
     );
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 20);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 21);
     assert.deepEqual(db.guest(a.token), a.guest);
     assert.equal(db.firstTrack(a.guest.id)!.id, '1');
     assert.equal(db.playlist(a.guest.id).revision, 4);
@@ -428,7 +435,7 @@ test('startup rejects unversioned data and unsupported schema versions without m
       [0, /Unversioned database is not empty/i],
       [1, /Unsupported database version 1; first supported version is 11/i],
       [10, /Unsupported database version 10; first supported version is 11/i],
-      [21, /Database version 21 is newer than supported version 20/i],
+      [22, /Database version 22 is newer than supported version 21/i],
     ] as const) {
       const path = join(root, `version-${version}.sqlite`);
       const fixture = new Database(path);
@@ -1168,7 +1175,8 @@ test('socket authentication, replacement, capacity and shared room snapshots', a
     );
     // Finish the move event before listening for the appearance revision.
     await second.timeout(1000).emitWithAck('room:sync');
-    await checkAppearanceBroadcast(CALICO_APPEARANCE);
+    for (const { appearance } of CAT_APPEARANCE_PRESETS)
+      await checkAppearanceBroadcast(appearance);
     for (let index = 0; index < 29; index++) {
       const guest = db.createGuest(`Cat${index}`).guest;
       room.connect(guest, { id: guest.id, replaced() {} });
