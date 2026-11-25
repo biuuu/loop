@@ -660,6 +660,16 @@ export const useRoom = defineStore('room', () => {
         },
       );
   }
+  function reportPlaybackFailure(roundId: string) {
+    if (
+      !socket?.connected ||
+      !canSeek.value ||
+      snapshot.value?.playback?.roundId !== roundId
+    )
+      return false;
+    socket.emit('playback:failed', { roundId });
+    return true;
+  }
   async function seek(roundId: string, positionMs: number) {
     const active = socket;
     const playback = snapshot.value?.playback;
@@ -1015,6 +1025,7 @@ export const useRoom = defineStore('room', () => {
     joinStage,
     leaveStage,
     skip,
+    reportPlaybackFailure,
     seek,
     selectPlaylist,
     add,

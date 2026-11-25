@@ -729,6 +729,9 @@ export async function createServer(
         roomId !== '__test__' && registry.info(roomId).ownerId === guest.id,
       ),
     );
+    bind('playback:failed', (payload) =>
+      room.mediaFailed(guest.id, payload, socket.id),
+    );
     bind('playback:seek', (payload) => room.seek(guest.id, payload, socket.id));
     const target = (payload: unknown) =>
       z.object({ userId: z.string().uuid() }).strict().parse(payload).userId;

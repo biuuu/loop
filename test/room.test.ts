@@ -110,6 +110,73 @@ function assertFloorPosition(
   assert.equal(user.targetY, y);
   assert.equal(user.durationMs, 0);
 }
+test('a current DJ media failure advances the room once and keeps the next DJ first', async () => {
+  const {
+    room,
+    guests: [a, b, listener],
+    close,
+  } = setup();
+  try {
+    await room.join(a!.id, a!.id);
+    await room.join(b!.id, b!.id);
+    const { playback, revision } = room.snapshot();
+    const payload = { roundId: playback!.roundId };
+    await assert.rejects(room.mediaFailed(listener!.id, payload), /当前的歌曲/);
+    await assert.rejects(room.mediaFailed(a!.id, payload, 'stale'));
+    assert.equal(room.snapshot().revision, revision);
+
+    const updates = collectPlayback(room);
+    await Promise.all([
+      room.mediaFailed(a!.id, payload, a!.id),
+      room.mediaFailed(a!.id, payload, a!.id),
+    ]);
+    const next = room.snapshot();
+    assert.equal(updates.length, 1);
+    assert.equal(next.playback?.djId, b!.id);
+    assert.deepEqual(next.stage, [b!.id, a!.id]);
+    assert.match(next.notice!, /已跳过/);
+
+    await room.skip(b!.id, { roundId: next.playback!.roundId });
+    assert.equal(room.snapshot().playback?.track.id, playback!.track.id);
+  } finally {
+    close();
+  }
+});
+
+test('consecutive media failures try the next song and stop when only failed tracks remain', async () => {
+  const {
+    db,
+    room,
+    guests: [dj],
+    close,
+  } = setup();
+  try {
+    db.add(dj!.id, track('4'));
+    await room.join(dj!.id);
+    const first = room.snapshot().playback!;
+    await room.mediaFailed(dj!.id, { roundId: first.roundId });
+    const second = room.snapshot().playback!;
+    assert.equal(second.track.id, '4');
+    await room.mediaFailed(dj!.id, { roundId: second.roundId });
+
+    const stopped = room.snapshot();
+    assert.equal(stopped.playback, null);
+    assert.equal(stopped.resolving, false);
+    assert.match(stopped.notice!, /暂时没有可播放的歌曲/);
+    assert.deepEqual(stopped.stage, [dj!.id]);
+    assert.deepEqual(
+      db.tracks(dj!.id).map(({ id }) => id),
+      ['1', '4'],
+    );
+
+    await room.leave(dj!.id);
+    await room.join(dj!.id);
+    assert.equal(room.snapshot().playback?.track.id, first.track.id);
+  } finally {
+    close();
+  }
+});
+
 test('first stage join with an immediate resolver publishes one complete playing state', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const {

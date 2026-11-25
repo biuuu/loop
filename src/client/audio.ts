@@ -3,6 +3,7 @@ import { useRoom } from './room';
 
 const VOLUME_STORAGE_KEY = 'loop:volume';
 const AUDIBLE_VOLUME_STORAGE_KEY = 'loop:volume:audible';
+const MEDIA_ERR_ABORTED = 1;
 function savedVolume(key = VOLUME_STORAGE_KEY): number {
   try {
     const stored = localStorage.getItem(key);
@@ -30,6 +31,7 @@ export function useAudio(useDeviceVolume = () => false) {
   let scheduled: ReturnType<typeof setTimeout> | undefined;
   let starting = false;
   let failedRound = '';
+  let reportedRound = '';
   const needsGesture = ref(false);
   let primed = false;
   let priming = false;
@@ -76,6 +78,36 @@ export function useAudio(useDeviceVolume = () => false) {
       }
     }
   }
+  function failPlayback(roundId: string, terminal: boolean) {
+    failedRound = roundId;
+    needsGesture.value = false;
+    clearTimeout(scheduled);
+    if (
+      terminal &&
+      reportedRound !== roundId &&
+      room.reportPlaybackFailure(roundId)
+    )
+      reportedRound = roundId;
+    issue.value =
+      reportedRound === roundId
+        ? '音频加载失败，正在切歌…'
+        : '音频加载失败，请重试或等待下一首';
+  }
+  function playRejected(error: unknown, token: number, roundId: string) {
+    if (token !== generation) return;
+    const name = error instanceof Error ? error.name : undefined;
+    if (name === 'AbortError') return;
+    if (name === 'NotAllowedError') {
+      if (failedRound === roundId) return;
+      needsGesture.value = true;
+      issue.value = '轻触页面或按任意键即可继续播放';
+    } else if (
+      name === 'NotSupportedError' ||
+      (audio.error && audio.error.code !== MEDIA_ERR_ABORTED)
+    ) {
+      failPlayback(roundId, true);
+    } else if (failedRound !== roundId) failPlayback(roundId, false);
+  }
   async function start(token = generation) {
     const p = room.snapshot?.playback;
     if (
@@ -99,18 +131,11 @@ export function useAudio(useDeviceVolume = () => false) {
     starting = true;
     try {
       await audio.play();
-      if (token !== generation) return;
+      if (token !== generation || failedRound === p.roundId) return;
       primed = true;
       issue.value = '';
     } catch (err) {
-      if (token !== generation) return;
-      if (err instanceof DOMException && err.name === 'NotAllowedError') {
-        needsGesture.value = true;
-        issue.value = '轻触页面或按任意键即可继续播放';
-      } else {
-        failedRound = p.roundId;
-        issue.value = '这首歌暂时无法在此浏览器播放，可点击重试';
-      }
+      playRejected(err, token, p.roundId);
     } finally {
       if (token === generation) starting = false;
     }
@@ -126,13 +151,11 @@ export function useAudio(useDeviceVolume = () => false) {
         const token = generation;
         try {
           await audio.play();
-          if (token !== generation) return;
+          if (token !== generation || failedRound === playback.roundId) return;
           primed = true;
           audio.pause();
-        } catch {
-          if (token !== generation) return;
-          needsGesture.value = true;
-          issue.value = '轻触页面或按任意键即可继续播放';
+        } catch (err) {
+          playRejected(err, token, playback.roundId);
           return;
         }
       }
@@ -180,6 +203,7 @@ export function useAudio(useDeviceVolume = () => false) {
       generation++;
       starting = false;
       failedRound = '';
+      reportedRound = '';
       needsGesture.value = false;
       clearTimeout(scheduled);
       audio.pause();
@@ -200,10 +224,14 @@ export function useAudio(useDeviceVolume = () => false) {
     void start();
   };
   const playbackError = () => {
-    if (room.snapshot?.playback && audio.error) {
-      failedRound = room.snapshot.playback.roundId;
-      issue.value = '音频加载失败，请重试或等待下一首';
-    }
+    const p = room.snapshot?.playback;
+    if (
+      p &&
+      audio.error &&
+      audio.error.code !== MEDIA_ERR_ABORTED &&
+      (!audio.currentSrc || audio.currentSrc === audio.src)
+    )
+      failPlayback(p.roundId, true);
   };
   audio.addEventListener('loadedmetadata', metadata);
   audio.addEventListener('error', playbackError);
@@ -225,6 +253,9 @@ export function useAudio(useDeviceVolume = () => false) {
     }
   }, 1500);
   function retry() {
+    generation++;
+    starting = false;
+    clearTimeout(scheduled);
     failedRound = '';
     const p = room.snapshot?.playback;
     if (p) {

@@ -230,11 +230,12 @@ class FakeAudio extends EventTarget {
   paused = true;
   ended = false;
   src = '';
-  error = null;
+  error: Pick<MediaError, 'code'> | null = null;
   playCalls = 0;
   loadCalls = 0;
   load() {
     this.loadCalls++;
+    this.error = null;
   }
   pause() {
     this.paused = true;
@@ -306,6 +307,64 @@ function mountAudio(context: TestContext, useDeviceVolume?: () => boolean) {
   );
   return { audio, document, player, unmount };
 }
+
+test('audio reports a terminal error once for the current DJ and keeps listener errors local', async (context) => {
+  const f = await fixture(context);
+  if (!f) return;
+  const reports: string[] = [];
+  f.peers[0]!.on('playback:failed', ({ roundId }) => reports.push(roundId));
+  f.requests[0]!.ack(snapshot());
+  await waitFor(() => f.room.snapshot !== null);
+  const { audio, player } = mountAudio(context);
+  await nextTick();
+
+  audio.dispatchEvent(new Event('stalled'));
+  assert.equal(player.issue.value, '');
+  audio.error = { code: 1 };
+  audio.dispatchEvent(new Event('error'));
+  assert.equal(player.issue.value, '');
+  assert.equal(f.room.reportPlaybackFailure('old-round'), false);
+  audio.error = { code: 2 };
+  audio.dispatchEvent(new Event('error'));
+  audio.dispatchEvent(new Event('error'));
+  await waitFor(() => reports.length > 0);
+  assert.match(player.issue.value, /正在切歌/);
+
+  const other = snapshot(2, 'someone-else');
+  other.playback!.roundId = 'next-round';
+  f.peers[0]!.emit('room:snapshot', other);
+  await waitFor(() => f.room.snapshot?.revision === 2);
+  audio.error = { code: 3 };
+  audio.dispatchEvent(new Event('error'));
+  assert.match(player.issue.value, /请重试/);
+  f.room.sync();
+  await waitFor(() => f.requests.length === 2);
+  assert.deepEqual(reports, ['round']);
+});
+
+test('autoplay blocking stays local and an unsupported audio source is reported', async (context) => {
+  setActivePinia(createPinia());
+  const room = useRoom();
+  room.snapshot = snapshot();
+  const report = context.mock.method(room, 'reportPlaybackFailure', () => true);
+  let errorName = 'NotAllowedError';
+  context.mock.method(FakeAudio.prototype, 'play', async () => {
+    throw new DOMException('play rejected', errorName);
+  });
+  const { audio, player } = mountAudio(context);
+  await nextTick();
+  assert.equal(player.needsGesture.value, true);
+  assert.equal(report.mock.callCount(), 0);
+
+  errorName = 'NotSupportedError';
+  player.retry();
+  await nextTick();
+  assert.equal(report.mock.callCount(), 1);
+  audio.error = { code: 4 };
+  audio.dispatchEvent(new Event('error'));
+  assert.equal(player.needsGesture.value, false);
+  assert.equal(report.mock.callCount(), 1);
+});
 
 test('audio metadata and connection changes do not request sync; foreground restoration does', async (context) => {
   setActivePinia(createPinia());

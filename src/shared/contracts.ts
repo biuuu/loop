@@ -317,6 +317,10 @@ export interface ClientEvents {
     payload: { roundId: string },
     ack: (result: Ack) => void,
   ) => void;
+  'playback:failed': (
+    payload: { roundId: string },
+    ack?: (result: Ack) => void,
+  ) => void;
   'playback:seek': (
     payload: { roundId: string; positionMs: number },
     ack: (result: Ack) => void,

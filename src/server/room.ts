@@ -73,6 +73,7 @@ function playbackFailureNotice(failures: FailedAttempt[]) {
 const spawnSeatXs = stageSeatXs(STAGE_CAPACITY);
 const SPAWN_ATTEMPTS = 24;
 const SPAWN_SEPARATION = 32;
+const playbackRoundSchema = z.object({ roundId: z.string().uuid() }).strict();
 const seekSchema = z
   .object({ roundId: z.string().uuid(), positionMs: z.number().nonnegative() })
   .strict();
@@ -96,6 +97,7 @@ export class Room {
   private stageDirty = false;
   private publishedStage: string[] = [];
   private playback: Playback | null = null;
+  private failedMedia = new Map<string, Set<string>>();
   private resolving = false;
   private notice: string | null = null;
   private revision = 0;
@@ -585,8 +587,10 @@ export class Room {
       this.stage.push(id);
       this.positionStage();
       this.stageDirty = true;
-      if (!this.playback && !this.resolving) await this.advance();
-      else {
+      if (!this.playback && !this.resolving) {
+        this.failedMedia.clear();
+        await this.advance();
+      } else {
         this.checkpoint();
         this.publish();
       }
@@ -623,6 +627,7 @@ export class Room {
     const index = this.stage.indexOf(id);
     if (index < 0) return;
     this.stage.splice(index, 1);
+    this.failedMedia.delete(id);
     this.positionStage();
     this.stageDirty = true;
     const { returnPosition } = this.stageEntries.get(id)!;
@@ -660,6 +665,20 @@ export class Room {
       )
         throw new Error('只能跳过自己当前的歌曲');
       await this.advance(Date.now());
+    });
+  }
+  mediaFailed(id: string, input: unknown, connectionId?: string) {
+    return this.enqueue(async () => {
+      this.user(id, connectionId);
+      const { roundId } = playbackRoundSchema.parse(input);
+      const playback = this.playback;
+      if (playback?.roundId !== roundId) return;
+      if (playback.djId !== id) throw new Error('只能报告自己当前的歌曲');
+      const failed = this.failedMedia.get(id) ?? new Set<string>();
+      failed.add(playback.track.id);
+      this.failedMedia.set(id, failed);
+      this.rotateStage();
+      await this.advance(undefined, '当前歌曲无法播放，已跳过。');
     });
   }
   seek(id: string, input: unknown, connectionId?: string) {
@@ -705,15 +724,17 @@ export class Room {
       this.removeStage(id);
     else this.rotateStage();
   }
-  private async advance(endedAt?: number) {
+  private async advance(endedAt?: number, notice: string | null = null) {
     this.invalidateResolution();
     const generation = this.resolutionGeneration;
     clearTimeout(this.timer);
-    if (this.playback && endedAt !== undefined)
+    if (this.playback && endedAt !== undefined) {
+      this.failedMedia.clear();
       this.finishPlayback(this.playback, endedAt);
+    }
     this.playback = null;
     this.resolving = !this.waitingForReconnect;
-    this.notice = null;
+    this.notice = notice;
     // Preserve the next DJ and retire the old round before resolving the URL.
     this.checkpoint();
     if (this.waitingForReconnect) {
@@ -736,10 +757,16 @@ export class Room {
         if (visited.has(id)) break;
         visited.add(id);
         const slot = this.db.playlistSlot(id);
-        const track = this.db.firstTrack(id, slot);
-        if (!track) {
+        const tracks = this.db.tracks(id, slot);
+        if (!tracks.length) {
           this.removeStage(id);
           this.checkpoint();
+          continue;
+        }
+        const failed = this.failedMedia.get(id);
+        const track = tracks.find((item) => !failed?.has(item.id));
+        if (!track) {
+          this.rotateStage();
           continue;
         }
         let beforeRevision: number;
@@ -811,10 +838,10 @@ export class Room {
         return;
       }
       this.resolving = false;
-      this.notice =
-        this.stage.length && failures.length
-          ? playbackFailureNotice(failures)
-          : null;
+      if (this.stage.length && this.failedMedia.size)
+        this.notice = '暂时没有可播放的歌曲，请调整歌单后下台重新上台。';
+      else if (this.stage.length && failures.length)
+        this.notice = playbackFailureNotice(failures);
       this.publishPlayback();
     } finally {
       clearTimeout(pendingNotification);
