@@ -1,6 +1,6 @@
-import { type CatAppearance } from '../shared/appearance';
+import { CALICO_APPEARANCE, type CatAppearance } from '../shared/appearance';
 import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
-import { getPatternMask } from './cat-patterns';
+import { CAT_CALICO_MARKINGS, getPatternMask } from './cat-patterns';
 
 export const CAT_PACKED_ROWS: Record<CatAnimation, number> = {
   idle: 0,
@@ -67,6 +67,8 @@ const PALETTES = {
 >;
 const SOCK_MAIN = 0xfff7e9;
 const SOCK_SHADOW = 0xe8dbc8;
+const CALICO_ORANGE = { main: 0xd98947, shadow: 0xb96b36 };
+const CALICO_DARK = { main: 0x554b4e, shadow: 0x41383c };
 
 // Separate the connected silhouette from enclosed facial details using the
 // untouched frame. Eight-way connections keep diagonal one-pixel contours intact.
@@ -174,13 +176,23 @@ export function recolorCatPixels(
                       ? 0x030303
                       : palette.ink
                     : color;
-          if (coatPixel && mask?.[y * CAT_CELL_SIZE + x]) {
-            replacement =
-              appearance.pattern === 'socks'
-                ? color === ORIGINAL.shadow
-                  ? SOCK_SHADOW
-                  : SOCK_MAIN
-                : palette.stripe;
+          const mark = mask?.[y * CAT_CELL_SIZE + x];
+          if (coatPixel && mark) {
+            if (appearance.pattern === CALICO_APPEARANCE.pattern) {
+              const patch =
+                mark === CAT_CALICO_MARKINGS.orange
+                  ? CALICO_ORANGE
+                  : CALICO_DARK;
+              replacement =
+                color === ORIGINAL.shadow ? patch.shadow : patch.main;
+            } else {
+              replacement =
+                appearance.pattern === 'socks'
+                  ? color === ORIGINAL.shadow
+                    ? SOCK_SHADOW
+                    : SOCK_MAIN
+                  : palette.stripe;
+            }
           }
           result[offset] = replacement >>> 16;
           result[offset + 1] = (replacement >>> 8) & 255;

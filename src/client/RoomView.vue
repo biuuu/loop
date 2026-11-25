@@ -20,6 +20,7 @@ import NeteaseUserSearch from './NeteaseUserSearch.vue';
 import EmotePicker from './EmotePicker.vue';
 import PlaylistQueue from './PlaylistQueue.vue';
 import {
+  CALICO_APPEARANCE,
   CAT_COATS,
   CAT_PATTERNS,
   DEFAULT_CAT_APPEARANCE,
@@ -167,6 +168,22 @@ function focusIntroduction(event: PointerEvent) {
 type Modal = 'library' | 'members' | 'appearance';
 const modal = ref<Modal | null>(null);
 const appearanceDraft = ref<CatAppearance>({ ...DEFAULT_CAT_APPEARANCE });
+const coatChoice = computed({
+  get: () =>
+    appearanceDraft.value.pattern === CALICO_APPEARANCE.pattern
+      ? CALICO_APPEARANCE.pattern
+      : appearanceDraft.value.coat,
+  set: (choice: CatAppearance['coat'] | typeof CALICO_APPEARANCE.pattern) => {
+    const pattern = appearanceDraft.value.pattern;
+    appearanceDraft.value =
+      choice === CALICO_APPEARANCE.pattern
+        ? { ...CALICO_APPEARANCE }
+        : {
+            coat: choice,
+            pattern: pattern === CALICO_APPEARANCE.pattern ? 'solid' : pattern,
+          };
+  },
+});
 const appearanceSaving = ref(false);
 const dialog = ref<HTMLDialogElement | null>(null);
 let returnFocus: HTMLElement | null = null;
@@ -725,10 +742,10 @@ onBeforeUnmount(() => {
                   v-for="coat in CAT_COATS"
                   :key="coat.id"
                   class="cat-option"
-                  :class="{ selected: appearanceDraft.coat === coat.id }"
+                  :class="{ selected: coatChoice === coat.id }"
                 >
                   <input
-                    v-model="appearanceDraft.coat"
+                    v-model="coatChoice"
                     type="radio"
                     name="cat-coat"
                     :value="coat.id"
@@ -740,9 +757,25 @@ onBeforeUnmount(() => {
                   />
                   {{ coat.label }}
                 </label>
+                <label
+                  class="cat-option"
+                  :class="{ selected: coatChoice === 'calico' }"
+                >
+                  <input
+                    v-model="coatChoice"
+                    type="radio"
+                    name="cat-coat"
+                    value="calico"
+                  />
+                  <span class="coat-swatch calico-swatch" aria-hidden="true" />
+                  三花
+                </label>
               </div>
             </fieldset>
-            <fieldset :disabled="appearanceSaving">
+            <fieldset
+              v-if="coatChoice !== 'calico'"
+              :disabled="appearanceSaving"
+            >
               <legend>花纹</legend>
               <div class="cat-options">
                 <label
@@ -986,6 +1019,13 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.calico-swatch {
+  background: conic-gradient(
+    #f1eee5 0 120deg,
+    #d98947 120deg 235deg,
+    #554b4e 235deg
+  );
+}
 .playlist-selector {
   margin: 15px 0;
 }

@@ -12,12 +12,17 @@ import {
   type CatAnimation,
 } from '../src/client/cat-sprite';
 import {
+  CALICO_APPEARANCE,
   CAT_COATS,
   CAT_PATTERNS,
   DEFAULT_CAT_APPEARANCE,
 } from '../src/shared/appearance';
 
-import { sourcePixels, rgb } from './helpers/cat-source';
+import {
+  CAT_CALICO_MARKINGS,
+  getPatternMask,
+} from '../src/client/cat-patterns';
+import { frameIndex, sourcePixels, rgb } from './helpers/cat-source';
 
 const original = sourcePixels();
 const isCoat = (color: number) => color === 0xfb8c00 || color === 0xef6c00;
@@ -142,6 +147,46 @@ test('every pattern affects real coat pixels in every used animation frame and p
           );
         }
       }
+    }
+  }
+});
+
+test('calico shades the ivory base, orange and dark spots in each pose without changing the source details', () => {
+  const ivory = recolorCatPixels(original, { coat: 'white', pattern: 'solid' });
+  const calico = recolorCatPixels(original, CALICO_APPEARANCE);
+  for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
+    for (let frame = 0; frame < CAT_ANIMATIONS[animation].frames; frame++) {
+      const mask = getPatternMask('calico', animation, frame);
+      const painted = new Set<number>();
+      for (let y = 0; y < CAT_CELL_SIZE; y++) {
+        for (let x = 0; x < CAT_CELL_SIZE; x++) {
+          const index = frameIndex(animation, frame, x, y);
+          const color = rgb(original, index);
+          const mark = mask[y * CAT_CELL_SIZE + x];
+          assert.equal(calico[index + 3], original[index + 3]);
+          if (!original[index + 3] || !isCoat(color) || !mark) {
+            assert.equal(rgb(calico, index), rgb(ivory, index));
+            if (original[index + 3] && isCoat(color)) painted.add(0);
+            continue;
+          }
+          const shadow = color === 0xef6c00;
+          const expected =
+            mark === CAT_CALICO_MARKINGS.orange
+              ? shadow
+                ? 0xb96b36
+                : 0xd98947
+              : shadow
+                ? 0x41383c
+                : 0x554b4e;
+          assert.equal(rgb(calico, index), expected);
+          painted.add(mark);
+        }
+      }
+      assert.equal(
+        painted.size,
+        3,
+        `${animation}/${frame} has all three colors`,
+      );
     }
   }
 });

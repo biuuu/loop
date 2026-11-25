@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Assets, type Texture } from 'pixi.js';
 import {
+  CALICO_APPEARANCE,
   CAT_COATS,
   CAT_PATTERNS,
   type CatAppearance,
@@ -12,9 +13,10 @@ import { CAT_CELL_SIZE, CAT_IDLE_UP_COLUMN } from './cat-sprite';
 const props = defineProps<{ appearance: CatAppearance; portrait?: boolean }>();
 const canvas = ref<HTMLCanvasElement>();
 const unavailable = ref(false);
-const label = computed(
-  () =>
-    `${CAT_COATS.find((coat) => coat.id === props.appearance.coat)?.label}，${CAT_PATTERNS.find((pattern) => pattern.id === props.appearance.pattern)?.label}`,
+const label = computed(() =>
+  props.appearance.pattern === CALICO_APPEARANCE.pattern
+    ? '三花猫'
+    : `${CAT_COATS.find((coat) => coat.id === props.appearance.coat)?.label}，${CAT_PATTERNS.find((pattern) => pattern.id === props.appearance.pattern)?.label}`,
 );
 let disposed = false;
 let revision = 0;

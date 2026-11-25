@@ -28,8 +28,10 @@ import type {
 } from '../src/shared/contracts.js';
 import { NICKNAME_CHANGE_COOLDOWN_MS, SCENE } from '../src/shared/contracts.js';
 import {
+  CALICO_APPEARANCE,
   DEFAULT_CAT_APPEARANCE,
   catAppearanceSchema,
+  type CatAppearance,
 } from '../src/shared/appearance.js';
 
 const track = (id: string): Track => ({
@@ -58,7 +60,7 @@ test('guest appearance has schema defaults, checks enums and persists edits thro
       .run('legacy', 'Legacy', hashToken('legacy-token'));
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 19);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 20);
     assert.deepEqual(
       db.guest('legacy-token')!.appearance,
       DEFAULT_CAT_APPEARANCE,
@@ -82,7 +84,7 @@ test('guest appearance has schema defaults, checks enums and persists edits thro
         /NOT NULL/,
       );
     }
-    const appearance = { coat: 'gray', pattern: 'socks' } as const;
+    const appearance = CALICO_APPEARANCE;
     db.updateAppearance('legacy', appearance);
     assert.deepEqual(
       db.rename('legacy', 'Renamed').guest.appearance,
@@ -130,7 +132,7 @@ test('all black and white coat variants preserve identities and playlists across
       .all();
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 19);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 20);
     assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
     assert.deepEqual(
       db.sql.prepare('SELECT * FROM guests ORDER BY id').all(),
@@ -197,7 +199,7 @@ test('appearance API authenticates, rejects unknown fields and only edits the co
     music,
   });
   try {
-    const appearance = { coat: 'black', pattern: 'tabby' };
+    const appearance = CALICO_APPEARANCE;
     for (const cookie of [undefined, 'loop_guest=unknown']) {
       assert.equal(
         (
@@ -242,6 +244,7 @@ test('appearance API authenticates, rejects unknown fields and only edits the co
       {},
       { coat: 'blue', pattern: 'solid' },
       { coat: 'gray', pattern: 'spots' },
+      { coat: 'pure_white', pattern: 'calico' },
       { coat: 'gray' },
       { ...appearance, id: b.guest.id },
       { ...appearance, nickname: 'B' },
@@ -350,7 +353,7 @@ test('tokens are hashed and identities and playlists survive reopening', () => {
     );
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 19);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 20);
     assert.deepEqual(db.guest(a.token), a.guest);
     assert.equal(db.firstTrack(a.guest.id)!.id, '1');
     assert.equal(db.playlist(a.guest.id).revision, 4);
@@ -425,7 +428,7 @@ test('startup rejects unversioned data and unsupported schema versions without m
       [0, /Unversioned database is not empty/i],
       [1, /Unsupported database version 1; first supported version is 11/i],
       [10, /Unsupported database version 10; first supported version is 11/i],
-      [20, /Database version 20 is newer than supported version 19/i],
+      [21, /Database version 21 is newer than supported version 20/i],
     ] as const) {
       const path = join(root, `version-${version}.sqlite`);
       const fixture = new Database(path);
@@ -1099,9 +1102,8 @@ test('socket authentication, replacement, capacity and shared room snapshots', a
     assert.equal(joinUpdates.length, 0);
     assert.equal(db.playlist(room.snapshot().users[0]!.id).revision, 1);
     assert.equal(room.snapshot().users[0]!.seat, 0);
-    const checkAppearanceBroadcast = async (coat: 'cream' | 'white') => {
+    const checkAppearanceBroadcast = async (appearance: CatAppearance) => {
       const before = room.snapshot();
-      const appearance = { coat, pattern: 'socks' } as const;
       const broadcast = new Promise<RoomSnapshot>((resolve, reject) => {
         const timer = setTimeout(
           () => reject(new Error('Appearance snapshot was not broadcast')),
@@ -1125,7 +1127,7 @@ test('socket authentication, replacement, capacity and shared room snapshots', a
       assert.deepEqual(state.stage, before.stage);
       assert.deepEqual(state.playback, before.playback);
     };
-    await checkAppearanceBroadcast('cream');
+    await checkAppearanceBroadcast({ coat: 'cream', pattern: 'socks' });
     assert.equal(
       (await second.timeout(1000).emitWithAck('stage:leave', { x: 500, y: -1 }))
         .ok,
@@ -1166,7 +1168,7 @@ test('socket authentication, replacement, capacity and shared room snapshots', a
     );
     // Finish the move event before listening for the appearance revision.
     await second.timeout(1000).emitWithAck('room:sync');
-    await checkAppearanceBroadcast('white');
+    await checkAppearanceBroadcast(CALICO_APPEARANCE);
     for (let index = 0; index < 29; index++) {
       const guest = db.createGuest(`Cat${index}`).guest;
       room.connect(guest, { id: guest.id, replaced() {} });

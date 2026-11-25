@@ -17,6 +17,7 @@ import {
   type Track,
 } from '../shared/contracts.js';
 import {
+  CALICO_APPEARANCE,
   CAT_COATS,
   CAT_PATTERNS,
   catAppearanceSchema,
@@ -30,6 +31,11 @@ import {
 } from './room-checkpoint.js';
 
 const BASELINE_VERSION = 11;
+const CALICO_SCHEMA_VERSION = 20;
+const MIXABLE_CAT_APPEARANCES = CAT_COATS.flatMap(({ id: coat }) =>
+  CAT_PATTERNS.map(({ id: pattern }) => ({ coat, pattern })),
+);
+const CAT_APPEARANCES = [...MIXABLE_CAT_APPEARANCES, CALICO_APPEARANCE];
 const ROOM_COLUMNS = `r.id,n.number,r.owner_user_id AS ownerId,g.nickname AS ownerNickname,
   r.name,r.environment_id AS environmentId,r.join_policy AS joinPolicy,r.stage_capacity AS stageCapacity,r.revision,
   r.created_at AS createdAt,r.updated_at AS updatedAt`;
@@ -63,6 +69,7 @@ export class NicknameCooldownError extends Error {
 }
 export class Store {
   readonly sql: Database.Database;
+  private readonly guestAppearances: readonly CatAppearance[];
   constructor(
     path = process.env.DATABASE_PATH || 'data/loop.sqlite',
     migrationsPath = resolve('migrations'),
@@ -85,6 +92,10 @@ export class Store {
           throw new Error(`Missing migration ${expected}`);
       }
       const latest = migrations.at(-1)!.version;
+      this.guestAppearances =
+        latest >= CALICO_SCHEMA_VERSION
+          ? CAT_APPEARANCES
+          : MIXABLE_CAT_APPEARANCES;
       this.sql
         .transaction(() => {
           const version = Number(
@@ -127,8 +138,7 @@ export class Store {
       id: randomUUID(),
       nickname,
       appearance: {
-        coat: CAT_COATS[randomInt(CAT_COATS.length)]!.id,
-        pattern: CAT_PATTERNS[randomInt(CAT_PATTERNS.length)]!.id,
+        ...this.guestAppearances[randomInt(this.guestAppearances.length)]!,
       },
     };
     this.sql.transaction(() => {

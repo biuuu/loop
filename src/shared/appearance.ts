@@ -16,6 +16,8 @@ export const CAT_PATTERNS = [
   { id: 'tabby', label: '虎斑' },
 ] as const;
 
+export const CALICO_APPEARANCE = { coat: 'white', pattern: 'calico' } as const;
+
 export const catAppearanceSchema = z
   .object({
     coat: z.enum([
@@ -27,9 +29,13 @@ export const catAppearanceSchema = z
       'pure_black',
       'pure_white',
     ]),
-    pattern: z.enum(['solid', 'socks', 'tabby']),
+    pattern: z.enum(['solid', 'socks', 'tabby', CALICO_APPEARANCE.pattern]),
   })
-  .strict();
+  .strict()
+  .refine(
+    ({ coat, pattern }) =>
+      pattern !== CALICO_APPEARANCE.pattern || coat === CALICO_APPEARANCE.coat,
+  );
 
 export type CatAppearance = z.infer<typeof catAppearanceSchema>;
 export const DEFAULT_CAT_APPEARANCE: CatAppearance = {
