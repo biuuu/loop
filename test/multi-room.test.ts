@@ -690,7 +690,7 @@ test('directory pages keep recent playback order after rooms empty and ignore fa
     const makeRoom = (name: string) => {
       context.mock.timers.tick(1);
       const { guest } = db.createGuest(name);
-      return { guest, id: db.createRoom(guest.id, name, 'cozy').id };
+      return { guest, name, id: db.createRoom(guest.id, name, 'cozy').id };
     };
     const active = makeRoom('Active');
     const newer = makeRoom('Newer');
@@ -777,6 +777,28 @@ test('directory pages keep recent playback order after rooms empty and ignore fa
     assert.equal(invalidSession.room.snapshot().playback, null);
     assert.equal(lastPlayed(invalid.id), null);
     assert.deepEqual(await list(), first);
+
+    for (const { id, name } of [newer, older]) {
+      db.updateRoom(id, 1, {
+        name,
+        environmentId: 'cozy',
+        joinPolicy: 'closed',
+      });
+    }
+    const updatedFirst = await list();
+    assert.equal(updatedFirst.total, 12);
+    assert.deepEqual(
+      updatedFirst.rooms.map(({ id }) => id),
+      [active.id, invalid.id, ...emptyIds.slice(0, 7)],
+    );
+    assert.deepEqual(
+      (await list('?offset=9')).rooms.map(({ id }) => id),
+      [emptyIds[7], newer.id, older.id],
+    );
+    assert.deepEqual(
+      (await list('?filter=empty&offset=7')).rooms.map(({ id }) => id),
+      [emptyIds[7], newer.id],
+    );
   } finally {
     await app.close();
   }

@@ -154,6 +154,8 @@ export class RoomRegistry {
         };
       })
       .sort((a, b) => {
+        if (a.joinPolicy !== b.joinPolicy)
+          return a.joinPolicy === 'open' ? -1 : 1;
         if (a.lastPlayedAt !== b.lastPlayedAt)
           return (b.lastPlayedAt ?? -Infinity) - (a.lastPlayedAt ?? -Infinity);
         return (
