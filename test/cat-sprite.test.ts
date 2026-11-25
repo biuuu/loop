@@ -220,7 +220,7 @@ test('movement arrival, spawn and stage placement begin with a full raised-tail 
   }
 });
 
-test('sleep plays the quiet intro once then loops only the growing Zs', () => {
+test('sleep loops from the full Zs directly back to the quiet frames', () => {
   const user = { ...movement, durationMs: 0, seat: null };
   const activity = catActivity(undefined, user, 5000);
   const start = activity.inactiveSince + catSleepDelay(user.id);
@@ -228,13 +228,12 @@ test('sleep plays the quiet intro once then loops only the growing Zs', () => {
     catFrame(user, start - 1, false, false, activity.inactiveSince).animation,
     'idle',
   );
-  const columns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 6, 7, 8, 9, 10, 11, 6];
-  for (const [frame, column] of columns.entries()) {
+  for (let frame = 0; frame < 25; frame++) {
     const now = start + frame * CAT_FRAME_MS;
     const result = catFrame(user, now, false, true, activity.inactiveSince);
     assert.equal(result.animation, 'sleep');
     assert.equal(result.row, 0);
-    assert.equal(result.column, column);
+    assert.equal(result.column, frame % 12);
     assert.equal(result.flipX, true);
     assert.equal(
       catFrame(user, now, true, true, activity.inactiveSince).column,

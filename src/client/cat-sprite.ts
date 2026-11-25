@@ -8,10 +8,8 @@ export const CAT_SCALE = 3;
 export const CAT_IDLE_UP_COLUMN = 0;
 export const CAT_SLEEP_AFTER_MS = 120_000;
 const CAT_SLEEP_SPREAD_MS = 30_000;
-// Sleep opens with six quiet frames. Columns 6–11 build Z, ZZ, ZZZ;
-// columns 12–15 remove the last two letters again.
-const SLEEP_LOOP_FIRST_COLUMN = 6;
-const SLEEP_LOOP_FRAMES = 6;
+// Loop the quiet frames and the growing Zs, skipping the source fade-out.
+const SLEEP_LOOP_FRAMES = 12;
 // Rows and timing come from the supplied Cat.aseprite animation tags.
 export const CAT_ANIMATIONS = {
   idle: { row: 6, frames: 12, footY: 48 },
@@ -132,12 +130,9 @@ export function catFrame(
       : Math.floor((now - (walkStartedAt ?? user.movingSince)) / CAT_FRAME_MS) %
         sequence.frames;
   } else if (animation === 'sleep') {
-    const frame = reducedMotion ? 0 : Math.floor(sleepElapsed / CAT_FRAME_MS);
-    column =
-      frame < SLEEP_LOOP_FIRST_COLUMN
-        ? frame
-        : SLEEP_LOOP_FIRST_COLUMN +
-          ((frame - SLEEP_LOOP_FIRST_COLUMN) % SLEEP_LOOP_FRAMES);
+    column = reducedMotion
+      ? 0
+      : Math.floor(sleepElapsed / CAT_FRAME_MS) % SLEEP_LOOP_FRAMES;
   } else {
     const arrivedAt = user.movingSince + user.durationMs;
     column = idleColumn(user.id, now - arrivedAt, reducedMotion);
