@@ -60,7 +60,7 @@ export function sceneCamera(
   };
 }
 
-/** Audience movement pans only after the local cat leaves the inner screen box. */
+/** Follow from the inner box while walking; a stopped cat only needs to stay visible. */
 export function audienceCamera(
   width: number,
   height: number,
@@ -68,9 +68,12 @@ export function audienceCamera(
   cat: Point,
   current: Camera,
   safe: Bounds,
+  stoppedCatBounds?: Bounds,
 ): Camera {
   const base = sceneCamera(width, height, zoom);
   const previous = current.scale === base.scale ? current : base;
+  if (stoppedCatBounds)
+    return keepCatInView(previous, width, height, cat, stoppedCatBounds, safe);
   const axis = (
     offset: number,
     viewport: number,
@@ -114,6 +117,17 @@ export function stageCamera(
   composition: Point = { x: SCENE.width / 2, y: SCENE.height / 2 },
 ): Camera {
   const base = sceneCamera(width, height, zoom, composition);
+  return keepCatInView(base, width, height, cat, catBounds, safe);
+}
+
+function keepCatInView(
+  base: Camera,
+  width: number,
+  height: number,
+  cat: Point,
+  catBounds: Bounds,
+  safe: Bounds,
+): Camera {
   const axis = (
     offset: number,
     viewport: number,

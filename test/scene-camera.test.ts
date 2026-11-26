@@ -85,6 +85,74 @@ test('audience dead zone adapts to portrait view and preserves picking after pan
   assert.deepEqual(floorTarget(restored), point);
 });
 
+test('an audience camera stops following after the cat stops inside the safe view', () => {
+  const width = 1000;
+  const height = 690;
+  const safe = { left: 18, top: 95, right: 982, bottom: 570 };
+  const cat = { x: 850.8, y: 440 };
+  const start = sceneCamera(width, height, 1);
+  const following = audienceCamera(width, height, 1, cat, start, safe);
+  const atStop = easeCamera(start, following, 16);
+  assert.ok(following.x < atStop.x && atStop.x < start.x);
+  catVisible(atStop, cat, safe);
+
+  let current = atStop;
+  const positionAtStop = worldToScreen(cat, atStop);
+  for (let frame = 0; frame < 90; frame++) {
+    const target = audienceCamera(
+      width,
+      height,
+      1,
+      cat,
+      current,
+      safe,
+      catBounds,
+    );
+    current = easeCamera(current, target, 16);
+    assert.deepEqual(worldToScreen(cat, current), positionAtStop);
+  }
+  assert.deepEqual(current, atStop);
+  const resumed = audienceCamera(
+    width,
+    height,
+    1,
+    { ...cat, x: cat.x + 25 },
+    current,
+    safe,
+  );
+  assert.ok(resumed.x < current.x);
+});
+
+test('a stopped audience cat cropped by a narrow view pans only until its bounds are visible', () => {
+  const width = 390;
+  const height = 844;
+  const safe = { left: 14, top: 90, right: 376, bottom: 710 };
+  const cat = { x: 958.4, y: 440 };
+  const start = sceneCamera(width, height, 1);
+  assert.ok(worldToScreen(cat, start).x > safe.right);
+  const corrected = audienceCamera(
+    width,
+    height,
+    1,
+    cat,
+    start,
+    safe,
+    catBounds,
+  );
+  catVisible(corrected, cat, safe);
+  near(
+    worldToScreen({ x: cat.x + catBounds.right, y: cat.y }, corrected).x,
+    safe.right,
+  );
+  near(
+    audienceCamera(width, height, 1, cat, corrected, safe, catBounds).x,
+    corrected.x,
+  );
+  assert.ok(
+    corrected.x <= 0 && corrected.x + SCENE.width * corrected.scale >= width,
+  );
+});
+
 test('the stopped cat keeps a stable texel pattern while a fractional camera settles', () => {
   const width = 1000;
   const height = 690;

@@ -544,6 +544,7 @@ onMounted(async () => {
       if (!target) return;
       if (!room.onStage) room.move(target.x, target.y);
     });
+    let localCatWalking = false;
     updateCamera = (deltaMs = 0) => {
       const localCat = room.guest && cats.get(room.guest.id);
       const { width, height } = viewport.value;
@@ -579,6 +580,9 @@ onMounted(async () => {
                 localCat.root.position,
                 current,
                 safeArea,
+                sceneReady.value && !localCatWalking
+                  ? catVisualBounds
+                  : undefined,
               )
             : base;
       const next = easeCamera(
@@ -687,8 +691,9 @@ onMounted(async () => {
           ? playback.roundId
           : undefined;
       const likers = room.trackLikers;
+      const localId = room.guest?.id;
       const users = (room.snapshot?.users || []).map((user) =>
-        user.id === room.guest?.id ? room.renderParticipant(user, now) : user,
+        user.id === localId ? room.renderParticipant(user, now) : user,
       );
       for (const [id, cat] of cats)
         if (!users.some((user) => user.id === id)) {
@@ -700,6 +705,7 @@ onMounted(async () => {
           voteBubbles.delete(id);
         }
       const reducedMotion = motionPreference.matches;
+      localCatWalking = false;
       for (const user of users) {
         let cat = cats.get(user.id);
         if (!cat) {
@@ -741,6 +747,9 @@ onMounted(async () => {
           cat.facingRight,
           remote?.walkStartedAt,
         );
+        if (user.id === localId)
+          localCatWalking =
+            frame.animation !== 'idle' && frame.animation !== 'sleep';
         cat.body.texture = appearanceTexture(
           user.appearance,
           frame.animation,
