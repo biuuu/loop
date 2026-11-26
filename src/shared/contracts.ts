@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { CatAppearance } from './appearance';
+import type { PointsAwarded } from './points';
 
 export type EmoteId = string;
 export interface EmoteItem {
@@ -336,6 +337,7 @@ export interface ServerEvents {
   'room:removed': (event: { roomId: string; reason: string }) => void;
   'playlist:updated': (state: PlaylistState) => void;
   'playlist:reordered': (state: PlaylistOrder) => void;
+  'points:awarded': (event: PointsAwarded) => void;
   'room:snapshot': (snapshot: RoomSnapshot) => void;
   'room:motion': (state: RoomMotion) => void;
   'playback:updated': (state: PlaybackState) => void;

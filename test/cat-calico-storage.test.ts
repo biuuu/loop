@@ -154,15 +154,15 @@ for (const [
       db = undefined;
 
       db = new Store(dbPath);
-      assert.equal(db.sql.pragma('user_version', { simple: true }), 25);
+      assert.equal(db.sql.pragma('user_version', { simple: true }), 26);
       assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
       assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
       assert.deepEqual(readRows(db), expected);
       assert.deepEqual(db.guest(owner.token)?.appearance, migratedAppearance);
       assert.deepEqual(db.guest(other.token), other.guest);
       for (const [index, appearance] of [
-        { coat: 'gray', pattern: 'tabby_white' },
-        SEAL_POINT_APPEARANCE,
+        { coat: 'pure_white', pattern: 'tabby' },
+        { coat: 'pure_white', pattern: 'socks' },
       ].entries()) {
         pickFromEnd = index + 1;
         assert.deepEqual(
@@ -183,6 +183,7 @@ for (const [
       const presetGuests: { token: string; guest: Guest }[] = [];
       for (const { appearance, label } of CAT_APPEARANCE_PRESETS) {
         const { guest, token } = db.createGuest(label);
+        db.unlockAppearance(guest.id, appearance.pattern);
         assert.deepEqual(db.updateAppearance(guest.id, appearance), {
           ...guest,
           appearance,

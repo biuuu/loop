@@ -1,5 +1,6 @@
 import type { Server, Socket } from 'socket.io';
 import type { CatAppearance } from '../shared/appearance.js';
+import type { PointsAwarded } from '../shared/points.js';
 import {
   ROOM_CAPACITY,
   type Guest,
@@ -91,6 +92,20 @@ export class RoomRegistry {
       const current = this.active.get(userId);
       if (current?.roomId === id && room!.isCurrent(userId, current.socket.id))
         current.socket.emit('playlist:reordered', state);
+    };
+    room.onPointsAwarded = (userId, awarded) => {
+      const current = this.active.get(userId);
+      if (current?.roomId !== id || !room!.isCurrent(userId, current.socket.id))
+        return;
+      try {
+        const payload: PointsAwarded = {
+          points: this.db.points(userId),
+          awarded,
+        };
+        current.socket.emit('points:awarded', payload);
+      } catch (error) {
+        console.error('Failed to notify account of points award', error);
+      }
     };
     room.onEmpty = () => {
       if (
@@ -188,8 +203,8 @@ export class RoomRegistry {
     const next = this.runtime(id),
       previous = this.active.get(guest.id);
     if (previous && previous.roomId !== id) {
-      this.active.delete(guest.id);
       void this.live.get(previous.roomId)?.removeMember(guest.id);
+      this.active.delete(guest.id);
       previous.socket.emit('room:replaced');
       previous.socket.disconnect(true);
     } else if (!previous) {
@@ -230,8 +245,8 @@ export class RoomRegistry {
     if (!this.isCurrent(id, userId, socketId))
       throw new HttpError(409, '连接已被替换');
     const active = this.active.get(userId)!;
-    this.active.delete(userId);
     void this.live.get(id)?.removeMember(userId, socketId);
+    this.active.delete(userId);
     active.socket.leave(channel(id));
     // Allow the command acknowledgement to reach the client before closing the transport.
     setImmediate(() => active.socket.disconnect(true));

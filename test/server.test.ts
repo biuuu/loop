@@ -34,6 +34,15 @@ import {
   catAppearanceSchema,
   type CatAppearance,
 } from '../src/shared/appearance.js';
+import { INITIAL_POINTS } from '../src/shared/points.js';
+
+function seedUnlockedAppearances(db: Store, guestId: string) {
+  const unlock = db.sql.prepare(
+    'INSERT INTO coat_unlocks (guest_id,pattern) VALUES (?,?)',
+  );
+  for (const { appearance } of CAT_APPEARANCE_PRESETS)
+    unlock.run(guestId, appearance.pattern);
+}
 
 const track = (id: string): Track => ({
   id,
@@ -59,9 +68,14 @@ test('guest appearance has schema defaults, checks enums and persists edits thro
     db.sql
       .prepare('INSERT INTO guests (id,nickname,token_hash) VALUES (?,?,?)')
       .run('legacy', 'Legacy', hashToken('legacy-token'));
+    db.sql
+      .prepare(
+        'INSERT INTO points_ledger (guest_id,source,reference,delta) VALUES (?,?,?,?)',
+      )
+      .run('legacy', 'initial', 'account', INITIAL_POINTS);
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 25);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 26);
     assert.deepEqual(
       db.guest('legacy-token')!.appearance,
       DEFAULT_CAT_APPEARANCE,
@@ -86,6 +100,7 @@ test('guest appearance has schema defaults, checks enums and persists edits thro
       );
     }
     const appearance = CALICO_APPEARANCE;
+    db.unlockAppearance('legacy', appearance.pattern);
     db.updateAppearance('legacy', appearance);
     assert.deepEqual(
       db.rename('legacy', 'Renamed').guest.appearance,
@@ -133,7 +148,7 @@ test('all black and white coat variants preserve identities and playlists across
       .all();
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 25);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 26);
     assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
     assert.deepEqual(
       db.sql.prepare('SELECT * FROM guests ORDER BY id').all(),
@@ -194,7 +209,7 @@ test('all black and white coat variants preserve identities and playlists across
 test('appearance API authenticates, rejects unknown fields and only edits the cookie identity', async (context) => {
   let now = Date.now();
   context.mock.method(Date, 'now', () => now);
-  const { app } = await createServer({
+  const { app, db } = await createServer({
     singleRoom: true,
     dbPath: ':memory:',
     music,
@@ -284,6 +299,7 @@ test('appearance API authenticates, rejects unknown fields and only edits the co
       (await app.inject({ url: '/api/me', headers: a.headers })).json().guest,
       a.guest,
     );
+    seedUnlockedAppearances(db, a.guest.id);
     const updated = await app.inject({
       method: 'PATCH',
       url: '/api/me/appearance',
@@ -362,7 +378,7 @@ test('tokens are hashed and identities and playlists survive reopening', () => {
     );
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 25);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 26);
     assert.deepEqual(db.guest(a.token), a.guest);
     assert.equal(db.firstTrack(a.guest.id)!.id, '1');
     assert.equal(db.playlist(a.guest.id).revision, 4);
@@ -437,7 +453,7 @@ test('startup rejects unversioned data and unsupported schema versions without m
       [0, /Unversioned database is not empty/i],
       [1, /Unsupported database version 1; first supported version is 11/i],
       [10, /Unsupported database version 10; first supported version is 11/i],
-      [26, /Database version 26 is newer than supported version 25/i],
+      [27, /Database version 27 is newer than supported version 26/i],
     ] as const) {
       const path = join(root, `version-${version}.sqlite`);
       const fixture = new Database(path);
@@ -1177,6 +1193,7 @@ test('socket authentication, replacement, capacity and shared room snapshots', a
     );
     // Finish the move event before listening for the appearance revision.
     await second.timeout(1000).emitWithAck('room:sync');
+    seedUnlockedAppearances(db, room.snapshot().users[0]!.id);
     for (const { appearance } of CAT_APPEARANCE_PRESETS)
       await checkAppearanceBroadcast(appearance);
     for (let index = 0; index < 29; index++) {

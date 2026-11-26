@@ -26,7 +26,13 @@ import {
   DEFAULT_CAT_APPEARANCE,
   catAppearancePreset,
   type CatAppearance,
+  type CatPresetPattern,
 } from '../shared/appearance';
+import {
+  COAT_UNLOCK_COST,
+  DAILY_DJ_REWARD,
+  DAILY_DJ_THRESHOLD_MS,
+} from '../shared/points';
 import {
   ArrowDown,
   ArrowDownRight,
@@ -34,8 +40,10 @@ import {
   ArrowRight,
   ArrowUp,
   Check,
+  Coins,
   Disc3,
   Info,
+  LockKeyhole,
   Music2,
   Pin,
   Plus,
@@ -172,13 +180,72 @@ const appearanceDraft = ref<CatAppearance>({ ...DEFAULT_CAT_APPEARANCE });
 const selectedPreset = computed(() =>
   catAppearancePreset(appearanceDraft.value.pattern),
 );
+function hasPreset(pattern: CatPresetPattern) {
+  return (
+    room.points?.unlockedPresets.includes(pattern) ||
+    (!room.points && room.guest?.appearance?.pattern === pattern)
+  );
+}
+const lockedPreset = computed(() => {
+  const pattern = selectedPreset.value?.appearance.pattern;
+  return pattern && !hasPreset(pattern) ? pattern : undefined;
+});
+const missingPoints = computed(() =>
+  room.points ? Math.max(0, COAT_UNLOCK_COST - room.points.balance) : 0,
+);
+const appearanceAction = ref<'unlock' | 'save' | null>(null);
+const appearanceActionLabel = computed(() => {
+  if (appearanceAction.value === 'unlock') return '正在解锁…';
+  if (appearanceAction.value === 'save') return '正在保存…';
+  return lockedPreset.value ? `解锁 · ${COAT_UNLOCK_COST} 积分` : '保存外观';
+});
+const dailyPlayTime = computed(() =>
+  Math.min(room.points?.daily.playedMs ?? 0, DAILY_DJ_THRESHOLD_MS),
+);
+const pointsLoading = ref(false);
+const pointsLoadFailed = ref(false);
+let pointsRequest: object | null = null;
+let appearanceOpenVersion = 0;
+
+async function refreshPoints() {
+  if (document.hidden || modal.value !== 'appearance' || pointsRequest) return;
+  const pending = {};
+  pointsRequest = pending;
+  pointsLoading.value = true;
+  try {
+    const loaded = await room.loadPoints();
+    if (loaded && pointsRequest === pending) pointsLoadFailed.value = false;
+  } catch {
+    if (pointsRequest === pending) pointsLoadFailed.value = true;
+  } finally {
+    if (pointsRequest === pending) {
+      pointsRequest = null;
+      pointsLoading.value = false;
+    }
+  }
+}
+watch(
+  () => modal.value === 'appearance',
+  (open, _, onCleanup) => {
+    if (!open) return;
+    pointsLoadFailed.value = false;
+    void refreshPoints();
+    const interval = window.setInterval(refreshPoints, 30_000);
+    document.addEventListener('visibilitychange', refreshPoints);
+    onCleanup(() => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshPoints);
+      pointsRequest = null;
+      pointsLoading.value = false;
+    });
+  },
+);
 function selectCatCoat(coat: CatAppearance['coat']) {
   appearanceDraft.value = {
     coat,
     pattern: selectedPreset.value ? 'solid' : appearanceDraft.value.pattern,
   };
 }
-const appearanceSaving = ref(false);
 const dialog = ref<HTMLDialogElement | null>(null);
 let returnFocus: HTMLElement | null = null;
 const modalTitle = computed(
@@ -213,6 +280,7 @@ function openLibrary(value: 'playlist' | 'search') {
   void openModal('library');
 }
 function openAppearance() {
+  appearanceOpenVersion++;
   appearanceDraft.value = {
     ...(room.guest?.appearance ??
       room.me?.appearance ??
@@ -221,18 +289,48 @@ function openAppearance() {
   room.error = '';
   void openModal('appearance');
 }
-async function saveAppearance() {
-  if (appearanceSaving.value) return;
-  appearanceSaving.value = true;
+watch(
+  [() => room.guest?.id, () => room.roomGeneration],
+  () => {
+    if (modal.value === 'appearance') closeModal();
+    appearanceAction.value = null;
+  },
+  { flush: 'sync' },
+);
+async function applyAppearance() {
+  if (appearanceAction.value) return;
+  const pattern = lockedPreset.value;
+  if (pattern && (!room.points || missingPoints.value)) return;
+  const version = appearanceOpenVersion;
+  const generation = room.roomGeneration;
+  const guestId = room.guest?.id;
+  const currentRoom = () =>
+    generation === room.roomGeneration && guestId === room.guest?.id;
+  const currentPanel = () =>
+    currentRoom() &&
+    version === appearanceOpenVersion &&
+    modal.value === 'appearance';
+  appearanceAction.value = pattern ? 'unlock' : 'save';
   room.error = '';
   try {
-    await room.setAppearance({ ...appearanceDraft.value });
-    if (modal.value === 'appearance') closeModal();
+    if (pattern) await room.unlockAppearance(pattern);
+    else if (
+      (await room.setAppearance({ ...appearanceDraft.value })) &&
+      currentPanel()
+    )
+      closeModal();
   } catch (error) {
-    room.error =
-      error instanceof Error ? error.message : '保存外观失败，请重试';
+    if (currentRoom() && version === appearanceOpenVersion) {
+      room.error =
+        error instanceof Error
+          ? error.message
+          : pattern
+            ? '解锁花色失败，请重试'
+            : '保存外观失败，请重试';
+      if (pattern) void refreshPoints();
+    }
   } finally {
-    appearanceSaving.value = false;
+    if (currentRoom()) appearanceAction.value = null;
   }
 }
 async function requestJoin() {
@@ -550,6 +648,9 @@ onBeforeUnmount(() => {
         <p v-if="systemNotice" class="system-notice">
           {{ systemNotice }}
         </p>
+        <p v-if="room.pointsReward && !modal" class="system-notice">
+          {{ room.pointsReward }}
+        </p>
       </div>
       <div class="room-dock">
         <section
@@ -720,16 +821,64 @@ onBeforeUnmount(() => {
           </button>
         </header>
         <div class="dialog-content">
+          <p
+            v-if="room.pointsReward && modal !== 'appearance'"
+            class="system-notice"
+            role="status"
+          >
+            {{ room.pointsReward }}
+          </p>
           <form
             v-if="modal === 'appearance'"
             class="cat-wardrobe"
-            @submit.prevent="saveAppearance"
+            @submit.prevent="applyAppearance"
           >
             <div class="cat-preview-card">
               <CatPreview :appearance="appearanceDraft" />
-              <p>挑一套喜欢的花色，和大家一起听歌。</p>
             </div>
-            <fieldset :disabled="appearanceSaving">
+            <div class="wardrobe-points" aria-label="积分">
+              <template v-if="room.points">
+                <strong
+                  ><Coins aria-hidden="true" />{{
+                    room.points.balance
+                  }}
+                  积分</strong
+                >
+                <p v-if="room.points.daily.awarded">今日放歌积分已领取</p>
+                <template v-else>
+                  <p>
+                    今日放歌 {{ time(dailyPlayTime) }} /
+                    {{ time(DAILY_DJ_THRESHOLD_MS) }}
+                  </p>
+                  <progress
+                    :value="dailyPlayTime"
+                    :max="DAILY_DJ_THRESHOLD_MS"
+                    aria-label="今日台上放歌时长"
+                  />
+                  <p>
+                    每天台上累计放歌超过
+                    {{ DAILY_DJ_THRESHOLD_MS / 60_000 }} 分钟可得
+                    {{ DAILY_DJ_REWARD }} 积分。
+                  </p>
+                </template>
+              </template>
+              <p v-else-if="pointsLoading" role="status">正在加载积分…</p>
+              <p v-if="pointsLoadFailed" role="status">
+                积分加载失败。
+                <button
+                  class="text-button"
+                  type="button"
+                  :disabled="pointsLoading"
+                  @click="refreshPoints"
+                >
+                  重试
+                </button>
+              </p>
+              <p v-if="room.pointsReward" class="wardrobe-reward" role="status">
+                {{ room.pointsReward }}
+              </p>
+            </div>
+            <fieldset :disabled="!!appearanceAction">
               <legend>毛色</legend>
               <div class="cat-options">
                 <label
@@ -781,10 +930,17 @@ onBeforeUnmount(() => {
                     aria-hidden="true"
                   />
                   {{ preset.label }}
+                  <span
+                    v-if="!hasPreset(preset.appearance.pattern)"
+                    class="cat-option-cost"
+                  >
+                    <LockKeyhole aria-hidden="true" />{{ COAT_UNLOCK_COST }}
+                    积分
+                  </span>
                 </label>
               </div>
             </fieldset>
-            <fieldset v-if="!selectedPreset" :disabled="appearanceSaving">
+            <fieldset v-if="!selectedPreset" :disabled="!!appearanceAction">
               <legend>花纹</legend>
               <div class="cat-options">
                 <label
@@ -803,7 +959,10 @@ onBeforeUnmount(() => {
                 </label>
               </div>
             </fieldset>
-            <p class="library-hint">
+            <p v-if="lockedPreset && missingPoints" class="library-hint">
+              解锁还差 {{ missingPoints }} 积分。
+            </p>
+            <p v-else-if="!lockedPreset" class="library-hint">
               保存后房间里的大家都能看到，下次回来也会保留。
             </p>
             <div class="confirm-actions">
@@ -811,9 +970,12 @@ onBeforeUnmount(() => {
               <button
                 class="primary"
                 type="submit"
-                :disabled="appearanceSaving"
+                :disabled="
+                  !!appearanceAction ||
+                  !!(lockedPreset && (!room.points || missingPoints))
+                "
               >
-                {{ appearanceSaving ? '正在保存…' : '保存外观' }}
+                {{ appearanceActionLabel }}
               </button>
             </div>
           </form>

@@ -14,9 +14,14 @@ import {
   type MusicService,
   type Guest,
 } from '../shared/contracts.js';
-import { catAppearanceSchema } from '../shared/appearance.js';
 import {
+  CAT_APPEARANCE_PRESETS,
+  catAppearanceSchema,
+} from '../shared/appearance.js';
+import {
+  AppearanceLockedError,
   EmptyPlaylistImportError,
+  InsufficientPointsError,
   NicknameCooldownError,
   Store,
   hashToken,
@@ -42,6 +47,13 @@ import {
 
 const ApiError = HttpError;
 const nicknameBody = z.object({ nickname: nicknameSchema }).strict();
+const appearanceUnlockBody = z
+  .object({
+    pattern: z.enum(
+      CAT_APPEARANCE_PRESETS.map(({ appearance }) => appearance.pattern),
+    ),
+  })
+  .strict();
 const playlistSlotSchema = z.number().int().min(1).max(PLAYLIST_COUNT_LIMIT);
 const playlistTargetQuery = z
   .object({
@@ -168,6 +180,10 @@ export async function createServer(
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof z.ZodError)
       return reply.code(400).send({ error: '请求格式无效' });
+    if (error instanceof AppearanceLockedError)
+      return reply.code(403).send({ error: error.message });
+    if (error instanceof InsufficientPointsError)
+      return reply.code(409).send({ error: error.message });
     if (error instanceof NicknameCooldownError) {
       const { nicknameChangeAvailableAt } = error;
       const seconds = Math.max(
@@ -313,6 +329,16 @@ export async function createServer(
     const guest = db.updateAppearance(current.id, appearance);
     registry.updateAppearance(current.id, appearance);
     return { guest: auth.profile(guest) };
+  });
+  app.get('/api/me/points', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    return db.points(identity(request).id);
+  });
+  app.post('/api/me/appearance/unlocks', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const current = identity(request);
+    const { pattern } = appearanceUnlockBody.parse(request.body);
+    return db.unlockAppearance(current.id, pattern);
   });
   app.post('/api/guest', async (request, reply) => {
     if (!guestLimit.allow(request.ip))

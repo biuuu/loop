@@ -8,7 +8,8 @@ import { createRoomEmotes } from './room-emotes';
 import { emoteCatalog, emoteUrl, loadEmoteCatalog } from './emote-catalog';
 import { createPlaylistReceiver, swapPlaylistTracks } from './playlist-view';
 import type { Direction } from './keyboard-movement';
-import type { CatAppearance } from '../shared/appearance';
+import type { CatAppearance, CatPresetPattern } from '../shared/appearance';
+import type { PointsAwarded, PointsState } from '../shared/points';
 import { stageSeatXs } from '../shared/contracts';
 import type {
   AccountProfile,
@@ -97,6 +98,9 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 export const useRoom = defineStore('room', () => {
   const guest = ref<AccountProfile | null>(null);
+  const points = ref<PointsState | null>(null);
+  const pointsReward = useTimedMessage();
+  let lastPointsAwardRevision = -1;
   const playlistState = ref<PlaylistState | null>(null);
   const playlist = computed(() => playlistState.value?.tracks ?? []);
   const playlistRevision = computed(() => playlistState.value?.revision ?? -1);
@@ -138,6 +142,9 @@ export const useRoom = defineStore('room', () => {
   function setGuest(value: AccountProfile | null) {
     if (playlistReceiver.setIdentity(value?.id ?? null)) {
       resetTransientState();
+      points.value = null;
+      pointsReward.value = '';
+      lastPointsAwardRevision = -1;
       playlistState.value = null;
       snapshot.value = null;
     }
@@ -148,6 +155,19 @@ export const useRoom = defineStore('room', () => {
     context: ReturnType<typeof playlistReceiver.context>,
   ) {
     playlistReceiver.receive(state, context);
+  }
+  function applyPoints(state: PointsState) {
+    const current = points.value;
+    if (
+      current &&
+      (state.revision < current.revision ||
+        state.daily.date < current.daily.date ||
+        (state.daily.date === current.daily.date &&
+          (state.daily.playedMs < current.daily.playedMs ||
+            (current.daily.awarded && !state.daily.awarded))))
+    )
+      return;
+    points.value = state;
   }
   const me = computed(() =>
     snapshot.value?.users.find((user) => user.id === guest.value?.id),
@@ -347,6 +367,7 @@ export const useRoom = defineStore('room', () => {
         clearTimeout(entryTimer);
         cancelEntry = null;
         snapshot.value = null;
+        pointsReward.value = '';
         roomGeneration.value++;
         const previous = socket;
         socket = active;
@@ -485,6 +506,20 @@ export const useRoom = defineStore('room', () => {
     });
     active.on('playlist:updated', (state) => {
       if (isActive()) applyPlaylist(state, playlistContext);
+    });
+    active.on('points:awarded', ({ points: state, awarded }: PointsAwarded) => {
+      if (
+        !guestId ||
+        !isActive() ||
+        !active.connected ||
+        connection.value !== 'connected'
+      )
+        return;
+      applyPoints(state);
+      // A read can already reflect this award, including after the day rolls over.
+      if (state.revision <= lastPointsAwardRevision) return;
+      lastPointsAwardRevision = state.revision;
+      pointsReward.value = `放歌获得 ${awarded} 积分`;
     });
     active.on('playlist:reordered', (order) => {
       if (!isActive() || !active.connected || connection.value !== 'connected')
@@ -820,17 +855,55 @@ export const useRoom = defineStore('room', () => {
     applyPlaylist(result, context);
     return result;
   }
+  function appearanceContext() {
+    const auth = authRequest;
+    const generation = roomGeneration.value;
+    const id = guest.value?.id;
+    return () =>
+      id !== undefined &&
+      id === guest.value?.id &&
+      auth === authRequest &&
+      generation === roomGeneration.value;
+  }
+  async function updatePoints(path: string, init: RequestInit) {
+    const isCurrent = appearanceContext();
+    if (!isCurrent()) return false;
+    try {
+      const state = await request<PointsState>(path, init);
+      if (!isCurrent()) return false;
+      applyPoints(state);
+      return true;
+    } catch (cause) {
+      if (!isCurrent()) return false;
+      throw cause;
+    }
+  }
+  function loadPoints() {
+    return updatePoints('/api/me/points', { cache: 'no-store' });
+  }
+  async function unlockAppearance(pattern: CatPresetPattern) {
+    const updated = await updatePoints('/api/me/appearance/unlocks', {
+      method: 'POST',
+      body: JSON.stringify({ pattern }),
+    });
+    return updated && !!points.value?.unlockedPresets.includes(pattern);
+  }
   async function setAppearance(appearance: CatAppearance) {
-    const version = authRequest;
-    const data = await request<{ guest: AccountProfile }>(
-      '/api/me/appearance',
-      {
-        method: 'PATCH',
-        body: JSON.stringify(appearance),
-      },
-    );
-    if (version === authRequest && guest.value?.id === data.guest.id)
-      guest.value = { ...guest.value, appearance: data.guest.appearance };
+    const isCurrent = appearanceContext();
+    if (!isCurrent()) return false;
+    try {
+      const { guest: saved } = await request<{ guest: AccountProfile }>(
+        '/api/me/appearance',
+        { method: 'PATCH', body: JSON.stringify(appearance) },
+      );
+      if (!isCurrent() || !guest.value || guest.value.id !== saved.id)
+        return false;
+      guest.value = { ...guest.value, appearance: saved.appearance };
+      return true;
+    } catch (cause) {
+      if (!isCurrent()) return false;
+      throw cause;
+    }
   }
   async function setNickname(nickname: string): Promise<boolean> {
     const version = authRequest;
@@ -963,6 +1036,7 @@ export const useRoom = defineStore('room', () => {
     roomInfo.value = null;
     roomId.value = null;
     roomGeneration.value++;
+    pointsReward.value = '';
     resetTransientState();
     invalidateMovement();
     playlistReceiver.renewConnection();
@@ -988,6 +1062,7 @@ export const useRoom = defineStore('room', () => {
     candidate = null;
     snapshot.value = null;
     roomGeneration.value++;
+    pointsReward.value = '';
     entering.value = false;
     roomId.value = null;
     roomInfo.value = null;
@@ -1028,6 +1103,10 @@ export const useRoom = defineStore('room', () => {
     enter,
     enterFromNetease,
     setAppearance,
+    points,
+    pointsReward,
+    loadPoints,
+    unlockAppearance,
     setNickname,
     connect,
     cancelPendingEntry,

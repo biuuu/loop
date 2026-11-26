@@ -20,11 +20,19 @@ import {
   CAT_APPEARANCE_PRESETS,
   CAT_COATS,
   CAT_PATTERNS,
+  catAppearancePreset,
   catAppearanceSchema,
   type CatAppearance,
   type CatPresetPattern,
 } from '../shared/appearance.js';
 import { ENVIRONMENTS } from '../shared/environments.js';
+import {
+  COAT_UNLOCK_COST,
+  DAILY_DJ_REWARD,
+  DAILY_DJ_THRESHOLD_MS,
+  INITIAL_POINTS,
+  type PointsState,
+} from '../shared/points.js';
 import {
   readRoomCheckpoint,
   ROOM_CHECKPOINT_MAX_AGE_MS,
@@ -32,6 +40,10 @@ import {
 } from './room-checkpoint.js';
 
 const BASELINE_VERSION = 11;
+const POINTS_SCHEMA_VERSION = 26;
+const DAY_MS = 24 * 60 * 60_000;
+const BEIJING_UTC_OFFSET_MS = 8 * 60 * 60_000;
+const DAILY_DJ_REWARD_AT_MS = DAILY_DJ_THRESHOLD_MS + 1;
 const CAT_PRESET_SCHEMA_VERSIONS: Record<CatPresetPattern, number> = {
   calico: 20,
   cow: 21,
@@ -59,11 +71,21 @@ type GuestRow = {
   pattern: CatAppearance['pattern'];
 };
 type PlaylistSettings = Pick<PlaylistState, 'slot' | 'revision'>;
+type DailyDjRow = { playedMs: number; creditedThroughMs: number };
 const readGuest = ({ id, nickname, coat, pattern }: GuestRow): Guest => ({
   id,
   nickname,
   appearance: { coat, pattern },
 });
+
+function djPlaybackDay(now: number) {
+  const localMidnight =
+    Math.floor((now + BEIJING_UTC_OFFSET_MS) / DAY_MS) * DAY_MS;
+  return {
+    date: new Date(localMidnight).toISOString().slice(0, 10),
+    endsAt: localMidnight + DAY_MS - BEIJING_UTC_OFFSET_MS,
+  };
+}
 
 export const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
@@ -77,9 +99,20 @@ export class NicknameCooldownError extends Error {
     super('两次昵称修改需间隔 7 天');
   }
 }
+export class AppearanceLockedError extends Error {
+  constructor() {
+    super('请先解锁这款花色');
+  }
+}
+export class InsufficientPointsError extends Error {
+  constructor() {
+    super('积分不足');
+  }
+}
 export class Store {
   readonly sql: Database.Database;
   private readonly guestAppearances: readonly CatAppearance[];
+  private readonly pointsEnabled: boolean;
   constructor(
     path = process.env.DATABASE_PATH || 'data/loop.sqlite',
     migrationsPath = resolve('migrations'),
@@ -102,12 +135,15 @@ export class Store {
           throw new Error(`Missing migration ${expected}`);
       }
       const latest = migrations.at(-1)!.version;
-      this.guestAppearances = [
-        ...MIXABLE_CAT_APPEARANCES,
-        ...PRESET_CAT_APPEARANCES.filter(
-          ({ pattern }) => latest >= CAT_PRESET_SCHEMA_VERSIONS[pattern],
-        ),
-      ];
+      this.pointsEnabled = latest >= POINTS_SCHEMA_VERSION;
+      this.guestAppearances = this.pointsEnabled
+        ? MIXABLE_CAT_APPEARANCES
+        : [
+            ...MIXABLE_CAT_APPEARANCES,
+            ...PRESET_CAT_APPEARANCES.filter(
+              ({ pattern }) => latest >= CAT_PRESET_SCHEMA_VERSIONS[pattern],
+            ),
+          ];
       this.sql
         .transaction(() => {
           const version = Number(
@@ -165,6 +201,8 @@ export class Store {
           guest.appearance.coat,
           guest.appearance.pattern,
         );
+      if (this.pointsEnabled)
+        this.insertPointsEntry(guest.id, 'initial', 'account', INITIAL_POINTS);
       const now = Date.now();
       this.sql
         .prepare('INSERT INTO sessions VALUES (?,?,?,?,?)')
@@ -267,10 +305,135 @@ export class Store {
   }
   updateAppearance(id: string, input: CatAppearance): Guest {
     const appearance = catAppearanceSchema.parse(input);
-    this.sql
-      .prepare('UPDATE guests SET coat=?,pattern=? WHERE id=?')
-      .run(appearance.coat, appearance.pattern, id);
-    return this.guestById(id);
+    return this.sql
+      .transaction(() => {
+        const preset = catAppearancePreset(appearance.pattern);
+        if (
+          this.pointsEnabled &&
+          preset &&
+          !this.hasUnlockedAppearance(id, preset.appearance.pattern)
+        )
+          throw new AppearanceLockedError();
+        this.sql
+          .prepare('UPDATE guests SET coat=?,pattern=? WHERE id=?')
+          .run(appearance.coat, appearance.pattern, id);
+        return this.guestById(id);
+      })
+      .immediate();
+  }
+  points(id: string, now = Date.now()): PointsState {
+    return this.sql.transaction(() =>
+      this.readPoints(id, djPlaybackDay(now).date),
+    )();
+  }
+  unlockAppearance(id: string, pattern: CatPresetPattern): PointsState {
+    if (!catAppearancePreset(pattern)) throw new Error('未知的特殊花色');
+    return this.sql
+      .transaction(() => {
+        const { date } = djPlaybackDay(Date.now());
+        if (this.hasUnlockedAppearance(id, pattern))
+          return this.readPoints(id, date);
+        if (this.pointsBalance(id).balance < COAT_UNLOCK_COST)
+          throw new InsufficientPointsError();
+        this.insertPointsEntry(id, 'coat_unlock', pattern, -COAT_UNLOCK_COST);
+        this.sql
+          .prepare('INSERT INTO coat_unlocks (guest_id,pattern) VALUES (?,?)')
+          .run(id, pattern);
+        return this.readPoints(id, date);
+      })
+      .immediate();
+  }
+  recordDjPlayback(id: string, fromMs: number, toMs: number): number {
+    if (
+      !this.pointsEnabled ||
+      !Number.isFinite(fromMs) ||
+      !Number.isFinite(toMs)
+    )
+      return 0;
+    let cursor = Math.floor(fromMs);
+    const end = Math.floor(toMs);
+    if (cursor >= end) return 0;
+    return this.sql
+      .transaction(() => {
+        let awarded = 0;
+        const save = this.sql.prepare(`
+          INSERT INTO daily_dj_time (guest_id,date,played_ms,credited_through_ms)
+          VALUES (?,?,?,?)
+          ON CONFLICT(guest_id,date) DO UPDATE SET
+            played_ms=excluded.played_ms, credited_through_ms=excluded.credited_through_ms
+        `);
+        while (cursor < end) {
+          const { date, endsAt } = djPlaybackDay(cursor);
+          const through = Math.min(end, endsAt);
+          const previous = this.dailyDjTime(id, date);
+          // Server settlements advance in order. Ignore a replayed interval or prefix.
+          const newlyPlayed =
+            through - Math.max(cursor, previous?.creditedThroughMs ?? cursor);
+          const playedMs = previous?.playedMs ?? 0;
+          cursor = through;
+          if (playedMs >= DAILY_DJ_REWARD_AT_MS || newlyPlayed <= 0) continue;
+          const total = Math.min(DAILY_DJ_REWARD_AT_MS, playedMs + newlyPlayed);
+          save.run(id, date, total, through);
+          if (
+            total === DAILY_DJ_REWARD_AT_MS &&
+            this.insertPointsEntry(id, 'daily_dj', date, DAILY_DJ_REWARD)
+          )
+            awarded += DAILY_DJ_REWARD;
+        }
+        return awarded;
+      })
+      .immediate();
+  }
+  private pointsBalance(id: string): Pick<PointsState, 'balance' | 'revision'> {
+    return this.sql
+      .prepare(
+        `SELECT COALESCE(SUM(delta),0) AS balance, COALESCE(MAX(id),0) AS revision
+        FROM points_ledger WHERE guest_id=?`,
+      )
+      .get(id) as Pick<PointsState, 'balance' | 'revision'>;
+  }
+  private insertPointsEntry(
+    id: string,
+    source: string,
+    reference: string,
+    delta: number,
+  ) {
+    return this.sql
+      .prepare(
+        `INSERT INTO points_ledger (guest_id,source,reference,delta) VALUES (?,?,?,?)
+        ON CONFLICT(guest_id,source,reference) DO NOTHING`,
+      )
+      .run(id, source, reference, delta).changes;
+  }
+  private hasUnlockedAppearance(id: string, pattern: CatPresetPattern) {
+    return Boolean(
+      this.sql
+        .prepare('SELECT 1 FROM coat_unlocks WHERE guest_id=? AND pattern=?')
+        .get(id, pattern),
+    );
+  }
+  private dailyDjTime(id: string, date: string) {
+    return this.sql
+      .prepare(
+        `SELECT played_ms AS playedMs, credited_through_ms AS creditedThroughMs
+        FROM daily_dj_time WHERE guest_id=? AND date=?`,
+      )
+      .get(id, date) as DailyDjRow | undefined;
+  }
+  private readPoints(id: string, date: string): PointsState {
+    const balance = this.pointsBalance(id);
+    const unlockedPresets = this.sql
+      .prepare(
+        'SELECT pattern FROM coat_unlocks WHERE guest_id=? ORDER BY pattern',
+      )
+      .pluck()
+      .all(id) as CatPresetPattern[];
+    const playedMs = this.dailyDjTime(id, date)?.playedMs ?? 0;
+    return {
+      ...balance,
+      unlockedPresets,
+      daily: { date, playedMs, awarded: playedMs === DAILY_DJ_REWARD_AT_MS },
+    };
   }
   tracks(id: string, slot?: number): Track[] {
     return this.tracksAt(

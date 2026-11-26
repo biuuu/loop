@@ -112,7 +112,7 @@ test('upgrading from version 11 preserves saved data and persists room playback 
     db.close();
     db = undefined;
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 25);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 26);
     assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
     assert.deepEqual(db.rooms(), expected);
     assert.deepEqual(

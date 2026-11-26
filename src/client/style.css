@@ -216,9 +216,40 @@ textarea {
   background: #e9e6d8;
   text-align: center;
 }
-.cat-preview-card p {
-  margin: 0 0 8px;
-  font-size: 13px;
+.wardrobe-points {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f7f4ea;
+  color: var(--muted);
+  font-size: 12px;
+}
+.wardrobe-points strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 14px;
+}
+.wardrobe-points .lucide {
+  width: 16px;
+  height: 16px;
+  color: var(--sage);
+}
+.wardrobe-points p {
+  margin: 0;
+}
+.wardrobe-points progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--sage);
+}
+.wardrobe-points .wardrobe-reward {
+  color: var(--sage);
+  font-weight: 600;
 }
 .cat-wardrobe fieldset {
   border: 0;
@@ -261,6 +292,20 @@ textarea {
   height: 14px;
   flex-shrink: 0;
   accent-color: #65765a;
+}
+.cat-option-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding-left: 6px;
+  border-left: 1px solid var(--line);
+  color: #85654c;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.cat-option-cost .lucide {
+  width: 12px;
+  height: 12px;
 }
 .cat-wardrobe fieldset:disabled .cat-option {
   opacity: 0.6;
