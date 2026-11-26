@@ -3,11 +3,8 @@ import {
   type CatPresetPattern,
 } from '../shared/appearance';
 import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
-import {
-  CAT_CALICO_MARKINGS,
-  RAGDOLL_EYE_MARKING,
-  getPatternMask,
-} from './cat-patterns';
+import { CAT_CALICO_MARKINGS } from './cat-calico';
+import { RAGDOLL_EYE_MARKING, getPatternMask } from './cat-patterns';
 
 export const CAT_PACKED_ROWS: Record<CatAnimation, number> = {
   idle: 0,

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { CAT_CALICO_MARKINGS } from '../src/client/cat-calico';
 import {
-  CAT_CALICO_MARKINGS,
   CAT_PATTERN_PATCHES,
   RAGDOLL_EYE_MARKING,
   getPatternMask,
@@ -142,7 +142,11 @@ test('all 41 source frames use bounded anatomical patches on fur or the original
             assert.equal(row.length, width);
             assert.match(row, /^[#.]+$/);
           }
-          if (pattern === 'calico') {
+          if (
+            pattern === 'calico' &&
+            patch.part !== 'tail' &&
+            patch.rows.length >= 3
+          ) {
             const widths = new Set(
               patch.rows.map((row) => row.replaceAll('.', '').length),
             );
@@ -191,8 +195,10 @@ test('all 41 source frames use bounded anatomical patches on fur or the original
           );
           assert.ok(selected > 0 && remainingCoat > 0);
         }
-        // Front-facing point frames show mostly head, paws, and raised tail.
+        // Calico and orange-white use broad colored blocks; front-facing point
+        // frames also show mostly marked head, paws, and raised tail.
         if (
+          pattern !== 'calico' &&
           pattern !== 'orange_white' &&
           !ragdoll &&
           !(hasFaceMask && animation === 'down')
@@ -265,15 +271,26 @@ test('new preset caps follow pose height while back markings follow the visible 
   }
 });
 
-test('calico idle portrait includes a warm ear patch and an opposite dark temple with an ivory center', () => {
+test('calico keeps a white blaze between the two colored cheeks and a white chest between the flank patches', () => {
   const frame = CAT_IDLE_UP_COLUMN;
   const { orange, dark } = CAT_CALICO_MARKINGS;
   assert.equal(calicoMarking('idle', frame, 33, 32), orange);
-  assert.equal(calicoMarking('idle', frame, 33, 35), orange);
+  assert.equal(calicoMarking('idle', frame, 26, 32), dark);
   assert.equal(calicoMarking('idle', frame, 26, 35), dark);
-  assert.equal(calicoMarking('idle', frame, 30, 36), 0);
+  assert.equal(calicoMarking('idle', frame, 25, 38), dark);
+  assert.equal(calicoMarking('idle', frame, 26, 38), orange);
+  assert.equal(calicoMarking('idle', frame, 34, 39), orange);
+  assert.equal(calicoMarking('idle', frame, 28, 43), orange);
   assert.equal(calicoMarking('idle', frame, 35, 45), dark);
-  assert.equal(calicoMarking('idle', frame, 41, 38), 0);
+  for (const [x, y] of [
+    [29, 35],
+    [30, 36],
+    [29, 38],
+    [30, 39],
+    [31, 43],
+  ] as const) {
+    assert.equal(calicoMarking('idle', frame, x, y), 0);
+  }
   for (const x of [28, 32]) {
     assert.equal(frameRgb(source, 'idle', frame, x, 37), ink);
     assert.equal(calicoMarking('idle', frame, x, 37), 0);
@@ -287,39 +304,146 @@ test('calico patches follow the ear in all walking directions and breathing pose
       animation: 'side',
       ears: [31, 30, 31, 31, 30, 31],
       orangeEar: 33,
-      ivoryEar: 26,
+      darkEar: 26,
     },
-    { animation: 'up', ears: [32, 31, 32, 31], orangeEar: 26, ivoryEar: 34 },
-    { animation: 'down', ears: [32, 31, 32], orangeEar: 33, ivoryEar: 26 },
+    { animation: 'up', ears: [32, 31, 32, 31], orangeEar: 26, darkEar: 34 },
+    { animation: 'down', ears: [32, 31, 32], orangeEar: 33, darkEar: 26 },
     {
       animation: 'sleep',
       ears: [35, 35, 36, 36, 35, 35, 36, 36, 35, 35, 36, 36, 35, 35, 36, 36],
       orangeEar: 33,
-      ivoryEar: 26,
+      darkEar: 26,
     },
   ] as const;
-  for (const { animation, ears, orangeEar, ivoryEar } of poses) {
+  for (const { animation, ears, orangeEar, darkEar } of poses) {
     for (const [frame, y] of ears.entries()) {
       assert.equal(frameRgb(source, animation, frame, orangeEar, y), ink);
       assert.equal(calicoMarking(animation, frame, orangeEar, y), 0);
       assert.equal(calicoMarking(animation, frame, orangeEar, y + 1), orange);
-      assert.equal(calicoMarking(animation, frame, ivoryEar, y + 1), 0);
+      assert.equal(calicoMarking(animation, frame, darkEar, y + 1), dark);
     }
   }
   for (const [frame, ear] of poses[0].ears.entries()) {
     assert.equal(calicoMarking('side', frame, 35, ear + 14), dark);
+    assert.equal(calicoMarking('side', frame, 28, ear + 11), orange);
     assert.equal(calicoMarking('side', frame, 34, ear + 16), 0);
   }
   for (const frame of poses[1].ears.keys()) {
     assert.equal(calicoMarking('up', frame, 33, 44), dark);
-    assert.equal(calicoMarking('up', frame, 28, 44), 0);
+    assert.equal(calicoMarking('up', frame, 28, 44), orange);
+    assert.equal(calicoMarking('up', frame, 28, 45), 0);
   }
   for (const [frame, ear] of poses[2].ears.entries())
     assert.equal(calicoMarking('down', frame, 26, ear + 4), dark);
   for (const [frame, ear] of poses[3].ears.entries()) {
     assert.equal(calicoMarking('sleep', frame, 26, ear + 4), dark);
     assert.equal(calicoMarking('sleep', frame, 37, 44), dark);
-    assert.equal(calicoMarking('sleep', frame, 27, 46), 0);
+    assert.equal(calicoMarking('sleep', frame, 27, 46), orange);
+    assert.equal(calicoMarking('sleep', frame, 30, 46), 0);
+  }
+});
+
+test('calico tail alternates golden orange and gray-brown along every tail pose', () => {
+  const { orange, dark } = CAT_CALICO_MARKINGS;
+  const idleTails = [
+    [
+      [39, 45],
+      [40, 43],
+      [41, 42],
+      [42, 40],
+      [41, 38],
+    ],
+    [
+      [39, 45],
+      [40, 44],
+      [41, 43],
+      [43, 41],
+      [44, 39],
+    ],
+    [
+      [39, 45],
+      [41, 45],
+      [42, 44],
+      [45, 43],
+      [47, 42],
+    ],
+    [
+      [39, 45],
+      [41, 45],
+      [43, 45],
+      [45, 45],
+      [48, 45],
+    ],
+  ] as const;
+  const idlePoses = [0, 1, 2, 3, 2, 1];
+  const expectBands = (
+    animation: CatAnimation,
+    frame: number,
+    coordinates: readonly (readonly [number, number])[],
+    first: typeof dark | typeof orange = dark,
+    dy = 0,
+  ) => {
+    const second = first === dark ? orange : dark;
+    for (const [index, [x, y]] of coordinates.entries()) {
+      assert.equal(
+        calicoMarking(animation, frame, x, y + dy),
+        index % 2 === 0 ? first : second,
+        `${animation}/${frame}/${x},${y + dy}`,
+      );
+    }
+  };
+  for (let frame = 0; frame < CAT_ANIMATIONS.idle.frames; frame++) {
+    const pose = idlePoses[frame % idlePoses.length]!;
+    expectBands('idle', frame, idleTails[pose]!);
+  }
+  for (let frame = 0; frame < CAT_ANIMATIONS.side.frames; frame++) {
+    const dy = frame === 1 || frame === 4 ? -1 : 0;
+    expectBands(
+      'side',
+      frame,
+      [
+        [40, 44],
+        [42, 43],
+        [44, 42],
+        [46, 41],
+      ],
+      orange,
+      dy,
+    );
+  }
+  for (let frame = 0; frame < CAT_ANIMATIONS.up.frames; frame++) {
+    expectBands('up', frame, [
+      [30, 45],
+      [30, 44],
+      [30, 43],
+      [30, 40],
+      [30, 39],
+    ]);
+  }
+  for (let frame = 0; frame < CAT_ANIMATIONS.down.frames; frame++) {
+    const dy = frame === 1 ? -1 : 0;
+    expectBands(
+      'down',
+      frame,
+      [
+        [frame === 1 ? 28 : 30, 25],
+        [30, 27],
+        [30, 29],
+        [30, 31],
+        [30, 32],
+      ],
+      dark,
+      dy,
+    );
+  }
+  for (let frame = 0; frame < CAT_ANIMATIONS.sleep.frames; frame++) {
+    expectBands('sleep', frame, [
+      [40, 44],
+      [42, 45],
+      [45, 46],
+      [45, 47],
+      [44, 49],
+    ]);
   }
 });
 
