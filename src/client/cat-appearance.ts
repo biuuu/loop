@@ -87,10 +87,13 @@ const SPOT_PALETTES = {
     1: { main: 0x665142, shadow: 0x543e32 },
     2: { main: 0xfff6e8, shadow: 0xe9decf },
   },
-  silver_shaded: { 1: { main: 0xaeb5c2, shadow: 0x939dac } },
+  silver_shaded: {
+    1: { main: 0xaeb5c2, shadow: 0x939dac },
+    2: { main: 0xd8d9df, shadow: 0xc0c5d0 },
+  },
   red_point: {
-    1: { main: 0xd4a680, shadow: 0xbb8d63 },
-    2: { main: 0xbf8554, shadow: 0xa96a41, light: 0xd6a27a },
+    1: { main: 0xe9ab79, shadow: 0xd08455 },
+    2: { main: 0xdc7d49, shadow: 0xbc5b36, light: 0xeba06e },
   },
 } satisfies Record<CatPresetPattern | 'socks', SpotPalette>;
 const PRESET_BODY_COLORS: Readonly<

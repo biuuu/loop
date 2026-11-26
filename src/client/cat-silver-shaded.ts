@@ -21,6 +21,16 @@ const crown = patch('forehead', 26, 32, [
   '.#######.',
   '...###...',
 ]);
+// The lighter cheek fur bridges the crown and the pale muzzle.
+const cheeks: MaskPatch = {
+  ...patch('face', 26, 35, [
+    '###...###',
+    '##.....##',
+    '#.......#',
+    '#.......#',
+  ]),
+  marking: 2,
+};
 
 const idleBack = patch('back', 33, 42, [
   '##....',
@@ -30,6 +40,7 @@ const idleBack = patch('back', 33, 42, [
 ]);
 const idleRaised = [
   crown,
+  cheeks,
   idleBack,
   patch('tail', 39, 38, [
     '..#.',
@@ -44,6 +55,7 @@ const idleRaised = [
 ];
 const idleAngled = [
   crown,
+  cheeks,
   idleBack,
   patch('tail', 39, 39, [
     '.....#',
@@ -57,13 +69,20 @@ const idleAngled = [
 ];
 const idleLow = [
   crown,
+  cheeks,
   idleBack,
   patch('tail', 39, 42, ['.......##', '.....##..', '...##....', '###......']),
 ];
-const idleExtended = [crown, idleBack, patch('tail', 39, 45, ['##########'])];
+const idleExtended = [
+  crown,
+  cheeks,
+  idleBack,
+  patch('tail', 39, 45, ['##########']),
+];
 
 const side = [
   crown,
+  cheeks,
   patch('back', 34, 41, ['.#....', '####..', '..####', '....#.']),
   patch('tail', 40, 40, [
     '......#',
@@ -118,10 +137,12 @@ const frontTailBase = [
 ];
 const front = [
   shiftY(crown, 1),
+  shiftY(cheeks, 1),
   patch('tail', 28, 25, ['..#..', '..#..', ...frontTailBase]),
 ];
 const frontHigh = [
   crown,
+  cheeks,
   patch('tail', 28, 24, ['##...', '.##..', ...frontTailBase]),
 ];
 
@@ -137,8 +158,8 @@ const sleepBody = [
     '...##.',
   ]),
 ];
-const sleepHigh = [shiftY(crown, 4), ...sleepBody];
-const sleepLow = [shiftY(crown, 5), ...sleepBody];
+const sleepHigh = [shiftY(crown, 4), shiftY(cheeks, 4), ...sleepBody];
+const sleepLow = [shiftY(crown, 5), shiftY(cheeks, 5), ...sleepBody];
 
 export const CAT_SILVER_SHADED_PATCHES: Readonly<
   Record<CatAnimation, readonly (readonly MaskPatch[])[]>

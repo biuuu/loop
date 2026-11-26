@@ -62,7 +62,7 @@ export const CAT_APPEARANCE_PRESETS = [
   {
     appearance: { coat: 'white', pattern: 'red_point' },
     label: '红重点',
-    swatch: 'linear-gradient(125deg, #bf8554 24%, #d4a680 44%, #f8ead5 44%)',
+    swatch: 'linear-gradient(125deg, #dc7d49 24%, #e9ab79 44%, #f8ead5 44%)',
   },
 ] as const;
 
