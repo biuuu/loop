@@ -38,6 +38,7 @@
 - Offer 海豹色 and 狸花白. Remove 红重点 and 银渐层 after visual review.
 - Require points to unlock special cat coats. Give every player enough initial points to unlock one special coat. Award points once per day when a player has played music on stage for more than three minutes. Allow more ways to earn points in future iterations.
 - Confirm 5 starting points, a 5-point cost per special coat, and a 1-point daily reward based on Beijing time. Carry over the currently equipped special coat for each existing account and give existing accounts the starting grant.
+- Separate ordinary colors and patterns from point-unlocked presets into two tabs in 我的小猫.
 - Idle cats should usually keep their tails raised, moving them only occasionally. After the independent eye overlay showed residual pixels, the user accepted keeping the original blink/tail animation together and adding a pause between full loops.
 - Idle cats face left or right according to their last horizontal movement; vertical movement retains the previous horizontal facing.
 - The user tried the supplied paw-licking action and asked to remove it after seeing it in the room.
@@ -214,6 +215,7 @@ The user approved the first release and its point values, day boundary and treat
 - Reuse the registry's 30-second checkpoint loop for in-progress settlements. Advance each round's accounting cursor after the SQLite transaction succeeds. Resume accounting from the new connection on restart. An unexpected crash may lose the last unsaved interval, normally up to 30 seconds. A continuous song can earn the reward without waiting until it ends. Ordinary settlements emit no room updates.
 - Add a points ledger keyed by account, source and reference, account-scoped coat unlocks, and daily DJ time keyed by account and date. Sum ledger entries for the balance. In one SQLite write transaction record time and insert the day's reward once. Use another write transaction to check balance, debit points and insert an unlock once. Keep the ledger API internal to the server so later reward sources can reuse it with their own deduplication keys.
 - Read balance, unlocks and daily progress through authenticated `GET /api/me/points`. Use `POST /api/me/appearance/unlocks` with a preset ID to unlock. Use server-side prices and require a matching account unlock in the current appearance save route. Keep locked previews available in 我的小猫 and show their cost. After an unlock, the selected preview can be saved through the normal flow. Send `points:awarded` privately to the player's current connection. Balances and progress stay outside public room snapshots.
+- Open the wardrobe on the tab of the saved appearance. Keep one preview selection per tab until the wardrobe closes. Load and refresh points in the special coats tab, and deliver the reward notice in either tab.
 
 ## Build sequence
 

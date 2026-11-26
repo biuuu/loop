@@ -247,9 +247,14 @@ textarea {
   height: 8px;
   accent-color: var(--sage);
 }
-.wardrobe-points .wardrobe-reward {
+.wardrobe-reward {
+  margin: 12px 0 0;
   color: var(--sage);
+  font-size: 13px;
   font-weight: 600;
+}
+.wardrobe-tabs {
+  margin-bottom: 12px;
 }
 .cat-wardrobe fieldset {
   border: 0;

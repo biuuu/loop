@@ -176,9 +176,15 @@ function focusIntroduction(event: PointerEvent) {
 }
 type Modal = 'library' | 'members' | 'appearance';
 const modal = ref<Modal | null>(null);
-const appearanceDraft = ref<CatAppearance>({ ...DEFAULT_CAT_APPEARANCE });
-const selectedPreset = computed(() =>
-  catAppearancePreset(appearanceDraft.value.pattern),
+const appearanceTab = ref<'basic' | 'special'>('basic');
+const basicAppearance = ref<CatAppearance>({ ...DEFAULT_CAT_APPEARANCE });
+const specialAppearance = ref<
+  (typeof CAT_APPEARANCE_PRESETS)[number]['appearance']
+>(CAT_APPEARANCE_PRESETS[0].appearance);
+const appearanceDraft = computed(() =>
+  appearanceTab.value === 'basic'
+    ? basicAppearance.value
+    : specialAppearance.value,
 );
 function hasPreset(pattern: CatPresetPattern) {
   return (
@@ -187,8 +193,10 @@ function hasPreset(pattern: CatPresetPattern) {
   );
 }
 const lockedPreset = computed(() => {
-  const pattern = selectedPreset.value?.appearance.pattern;
-  return pattern && !hasPreset(pattern) ? pattern : undefined;
+  const { pattern } = specialAppearance.value;
+  return appearanceTab.value === 'special' && !hasPreset(pattern)
+    ? pattern
+    : undefined;
 });
 const missingPoints = computed(() =>
   room.points ? Math.max(0, COAT_UNLOCK_COST - room.points.balance) : 0,
@@ -208,7 +216,13 @@ let pointsRequest: object | null = null;
 let appearanceOpenVersion = 0;
 
 async function refreshPoints() {
-  if (document.hidden || modal.value !== 'appearance' || pointsRequest) return;
+  if (
+    document.hidden ||
+    modal.value !== 'appearance' ||
+    appearanceTab.value !== 'special' ||
+    pointsRequest
+  )
+    return;
   const pending = {};
   pointsRequest = pending;
   pointsLoading.value = true;
@@ -225,7 +239,7 @@ async function refreshPoints() {
   }
 }
 watch(
-  () => modal.value === 'appearance',
+  () => modal.value === 'appearance' && appearanceTab.value === 'special',
   (open, _, onCleanup) => {
     if (!open) return;
     pointsLoadFailed.value = false;
@@ -240,12 +254,6 @@ watch(
     });
   },
 );
-function selectCatCoat(coat: CatAppearance['coat']) {
-  appearanceDraft.value = {
-    coat,
-    pattern: selectedPreset.value ? 'solid' : appearanceDraft.value.pattern,
-  };
-}
 const dialog = ref<HTMLDialogElement | null>(null);
 let returnFocus: HTMLElement | null = null;
 const modalTitle = computed(
@@ -281,11 +289,16 @@ function openLibrary(value: 'playlist' | 'search') {
 }
 function openAppearance() {
   appearanceOpenVersion++;
-  appearanceDraft.value = {
-    ...(room.guest?.appearance ??
-      room.me?.appearance ??
-      DEFAULT_CAT_APPEARANCE),
+  const saved =
+    room.guest?.appearance ?? room.me?.appearance ?? DEFAULT_CAT_APPEARANCE;
+  const preset = catAppearancePreset(saved.pattern);
+  basicAppearance.value = {
+    coat: saved.coat,
+    pattern: preset ? 'solid' : saved.pattern,
   };
+  specialAppearance.value =
+    preset?.appearance ?? CAT_APPEARANCE_PRESETS[0].appearance;
+  appearanceTab.value = preset ? 'special' : 'basic';
   room.error = '';
   void openModal('appearance');
 }
@@ -833,10 +846,41 @@ onBeforeUnmount(() => {
             class="cat-wardrobe"
             @submit.prevent="applyAppearance"
           >
+            <div
+              class="segmented-tabs wardrobe-tabs"
+              role="group"
+              aria-label="花色类型"
+            >
+              <button
+                type="button"
+                :class="{ selected: appearanceTab === 'basic' }"
+                :aria-pressed="appearanceTab === 'basic'"
+                :disabled="!!appearanceAction"
+                @click="appearanceTab = 'basic'"
+              >
+                普通花色
+              </button>
+              <button
+                type="button"
+                :class="{ selected: appearanceTab === 'special' }"
+                :aria-pressed="appearanceTab === 'special'"
+                :disabled="!!appearanceAction"
+                @click="appearanceTab = 'special'"
+              >
+                特殊花色
+              </button>
+            </div>
             <div class="cat-preview-card">
               <CatPreview :appearance="appearanceDraft" />
             </div>
-            <div class="wardrobe-points" aria-label="积分">
+            <p v-if="room.pointsReward" class="wardrobe-reward" role="status">
+              {{ room.pointsReward }}
+            </p>
+            <div
+              v-if="appearanceTab === 'special'"
+              class="wardrobe-points"
+              aria-label="积分"
+            >
               <template v-if="room.points">
                 <strong
                   ><Coins aria-hidden="true" />{{
@@ -874,30 +918,24 @@ onBeforeUnmount(() => {
                   重试
                 </button>
               </p>
-              <p v-if="room.pointsReward" class="wardrobe-reward" role="status">
-                {{ room.pointsReward }}
-              </p>
             </div>
-            <fieldset :disabled="!!appearanceAction">
+            <fieldset
+              v-if="appearanceTab === 'basic'"
+              :disabled="!!appearanceAction"
+            >
               <legend>毛色</legend>
               <div class="cat-options">
                 <label
                   v-for="coat in CAT_COATS"
                   :key="coat.id"
                   class="cat-option"
-                  :class="{
-                    selected:
-                      !selectedPreset && appearanceDraft.coat === coat.id,
-                  }"
+                  :class="{ selected: basicAppearance.coat === coat.id }"
                 >
                   <input
+                    v-model="basicAppearance.coat"
                     type="radio"
                     name="cat-coat"
                     :value="coat.id"
-                    :checked="
-                      !selectedPreset && appearanceDraft.coat === coat.id
-                    "
-                    @change="selectCatCoat(coat.id)"
                   />
                   <span
                     class="coat-swatch"
@@ -906,23 +944,31 @@ onBeforeUnmount(() => {
                   />
                   {{ coat.label }}
                 </label>
+              </div>
+            </fieldset>
+            <fieldset
+              v-else
+              :disabled="!!appearanceAction"
+              aria-label="特殊花色预设"
+            >
+              <div class="cat-options">
                 <label
                   v-for="preset in CAT_APPEARANCE_PRESETS"
                   :key="preset.appearance.pattern"
                   class="cat-option"
                   :class="{
                     selected:
-                      appearanceDraft.pattern === preset.appearance.pattern,
+                      specialAppearance.pattern === preset.appearance.pattern,
                   }"
                 >
                   <input
                     type="radio"
-                    name="cat-coat"
+                    name="special-cat-coat"
                     :value="preset.appearance.pattern"
                     :checked="
-                      appearanceDraft.pattern === preset.appearance.pattern
+                      specialAppearance.pattern === preset.appearance.pattern
                     "
-                    @change="appearanceDraft = { ...preset.appearance }"
+                    @change="specialAppearance = preset.appearance"
                   />
                   <span
                     class="coat-swatch"
@@ -940,17 +986,20 @@ onBeforeUnmount(() => {
                 </label>
               </div>
             </fieldset>
-            <fieldset v-if="!selectedPreset" :disabled="!!appearanceAction">
+            <fieldset
+              v-if="appearanceTab === 'basic'"
+              :disabled="!!appearanceAction"
+            >
               <legend>花纹</legend>
               <div class="cat-options">
                 <label
                   v-for="pattern in CAT_PATTERNS"
                   :key="pattern.id"
                   class="cat-option"
-                  :class="{ selected: appearanceDraft.pattern === pattern.id }"
+                  :class="{ selected: basicAppearance.pattern === pattern.id }"
                 >
                   <input
-                    v-model="appearanceDraft.pattern"
+                    v-model="basicAppearance.pattern"
                     type="radio"
                     name="cat-pattern"
                     :value="pattern.id"
