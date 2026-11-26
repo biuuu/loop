@@ -43,7 +43,6 @@ import type { RoomCheckpoint } from './room-checkpoint.js';
 
 type Connection = { id: string; replaced(): void };
 type FailedAttempt = { kind: MusicPlaybackFailure | 'unknown'; title: string };
-type DjPlaybackInterval = { userId: string; from: number; to: number };
 function playbackFailureNotice(failures: FailedAttempt[]) {
   const title =
     failures.length === 1
@@ -106,8 +105,7 @@ export class Room {
   private playback: Playback | null = null;
   private roundLikes = new Set<string>();
   private roundVotes = new Set<string>();
-  private djPlaybackFrom?: number;
-  private unsettledDjPlayback: DjPlaybackInterval[] = [];
+  private playbackFrom = new Map<string, number>();
   private failedMedia = new Map<string, Set<string>>();
   private resolving = false;
   private notice: string | null = null;
@@ -208,45 +206,29 @@ export class Room {
       playback,
     };
   }
-  private recordDjPlayback(interval: DjPlaybackInterval): boolean {
-    const { userId, from, to } = interval;
-    let awarded: number;
-    try {
-      awarded = this.db.recordDjPlayback(userId, from, to);
-    } catch (error) {
-      console.error(
-        'Failed to record DJ playback time',
-        this.options.roomId,
-        error,
-      );
-      return false;
-    }
-    if (awarded) this.onPointsAwarded(userId, awarded);
-    return true;
-  }
-  private settleDjPlayback(at = Date.now(), stopping = false): void {
-    // Retired rounds are retried in order if an earlier SQLite write failed.
-    const pending = this.unsettledDjPlayback;
-    while (pending[0] && this.recordDjPlayback(pending[0])) pending.shift();
-    const from = this.djPlaybackFrom;
+  private settlePlayback(
+    at = Date.now(),
+    stopping = false,
+    members: Iterable<string> = this.playbackFrom.keys(),
+  ): void {
     const playback = this.playback;
-    if (from !== undefined && playback) {
-      const to = Math.floor(
-        Math.min(at, playback.startedAt + playback.durationMs),
-      );
-      if (to > from) {
-        const interval = { userId: playback.djId, from, to };
-        if (!pending.length && this.recordDjPlayback(interval))
-          this.djPlaybackFrom = to;
-        else if (stopping) pending.push(interval);
-      }
+    if (!playback) return;
+    const to = Math.floor(
+      Math.min(at, playback.startedAt + playback.durationMs),
+    );
+    for (const id of members) {
+      const from = this.playbackFrom.get(id);
+      if (stopping) this.playbackFrom.delete(id);
+      if (from === undefined || from >= to) continue;
+      if (!stopping) this.playbackFrom.set(id, to);
+      const awarded = this.db.recordRoomPlayback(id, from, to);
+      if (awarded) this.onPointsAwarded(id, awarded);
     }
-    if (stopping) this.djPlaybackFrom = undefined;
   }
   checkpoint(): void {
     if (this.closed) return;
     const now = Date.now();
-    this.settleDjPlayback(now);
+    this.settlePlayback(now);
     if (!this.options.roomId) return;
     const checkpoint = this.captureCheckpoint(now);
     const serialized = JSON.stringify(checkpoint);
@@ -423,7 +405,7 @@ export class Room {
     if (this.closed || (connectionId && !this.isCurrent(id, connectionId)))
       return Promise.resolve();
     const current = this.playback?.djId === id || this.pendingDj === id;
-    if (this.playback?.djId === id) this.settleDjPlayback(Date.now(), true);
+    this.settlePlayback(Date.now(), true, [id]);
     clearTimeout(this.grace.get(id)?.timer);
     this.grace.delete(id);
     this.connections.delete(id);
@@ -488,6 +470,7 @@ export class Room {
     if (this.closed) throw new Error('房间已关闭');
     if (!this.users.has(guest.id) && this.users.size >= ROOM_CAPACITY)
       throw new Error('房间已满');
+    const now = Date.now();
     const previous = this.connections.get(guest.id);
     this.connections.set(guest.id, connection);
     if (previous && previous.id !== connection.id) previous.replaced();
@@ -497,7 +480,6 @@ export class Room {
     if (existing) Object.assign(existing, guest, { connected: true });
     else {
       const { x, y } = this.spawnPosition();
-      const now = Date.now();
       this.users.set(guest.id, {
         ...guest,
         x,
@@ -515,7 +497,7 @@ export class Room {
     const resume =
       this.waitingForReconnect && !this.playback && this.stage.length;
     this.waitingForReconnect = false;
-    if (this.playback?.djId === guest.id) this.djPlaybackFrom ??= Date.now();
+    if (this.playback && !previous) this.playbackFrom.set(guest.id, now);
     this.checkpoint();
     this.publish();
     if (resume) void this.advance().catch(() => {});
@@ -537,7 +519,7 @@ export class Room {
     if (this.closed) return;
     if (this.connections.get(id)?.id !== connectionId) return;
     const now = Date.now();
-    if (this.playback?.djId === id) this.settleDjPlayback(now, true);
+    this.settlePlayback(now, true, [id]);
     this.connections.delete(id);
     const user = this.users.get(id);
     if (!user) return;
@@ -765,10 +747,12 @@ export class Room {
       if (kind === 'like') {
         if (playback.djId === id) throw new Error('不能给自己点赞');
         if (this.roundLikes.has(id)) return;
-        const awarded = this.db.awardDailyLike(playback.djId);
+        const awarded = this.db.awardDailyLike(id, playback.djId);
         this.roundLikes.add(id);
         this.onTrackReaction({ roundId, userId: id, kind });
-        if (awarded) this.onPointsAwarded(playback.djId, awarded, 'like');
+        if (awarded.giver) this.onPointsAwarded(id, awarded.giver, 'like_sent');
+        if (awarded.receiver)
+          this.onPointsAwarded(playback.djId, awarded.receiver, 'like');
       } else {
         if (this.roundVotes.has(id)) return;
         this.roundVotes.add(id);
@@ -822,7 +806,7 @@ export class Room {
           : positionMs;
       const now = Date.now();
       if (target <= Math.max(0, now - playback.startedAt)) return;
-      this.settleDjPlayback(now);
+      this.settlePlayback(now);
       this.playback = { ...playback, startedAt: now - target };
       this.schedulePlaybackEnd(this.playback, playback.durationMs - target);
       this.checkpoint();
@@ -856,7 +840,7 @@ export class Room {
     this.invalidateResolution();
     const generation = this.resolutionGeneration;
     clearTimeout(this.timer);
-    this.settleDjPlayback(endedAt ?? Date.now(), true);
+    this.settlePlayback(endedAt ?? Date.now(), true);
     if (this.playback && endedAt !== undefined) {
       this.failedMedia.clear();
       this.finishPlayback(this.playback, endedAt);
@@ -949,7 +933,8 @@ export class Room {
           );
           if (checkpoint) this.lastCheckpoint = JSON.stringify(checkpoint);
           this.playback = playback;
-          if (this.connections.has(id)) this.djPlaybackFrom = startedAt;
+          for (const memberId of this.connections.keys())
+            this.playbackFrom.set(memberId, startedAt);
         } catch (error) {
           if (this.closed || generation !== this.resolutionGeneration) return;
           this.pendingDj = null;
@@ -1009,7 +994,7 @@ export class Room {
   }
   close() {
     if (this.closed) return;
-    this.settleDjPlayback(Date.now(), true);
+    this.settlePlayback(Date.now(), true);
     this.closed = true;
     this.invalidateResolution();
     clearTimeout(this.timer);

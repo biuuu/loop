@@ -220,7 +220,7 @@ textarea {
   display: grid;
   gap: 5px;
   margin-top: 12px;
-  padding: 12px 14px;
+  padding: 5px 10px 12px 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #f7f4ea;
@@ -234,7 +234,7 @@ textarea {
   color: var(--ink);
   font-size: 14px;
 }
-.wardrobe-points .lucide {
+.wardrobe-points strong .lucide {
   width: 16px;
   height: 16px;
   color: var(--sage);

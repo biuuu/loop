@@ -52,6 +52,7 @@ export class RoomRegistry {
     }
     this.checkpointTimer = setInterval(() => {
       for (const room of this.live.values()) room.checkpoint();
+      this.db.retryPendingPlayback(this.notifyPoints);
     }, ROOM_CHECKPOINT_INTERVAL_MS);
     this.checkpointTimer.unref();
   }
@@ -95,21 +96,7 @@ export class RoomRegistry {
       if (current?.roomId === id && room!.isCurrent(userId, current.socket.id))
         current.socket.emit('playlist:reordered', state);
     };
-    room.onPointsAwarded = (userId, awarded, source) => {
-      const current = this.active.get(userId);
-      if (current?.roomId !== id || !room!.isCurrent(userId, current.socket.id))
-        return;
-      try {
-        const payload: PointsAwarded = {
-          points: this.db.points(userId),
-          awarded,
-          ...(source ? { source } : {}),
-        };
-        current.socket.emit('points:awarded', payload);
-      } catch (error) {
-        console.error('Failed to notify account of points award', error);
-      }
-    };
+    room.onPointsAwarded = this.notifyPoints;
     room.onEmpty = () => {
       if (
         this.singleRoom === room ||
@@ -124,6 +111,25 @@ export class RoomRegistry {
     };
     return room;
   }
+  private notifyPoints = (
+    userId: string,
+    awarded: number,
+    source?: PointsAwarded['source'],
+  ) => {
+    const current = this.active.get(userId);
+    if (!current || !this.isCurrent(current.roomId, userId, current.socket.id))
+      return;
+    try {
+      const payload: PointsAwarded = {
+        points: this.db.points(userId),
+        awarded,
+        ...(source ? { source } : {}),
+      };
+      current.socket.emit('points:awarded', payload);
+    } catch (error) {
+      console.error('Failed to notify account of points award', error);
+    }
+  };
   private scoped<T extends object>(
     id: string,
     value: T,
@@ -345,6 +351,7 @@ export class RoomRegistry {
     if (!this.options.singleRoom)
       for (const room of this.live.values()) room.checkpoint();
     for (const room of this.live.values()) room.close();
+    this.db.retryPendingPlayback(this.notifyPoints);
     this.live.clear();
     this.active.clear();
   }

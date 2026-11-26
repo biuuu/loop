@@ -11,6 +11,7 @@ import {
   type RoomInfo,
 } from '../shared/contracts';
 import NeteaseUserSearch from './NeteaseUserSearch.vue';
+import PointsRules from './PointsRules.vue';
 import { useRoom } from './room';
 const emit = defineEmits<{
   close: [];
@@ -263,23 +264,28 @@ function logout(all = false) {
           下次可在 {{ nicknameTimeFormat.format(nicknameWaitUntil) }} 修改昵称。
         </p>
         <div class="account-points">
-          <Coins aria-hidden="true" />
-          <span>积分</span>
-          <strong v-if="room.points">{{ room.points.balance }}</strong>
-          <span v-else-if="pointsStatus === 'loading'" role="status"
-            >加载中…</span
-          >
-          <span v-if="pointsStatus === 'failed'" role="status"
-            >暂时无法刷新</span
-          >
-          <button
-            v-if="pointsStatus === 'failed'"
-            type="button"
-            class="text-button"
-            @click="loadAccountPoints"
-          >
-            重试
-          </button>
+          <div class="account-points-heading">
+            <div class="account-points-balance">
+              <Coins aria-hidden="true" />
+              <span>积分</span>
+              <strong v-if="room.points">{{ room.points.balance }}</strong>
+              <span v-else-if="pointsStatus === 'loading'" role="status"
+                >加载中…</span
+              >
+              <span v-if="pointsStatus === 'failed'" role="status"
+                >暂时无法刷新</span
+              >
+              <button
+                v-if="pointsStatus === 'failed'"
+                type="button"
+                class="text-button"
+                @click="loadAccountPoints"
+              >
+                重试
+              </button>
+            </div>
+            <PointsRules />
+          </div>
         </div>
         <button
           type="button"
@@ -453,19 +459,27 @@ function logout(all = false) {
   flex: 0 0 auto;
 }
 .account-points {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
   margin-top: 14px;
-  padding: 9px 12px;
+  padding: 4px 8px 4px 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #f7f4ea;
   color: var(--muted);
   font-size: 13px;
 }
-.account-points svg {
+.account-points-heading,
+.account-points-balance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.account-points-heading {
+  position: relative;
+}
+.account-points-balance {
+  flex-wrap: wrap;
+}
+.account-points-balance svg {
   width: 16px;
   height: 16px;
   color: var(--sage);

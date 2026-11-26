@@ -198,7 +198,7 @@ test('development can use locked coats at zero balance without granting producti
   assert.equal((await equip()).statusCode, 403);
 });
 
-test('a daily award is delivered privately to its DJ without a room snapshot', async (context) => {
+test('a daily listening award reaches the earning listener without a room snapshot', async (context) => {
   let now = Date.UTC(2026, 10, 26, 12);
   context.mock.method(Date, 'now', () => now);
   const { app, db, room } = await createServer({
@@ -218,7 +218,7 @@ test('a daily award is delivered privately to its DJ without a room snapshot', a
   const dj = db.createGuest('DJ');
   const listener = db.createGuest('Listener');
   db.add(dj.guest.id, track);
-  db.recordDjPlayback(dj.guest.id, now - DAILY_DJ_THRESHOLD_MS, now);
+  db.recordDjPlayback(listener.guest.id, now - DAILY_DJ_THRESHOLD_MS, now);
   async function open(token: string) {
     const socket = connect(url, {
       autoConnect: false,
@@ -252,22 +252,25 @@ test('a daily award is delivered privately to its DJ without a room snapshot', a
   other.on('points:awarded', () => otherAwards++);
   other.on('room:snapshot', () => roomUpdates++);
   other.on('playback:updated', () => roomUpdates++);
-  const notification = socketEvent<PointsAwarded>(own, 'points:awarded');
+  const notification = socketEvent<PointsAwarded>(other, 'points:awarded');
   // Keep the real transport's ping deadline valid while the last millisecond accrues.
   now++;
   room.checkpoint();
   room.checkpoint();
   const award = await notification;
-  const synced = (await other
+  const synced = (await own
     .timeout(1000)
     .emitWithAck('room:sync')) as RoomSnapshot;
   assert.equal(award.awarded, 1);
+  assert.equal(award.source, undefined);
   assert.equal(award.points.balance, 6);
   assert.equal(award.points.daily.awarded, true);
-  assert.equal(ownAwards, 1);
-  assert.equal(otherAwards, 0);
+  assert.equal(ownAwards, 0);
+  assert.equal(otherAwards, 1);
   assert.equal(roomUpdates, 0);
-  const playingDj = synced.users.find(({ id }) => id === dj.guest.id);
-  assert.ok(playingDj);
-  assert.equal('points' in playingDj, false);
+  const listeningMember = synced.users.find(
+    ({ id }) => id === listener.guest.id,
+  );
+  assert.ok(listeningMember);
+  assert.equal('points' in listeningMember, false);
 });

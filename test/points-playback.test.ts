@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
+import { setImmediate as immediate } from 'node:timers/promises';
 import { Room } from '../src/server/room.js';
 import { Store } from '../src/server/db.js';
 import {
@@ -58,7 +59,7 @@ function setup(context: TestContext, start = Date.UTC(2026, 10, 26, 12)) {
   };
 }
 
-test('credits the current DJ at a checkpoint without counting queue time, resolution or seeks', async (context) => {
+test('credits the DJ and waiting members once without counting resolution or seeks', async (context) => {
   const { db, dj, other, roomId, tick, open, connect } = setup(context);
   let beginResolution!: () => void;
   const resolving = new Promise<void>((resolve) => {
@@ -83,6 +84,7 @@ test('credits the current DJ at a checkpoint without counting queue time, resolu
   tick(90_000);
   room.checkpoint();
   assert.equal(db.points(dj.id).daily.playedMs, 0);
+  assert.equal(db.points(other.id).daily.playedMs, 0);
   finishResolution();
   await join;
   await room.join(other.id, other.id);
@@ -92,27 +94,33 @@ test('credits the current DJ at a checkpoint without counting queue time, resolu
   tick(10_000);
   await room.seek(dj.id, { roundId, positionMs: 250_000 }, dj.id);
   assert.equal(db.points(dj.id).daily.playedMs, 10_000);
+  assert.equal(db.points(other.id).daily.playedMs, 10_000);
   tick(170_000);
   room.checkpoint();
   assert.equal(db.points(dj.id).daily.playedMs, 180_000);
   assert.equal(db.points(dj.id).balance, 5);
+  assert.equal(db.points(other.id).balance, 5);
   tick(1);
   const revision = room.snapshot().revision;
   room.checkpoint();
   room.checkpoint();
   assert.equal(room.snapshot().revision, revision);
   assert.equal(db.points(dj.id).balance, 6);
-  assert.equal(db.points(other.id).daily.playedMs, 0);
+  assert.equal(db.points(other.id).balance, 6);
   assert.deepEqual(
     awarded.mock.calls.map(({ arguments: args }) => args),
-    [[dj.id, 1]],
+    [
+      [dj.id, 1],
+      [other.id, 1],
+    ],
   );
 
   await room.skip(dj.id, { roundId }, dj.id);
   assert.equal(room.snapshot().playback?.djId, other.id);
   tick(15_000);
   await room.leave(other.id, other.id);
-  assert.equal(db.points(other.id).daily.playedMs, 15_000);
+  assert.equal(db.points(other.id).daily.playedMs, 180_001);
+  assert.equal(awarded.mock.callCount(), 2);
 });
 
 test('credits time across rooms and midnight while excluding the disconnect gap', async (context) => {
@@ -141,9 +149,10 @@ test('credits time across rooms and midnight while excluding the disconnect gap'
 });
 
 test('room recovery resumes accrual after reconnection and stops at a media failure', async (context) => {
-  const { db, dj, tick, open, connect } = setup(context);
+  const { db, dj, other, tick, open, connect } = setup(context);
   const room = open();
   connect(room, dj);
+  connect(room, other);
   await room.join(dj.id, dj.id);
   tick(65_000);
   room.checkpoint();
@@ -156,6 +165,9 @@ test('room recovery resumes accrual after reconnection and stops at a media fail
   tick(10_000);
   restored.checkpoint();
   assert.equal(db.points(dj.id).daily.playedMs, 65_000);
+  assert.equal(db.points(other.id).daily.playedMs, 65_000);
+  connect(restored, other);
+  tick(5_000);
   connect(restored, dj);
   const { roundId } = restored.snapshot().playback!;
   assert.equal(roundId, saved.playback!.roundId);
@@ -165,10 +177,37 @@ test('room recovery resumes accrual after reconnection and stops at a media fail
   restored.checkpoint();
   assert.equal(restored.snapshot().playback, null);
   assert.equal(db.points(dj.id).daily.playedMs, 85_000);
+  assert.equal(db.points(other.id).daily.playedMs, 90_000);
   assert.equal(db.points(dj.id).balance, 5);
 });
 
-test('a failed settlement is retried without interrupting rotation or crediting past the song end', async (context) => {
+test('audience listening starts on entry and excludes time disconnected across socket replacements', async (context) => {
+  const { db, dj, other, tick, open, connect } = setup(context);
+  const room = open();
+  connect(room, dj);
+  await room.join(dj.id, dj.id);
+  tick(40_000);
+  connect(room, other);
+  assert.equal(db.points(other.id).daily.playedMs, 0);
+  tick(30_000);
+  connect(room, other, 'replacement');
+  room.disconnect(other.id, other.id);
+  tick(20_000);
+  room.disconnect(other.id, 'replacement');
+  assert.equal(db.points(other.id).daily.playedMs, 50_000);
+  room.disconnect(dj.id, dj.id);
+  tick(25_000);
+  room.checkpoint();
+  assert.equal(db.points(other.id).daily.playedMs, 50_000);
+  connect(room, other, 'reconnect');
+  tick(40_000);
+  await room.removeMember(other.id, 'reconnect');
+  assert.equal(db.points(other.id).daily.playedMs, 90_000);
+  assert.equal(db.points(dj.id).daily.playedMs, 90_000);
+});
+
+test('a failed settlement can retry after natural rotation without crediting past the song end', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
   const { db, dj, other, roomId, tick, open, connect } = setup(context);
   const room = open(roomId, {
     ...music,
@@ -183,20 +222,66 @@ test('a failed settlement is retried without interrupting rotation or crediting 
   await room.join(other.id, other.id);
   const log = context.mock.method(console, 'error', () => {});
   const record = db.recordDjPlayback.bind(db);
-  const writes = context.mock.method(
+  let fail = true;
+  context.mock.method(
     db,
     'recordDjPlayback',
     (id: string, from: number, to: number) => {
-      if (log.mock.callCount() === 0)
-        throw new Error('temporary SQLite failure');
+      if (fail && id === dj.id) throw new Error('temporary SQLite failure');
       return record(id, from, to);
     },
   );
   tick(150_000);
-  await room.skip(dj.id, { roundId: room.snapshot().playback!.roundId }, dj.id);
+  context.mock.timers.tick(45_000);
+  await immediate();
   assert.equal(log.mock.callCount(), 1);
-  assert.equal(writes.mock.callCount(), 2);
   assert.equal(room.snapshot().playback?.djId, other.id);
+  assert.equal(db.points(dj.id).daily.playedMs, 0);
+  assert.equal(db.points(other.id).daily.playedMs, 45_000);
+  fail = false;
+  db.retryPendingPlayback(room.onPointsAwarded);
   assert.equal(db.points(dj.id).daily.playedMs, 45_000);
+  assert.equal(db.points(other.id).daily.playedMs, 45_000);
+});
+
+test('a listening interval from a former room is retried before a newer room contributes time', async (context) => {
+  const { db, dj, other, tick, open, connect } = setup(context);
+  const old = open();
+  connect(old, dj);
+  connect(old, other);
+  await old.join(dj.id, dj.id);
+  const log = context.mock.method(console, 'error', () => {});
+  const record = db.recordDjPlayback.bind(db);
+  let fail = true;
+  context.mock.method(
+    db,
+    'recordDjPlayback',
+    (id: string, from: number, to: number) => {
+      if (fail && id === other.id) throw new Error('temporary SQLite failure');
+      return record(id, from, to);
+    },
+  );
+  tick(40_000);
+  await old.removeMember(other.id);
+  assert.equal(db.points(dj.id).daily.playedMs, 40_000);
   assert.equal(db.points(other.id).daily.playedMs, 0);
+  old.close();
+
+  tick(5_000);
+  const next = open(db.createRoom(other.id, 'Next points room', 'cozy').id);
+  connect(next, other);
+  await next.join(other.id, other.id);
+  tick(90_000);
+  next.checkpoint();
+  assert.equal(log.mock.callCount(), 2);
+  assert.equal(db.points(other.id).daily.playedMs, 0);
+
+  fail = false;
+  tick(50_000);
+  next.checkpoint();
+  assert.equal(db.points(other.id).daily.playedMs, 180_000);
+  assert.equal(db.points(other.id).balance, 5);
+  tick(1);
+  next.checkpoint();
+  assert.equal(db.points(other.id).balance, 6);
 });

@@ -107,12 +107,61 @@ test('accepts only current members and rounds, recording each reaction once with
   });
   assert.deepEqual(
     award.mock.calls.map((call) => call.arguments),
-    [[dj.id, 1, 'like']],
+    [
+      [listener.id, 1, 'like_sent'],
+      [dj.id, 1, 'like'],
+      [other.id, 1, 'like_sent'],
+    ],
   );
   assert.equal(db.points(dj.id).balance, 6);
-  assert.equal(db.points(listener.id).balance, 5);
+  assert.equal(db.points(listener.id).balance, 6);
   assert.equal(snapshots.mock.callCount(), 0);
   assert.equal(playback.mock.callCount(), 0);
+});
+
+test('giving and receiving share one daily reward for each account', async (context) => {
+  const { db, room, dj, nextDj, listener, other, roundId } =
+    await fixture(context);
+  db.add(listener.id, track);
+  await room.join(listener.id, listener.id);
+  await room.react(listener.id, { roundId, kind: 'like' }, listener.id);
+  await room.skip(dj.id, { roundId }, dj.id);
+  const nextRoundId = room.snapshot().playback!.roundId;
+  await room.react(dj.id, { roundId: nextRoundId, kind: 'like' }, dj.id);
+  assert.equal(db.points(dj.id).balance, 6);
+  assert.equal(db.points(nextDj.id).balance, 6);
+
+  await room.skip(nextDj.id, { roundId: nextRoundId }, nextDj.id);
+  const listenerRoundId = room.snapshot().playback!.roundId;
+  await room.react(
+    other.id,
+    { roundId: listenerRoundId, kind: 'like' },
+    other.id,
+  );
+  assert.equal(db.points(listener.id).balance, 6);
+  assert.equal(db.points(other.id).balance, 6);
+});
+
+test('a failure awarding the receiver also rolls back the giver and leaves the like retryable', async (context) => {
+  const { db, room, dj, listener, roundId, reactions } = await fixture(context);
+  db.sql.exec(`CREATE TRIGGER reject_like BEFORE INSERT ON points_ledger
+    WHEN NEW.source = 'daily_like' AND NEW.guest_id = (SELECT id FROM guests WHERE nickname = 'DJ')
+    BEGIN SELECT RAISE(ABORT,'forced like failure'); END`);
+  const like = { roundId, kind: 'like' } as const;
+  await assert.rejects(
+    room.react(listener.id, like, listener.id),
+    /forced like failure/,
+  );
+  assert.equal(db.points(listener.id).balance, 5);
+  assert.equal(db.points(dj.id).balance, 5);
+  assert.equal(room.snapshot().reactions, undefined);
+  assert.equal(reactions.length, 0);
+
+  db.sql.exec('DROP TRIGGER reject_like');
+  await room.react(listener.id, like, listener.id);
+  assert.equal(db.points(listener.id).balance, 6);
+  assert.equal(db.points(dj.id).balance, 6);
+  assert.deepEqual(reactions, [{ ...like, userId: listener.id }]);
 });
 
 test('a strict online majority includes the DJ and clears reactions on normal rotation', async (context) => {
@@ -185,7 +234,6 @@ test('the like reward survives restart and resets at Beijing midnight independen
   let db = new Store(path);
   const dj = db.createGuest('DJ').guest;
   const listener = db.createGuest('Listener').guest;
-  const other = db.createGuest('Other listener').guest;
   const roomId = db.createRoom(dj.id, 'Reaction room', 'cozy').id;
   let room = new Room(db, music, { roomId });
   context.after(() => {
@@ -203,6 +251,7 @@ test('the like reward survives restart and resets at Beijing midnight independen
   } as const;
   await room.react(listener.id, like, listener.id);
   assert.equal(db.points(dj.id).balance, 6);
+  assert.equal(db.points(listener.id).balance, 6);
   assert.equal(db.points(dj.id).daily.playedMs, 0);
   assert.equal(
     db.recordDjPlayback(dj.id, now - DAILY_DJ_THRESHOLD_MS - 1, now),
@@ -217,12 +266,19 @@ test('the like reward survives restart and resets at Beijing midnight independen
   room = new Room(db, music, { roomId });
   room.restoreCheckpoint(saved);
   assert.equal(room.snapshot().reactions, undefined);
-  for (const guest of [dj, listener, other]) enter(room, guest);
+  for (const guest of [dj, listener]) enter(room, guest);
   await room.react(listener.id, like, listener.id);
   assert.equal(db.points(dj.id).balance, 7);
+  assert.equal(db.points(listener.id).balance, 6);
   now = midnight;
-  await room.react(other.id, like, other.id);
+  await room.skip(dj.id, { roundId: like.roundId }, dj.id);
+  await room.react(
+    listener.id,
+    { ...like, roundId: room.snapshot().playback!.roundId },
+    listener.id,
+  );
   assert.equal(db.points(dj.id).balance, 8);
+  assert.equal(db.points(listener.id).balance, 7);
   assert.deepEqual(db.points(dj.id).daily, {
     date: '2026-11-27',
     playedMs: 0,
@@ -230,7 +286,7 @@ test('the like reward survives restart and resets at Beijing midnight independen
   });
 });
 
-test('Socket.IO scopes reactions to the current room and the like reward to the DJ', async (context) => {
+test('Socket.IO scopes reactions to the current room and sends each like reward privately', async (context) => {
   const { app, db } = await createServer({ dbPath: ':memory:', music });
   context.after(() => app.close());
   let url: string;
@@ -279,14 +335,16 @@ test('Socket.IO scopes reactions to the current room and the like reward to the 
   const snapshots = context.mock.fn();
   const roomEvents = context.mock.fn();
   const outsiderEvents = context.mock.fn();
-  const privateAwards = context.mock.fn();
-  const otherAwards = context.mock.fn();
+  const receiverAwards = context.mock.fn();
+  const giverAwards = context.mock.fn();
+  const outsiderAwards = context.mock.fn();
   viewer.on('room:snapshot', snapshots);
   viewer.on('playback:updated', snapshots);
   viewer.on('playback:reaction', roomEvents);
-  viewer.on('points:awarded', otherAwards);
+  viewer.on('points:awarded', giverAwards);
   elsewhere.on('playback:reaction', outsiderEvents);
-  own.on('points:awarded', privateAwards);
+  elsewhere.on('points:awarded', outsiderAwards);
+  own.on('points:awarded', receiverAwards);
 
   assert.equal(
     (await elsewhere.timeout(1000).emitWithAck('playback:react', like)).ok,
@@ -305,14 +363,26 @@ test('Socket.IO scopes reactions to the current room and the like reward to the 
   await elsewhere.timeout(1000).emitWithAck('room:sync');
   assert.equal(snapshots.mock.callCount(), 0);
   assert.equal(outsiderEvents.mock.callCount(), 0);
-  assert.equal(otherAwards.mock.callCount(), 0);
+  assert.equal(outsiderAwards.mock.callCount(), 0);
   assert.deepEqual(
     roomEvents.mock.calls.map((call) => call.arguments),
     [[{ ...like, roomId: room.id, userId: listener.guest.id }]],
   );
   assert.deepEqual(
-    privateAwards.mock.calls.map((call) => call.arguments),
+    receiverAwards.mock.calls.map((call) => call.arguments),
     [[{ source: 'like', awarded: 1, points: db.points(dj.guest.id) }]],
+  );
+  assert.deepEqual(
+    giverAwards.mock.calls.map((call) => call.arguments),
+    [
+      [
+        {
+          source: 'like_sent',
+          awarded: 1,
+          points: db.points(listener.guest.id),
+        },
+      ],
+    ],
   );
   assert.deepEqual(synced.reactions, {
     roundId: like.roundId,

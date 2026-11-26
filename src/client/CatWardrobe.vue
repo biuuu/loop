@@ -10,12 +10,9 @@ import {
   type CatAppearance,
   type CatPresetPattern,
 } from '../shared/appearance';
-import {
-  COAT_UNLOCK_COST,
-  DAILY_DJ_REWARD,
-  DAILY_DJ_THRESHOLD_MS,
-} from '../shared/points';
+import { COAT_UNLOCK_COST, DAILY_DJ_THRESHOLD_MS } from '../shared/points';
 import CatPreview from './CatPreview.vue';
+import PointsRules from './PointsRules.vue';
 import { useRoom } from './room';
 import { useTimedMessage } from './timed-message';
 
@@ -58,7 +55,7 @@ const appearanceActionLabel = computed(() => {
   if (appearanceAction.value?.kind === 'save') return '正在保存…';
   return lockedPreset.value ? `解锁 · ${COAT_UNLOCK_COST} 积分` : '保存外观';
 });
-const dailyPlayTime = computed(() =>
+const dailyListeningTime = computed(() =>
   Math.min(room.points?.daily.playedMs ?? 0, DAILY_DJ_THRESHOLD_MS),
 );
 const pointsLoading = ref(false);
@@ -267,32 +264,27 @@ function time(ms: number) {
           class="wardrobe-points"
           aria-label="积分"
         >
+          <div class="wardrobe-points-heading">
+            <strong v-if="room.points">
+              <Coins aria-hidden="true" />{{ room.points.balance }} 积分
+            </strong>
+            <p v-else-if="pointsLoading" role="status">正在加载积分…</p>
+            <PointsRules />
+          </div>
           <template v-if="room.points">
-            <strong
-              ><Coins aria-hidden="true" />{{
-                room.points.balance
-              }}
-              积分</strong
-            >
-            <p v-if="room.points.daily.awarded">今日放歌积分已领取</p>
+            <p v-if="room.points.daily.awarded">今日听歌与放歌积分已到账</p>
             <template v-else>
               <p>
-                今日放歌 {{ time(dailyPlayTime) }} /
+                今日听歌与放歌 {{ time(dailyListeningTime) }} /
                 {{ time(DAILY_DJ_THRESHOLD_MS) }}
               </p>
               <progress
-                :value="dailyPlayTime"
+                :value="dailyListeningTime"
                 :max="DAILY_DJ_THRESHOLD_MS"
-                aria-label="今日台上放歌时长"
+                aria-label="今日听歌与放歌累计时长"
               />
-              <p>
-                每天台上累计放歌超过
-                {{ DAILY_DJ_THRESHOLD_MS / 60_000 }} 分钟可得
-                {{ DAILY_DJ_REWARD }} 积分。
-              </p>
             </template>
           </template>
-          <p v-else-if="pointsLoading" role="status">正在加载积分…</p>
           <p v-if="pointsLoadFailed" role="status">
             积分加载失败。
             <button
@@ -430,6 +422,12 @@ function time(ms: number) {
 <style scoped>
 .wardrobe-over-account::backdrop {
   backdrop-filter: none;
+}
+.wardrobe-points-heading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .wardrobe-footer {
   flex: none;

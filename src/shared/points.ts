@@ -17,5 +17,5 @@ export interface PointsState {
 export interface PointsAwarded {
   points: PointsState;
   awarded: number;
-  source?: 'like';
+  source?: 'like' | 'like_sent';
 }

@@ -190,7 +190,7 @@ test('a delayed private award after midnight shows once while newer points stay 
   await load;
 
   receiveAward({ points: awarded, awarded: 1 });
-  assert.equal(room.pointsReward, '放歌获得 1 积分');
+  assert.equal(room.pointsReward, '累计听歌或放歌，获得 1 积分');
   assert.deepEqual(room.points, newest);
   room.pointsReward = '';
   receiveAward({ points: awarded, awarded: 1 });
@@ -203,6 +203,6 @@ test('a delayed private award after midnight shows once while newer points stay 
   assert.equal(room.points, null);
   await room.connect('second');
   transport.listeners('points:awarded')[0]!({ points: awarded, awarded: 1 });
-  assert.equal(room.pointsReward, '放歌获得 1 积分');
+  assert.equal(room.pointsReward, '累计听歌或放歌，获得 1 积分');
   assert.deepEqual(room.points, awarded);
 });

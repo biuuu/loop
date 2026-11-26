@@ -222,4 +222,11 @@ test('DJ can vote but cannot like their own song, and active bubbles update with
   receive('points:awarded', { points, awarded: 1, source: 'like' });
   assert.equal(room.points?.balance, 6);
   assert.equal(room.pointsReward, '收到点赞，获得 1 积分');
+  receive('points:awarded', {
+    points: { ...points, balance: 7, revision: 3 },
+    awarded: 1,
+    source: 'like_sent',
+  });
+  assert.equal(room.points?.balance, 7);
+  assert.equal(room.pointsReward, '给歌曲点赞，获得 1 积分');
 });

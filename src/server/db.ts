@@ -74,6 +74,7 @@ type GuestRow = {
 };
 type PlaylistSettings = Pick<PlaylistState, 'slot' | 'revision'>;
 type DailyDjRow = { playedMs: number; creditedThroughMs: number };
+type PlaybackInterval = { from: number; to: number };
 const readGuest = ({ id, nickname, coat, pattern }: GuestRow): Guest => ({
   id,
   nickname,
@@ -115,6 +116,7 @@ export class Store {
   readonly sql: Database.Database;
   private readonly guestAppearances: readonly CatAppearance[];
   private readonly pointsEnabled: boolean;
+  private readonly pendingPlayback = new Map<string, PlaybackInterval[]>();
   constructor(
     path = process.env.DATABASE_PATH || 'data/loop.sqlite',
     migrationsPath = resolve('migrations'),
@@ -363,6 +365,36 @@ export class Store {
       })
       .immediate();
   }
+  recordRoomPlayback(id: string, from: number, to: number): number {
+    const pending = this.pendingPlayback.get(id) ?? [];
+    const last = pending.at(-1);
+    if (last && last.to === from) last.to = to;
+    else pending.push({ from, to });
+    this.pendingPlayback.set(id, pending);
+    return this.retryRoomPlayback(id, pending);
+  }
+  retryPendingPlayback(onAward: (id: string, awarded: number) => void) {
+    for (const [id, pending] of this.pendingPlayback) {
+      const awarded = this.retryRoomPlayback(id, pending);
+      if (awarded) onAward(id, awarded);
+    }
+  }
+  private retryRoomPlayback(id: string, pending: PlaybackInterval[]): number {
+    let awarded = 0;
+    // The persisted cursor expects chronological intervals, even across rooms.
+    while (pending[0]) {
+      const { from, to } = pending[0];
+      try {
+        awarded += this.recordDjPlayback(id, from, to);
+      } catch (error) {
+        console.error('Failed to record room playback time', id, error);
+        return awarded;
+      }
+      pending.shift();
+    }
+    this.pendingPlayback.delete(id);
+    return awarded;
+  }
   recordDjPlayback(id: string, fromMs: number, toMs: number): number {
     if (
       !this.pointsEnabled ||
@@ -404,13 +436,18 @@ export class Store {
       })
       .immediate();
   }
-  awardDailyLike(id: string, now = Date.now()): number {
-    if (!this.pointsEnabled) return 0;
+  awardDailyLike(giverId: string, receiverId: string, now = Date.now()) {
+    if (!this.pointsEnabled) return { giver: 0, receiver: 0 };
     const { date } = beijingDay(now);
-    return (
+    const award = (id: string) =>
       this.insertPointsEntry(id, 'daily_like', date, DAILY_LIKE_REWARD) *
-      DAILY_LIKE_REWARD
-    );
+      DAILY_LIKE_REWARD;
+    return this.sql
+      .transaction(() => ({
+        giver: award(giverId),
+        receiver: award(receiverId),
+      }))
+      .immediate();
   }
   private pointsBalance(id: string): Pick<PointsState, 'balance' | 'revision'> {
     return this.sql

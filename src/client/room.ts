@@ -634,7 +634,9 @@ export const useRoom = defineStore('room', () => {
         pointsReward.value =
           source === 'like'
             ? `收到点赞，获得 ${awarded} 积分`
-            : `放歌获得 ${awarded} 积分`;
+            : source === 'like_sent'
+              ? `给歌曲点赞，获得 ${awarded} 积分`
+              : `累计听歌或放歌，获得 ${awarded} 积分`;
       },
     );
     active.on('playlist:reordered', (order) => {

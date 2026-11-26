@@ -297,6 +297,30 @@ test('DJ settlements split at Beijing midnight and persist progress and awards a
   }
 });
 
+test('a previously recorded received-like reward also covers giving a like that day', (context) => {
+  const db = new Store(':memory:');
+  context.after(() => db.close());
+  const legacy = db.createGuest('Previous recipient').guest;
+  const fresh = db.createGuest('New recipient').guest;
+  const { date } = db.points(legacy.id, firstDay).daily;
+  db.sql
+    .prepare(
+      `INSERT INTO points_ledger (guest_id,source,reference,delta)
+       VALUES (?,'daily_like',?,1)`,
+    )
+    .run(legacy.id, date);
+  assert.deepEqual(db.awardDailyLike(legacy.id, fresh.id, firstDay), {
+    giver: 0,
+    receiver: 1,
+  });
+  assert.deepEqual(db.awardDailyLike(fresh.id, legacy.id, firstDay), {
+    giver: 0,
+    receiver: 0,
+  });
+  assert.equal(db.points(legacy.id, firstDay).balance, INITIAL_POINTS + 1);
+  assert.equal(db.points(fresh.id, firstDay).balance, INITIAL_POINTS + 1);
+});
+
 test('a failure writing either half of a points change leaves it safe to retry', (context) => {
   const db = new Store(':memory:');
   context.after(() => db.close());
