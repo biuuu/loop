@@ -63,7 +63,7 @@ test('migration 19 defaults existing and new rooms to ten minutes and persists z
     db = undefined;
 
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 22);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 23);
     assert.equal(
       db.roomDetails(createdRoom.id)?.trackTimeLimitMinutes,
       DEFAULT_TRACK_TIME_LIMIT_MINUTES,

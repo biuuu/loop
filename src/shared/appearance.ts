@@ -46,8 +46,23 @@ export const CAT_APPEARANCE_PRESETS = [
   },
   {
     appearance: SEAL_POINT_APPEARANCE,
-    label: '海豹重点色',
+    label: '海豹色',
     swatch: 'linear-gradient(125deg, #785644 24%, #ad8361 44%, #f2e2c9 44%)',
+  },
+  {
+    appearance: { coat: 'gray', pattern: 'tabby_white' },
+    label: '狸花白',
+    swatch: 'linear-gradient(125deg, #665142 24%, #aa9983 52%, #fff6e8 52%)',
+  },
+  {
+    appearance: { coat: 'white', pattern: 'silver_shaded' },
+    label: '银渐层',
+    swatch: 'linear-gradient(125deg, #aeb5c2, #f7f5ef 65%)',
+  },
+  {
+    appearance: { coat: 'white', pattern: 'red_point' },
+    label: '红重点',
+    swatch: 'linear-gradient(125deg, #bf8554 24%, #d4a680 44%, #f8ead5 44%)',
   },
 ] as const;
 

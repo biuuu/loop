@@ -38,6 +38,9 @@ const CAT_PRESET_SCHEMA_VERSIONS: Record<CatPresetPattern, number> = {
   orange_white: 21,
   tortoiseshell: 21,
   seal_point: 22,
+  tabby_white: 23,
+  silver_shaded: 23,
+  red_point: 23,
 };
 const MIXABLE_CAT_APPEARANCES = CAT_COATS.flatMap(({ id: coat }) =>
   CAT_PATTERNS.map(({ id: pattern }) => ({ coat, pattern })),

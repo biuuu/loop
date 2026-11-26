@@ -28,17 +28,23 @@ for (const [previous, savedAppearance, supportedPresets] of [
     { coat: 'black', pattern: 'tortoiseshell' },
     ['calico', 'cow', 'orange_white', 'tortoiseshell'],
   ],
+  [
+    22,
+    SEAL_POINT_APPEARANCE,
+    ['calico', 'cow', 'orange_white', 'tortoiseshell', 'seal_point'],
+  ],
 ] as const) {
   test(`upgrading from migration ${previous} preserves guest and room data and enforces the fixed presets`, (context) => {
     const root = mkdtempSync(join(tmpdir(), 'loop-cat-presets-'));
     const dbPath = join(root, 'test.sqlite');
     const migrations = join(root, 'migrations');
     let db: Store | undefined;
-    // Select the last allowed appearance to check which presets each schema admits.
+    // Select from the end of the new-account pool to check each schema's presets.
+    let pickFromEnd = 1;
     const pickLast = context.mock.method(
       crypto,
       'randomInt',
-      (max: number) => max - 1,
+      (max: number) => max - pickFromEnd,
     );
     syncBuiltinESMExports();
     try {
@@ -97,16 +103,24 @@ for (const [previous, savedAppearance, supportedPresets] of [
       db = undefined;
 
       db = new Store(dbPath);
-      assert.equal(db.sql.pragma('user_version', { simple: true }), 22);
+      assert.equal(db.sql.pragma('user_version', { simple: true }), 23);
       assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
       assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
       assert.deepEqual(readRows(db), before);
       assert.deepEqual(db.guest(owner.token)?.appearance, savedAppearance);
       assert.deepEqual(db.guest(other.token), other.guest);
-      assert.deepEqual(
-        db.createGuest('Random cat').guest.appearance,
-        SEAL_POINT_APPEARANCE,
-      );
+      for (const [index, appearance] of [
+        { coat: 'white', pattern: 'red_point' },
+        { coat: 'white', pattern: 'silver_shaded' },
+        { coat: 'gray', pattern: 'tabby_white' },
+      ].entries()) {
+        pickFromEnd = index + 1;
+        assert.deepEqual(
+          db.createGuest('Random cat').guest.appearance,
+          appearance,
+        );
+      }
+      pickFromEnd = 1;
       const updateNew = db.sql.prepare(update);
       const presetGuests: { token: string; guest: Guest }[] = [];
       for (const { appearance, label } of CAT_APPEARANCE_PRESETS) {

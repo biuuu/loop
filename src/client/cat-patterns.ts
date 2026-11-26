@@ -1,6 +1,8 @@
 import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
 import { CAT_COAT_PATCHES, type PresetFramePatterns } from './cat-coat-patches';
 import { CAT_SEAL_POINT_PATCHES } from './cat-seal-point';
+import { CAT_SILVER_SHADED_PATCHES } from './cat-silver-shaded';
+import { CAT_TABBY_WHITE_DETAILS } from './cat-tabby-white';
 
 export const CAT_CALICO_MARKINGS = { orange: 1, dark: 2 } as const;
 
@@ -22,11 +24,16 @@ export interface MaskPatch {
   readonly rows: readonly string[];
   readonly marking?: 1 | 2;
 }
-export interface FramePatterns extends PresetFramePatterns {
+interface BaseFramePatterns extends PresetFramePatterns {
   readonly socks: readonly MaskPatch[];
   readonly tabby: readonly MaskPatch[];
   readonly calico: readonly MaskPatch[];
   readonly seal_point: readonly MaskPatch[];
+}
+interface FramePatterns extends BaseFramePatterns {
+  readonly tabby_white: readonly MaskPatch[];
+  readonly silver_shaded: readonly MaskPatch[];
+  readonly red_point: readonly MaskPatch[];
 }
 
 const CALICO_EAR: MaskPatch = {
@@ -103,7 +110,7 @@ const CALICO_SLEEP_FLANK: MaskPatch = {
 
 // Coordinates are frame-local source pixels. Only the regions named here were
 // compared for reuse: blinking eyes, tail swings and sleep Zs lie outside them.
-const IDLE: Omit<FramePatterns, 'seal_point'> = {
+const IDLE: Omit<BaseFramePatterns, 'seal_point'> = {
   socks: [
     { part: 'bib', x: 28, y: 41, rows: ['.#..', '####', '.##.', '..#.'] },
     { part: 'frontPaw', x: 27, y: 45, rows: ['#..#', '#.##'] },
@@ -165,7 +172,7 @@ const FRONT_TABBY_HIGH: readonly MaskPatch[] = [
   { part: 'back', x: 29, y: 30, rows: ['###'] },
 ];
 // Front views show paw tips only; a bib here reads as a white mouth on the head.
-const FRONT_STANDING: FramePatterns = {
+const FRONT_STANDING: BaseFramePatterns = {
   socks: [{ part: 'frontPaw', x: 28, y: 43, rows: ['#...#', '#...#'] }],
   tabby: FRONT_TABBY_HIGH,
   calico: [CALICO_EAR, CALICO_TEMPLE],
@@ -190,7 +197,7 @@ const SLEEP_BIB: MaskPatch = {
   y: 44,
   rows: ['###', '.#.'],
 };
-const SLEEP_HIGH: FramePatterns = {
+const SLEEP_HIGH: BaseFramePatterns = {
   socks: [SLEEP_BIB, ...SLEEP_PAWS],
   tabby: [
     { part: 'forehead', x: 28, y: 38, rows: ['#.....#', '#.....#'] },
@@ -204,7 +211,7 @@ const SLEEP_HIGH: FramePatterns = {
   seal_point: CAT_SEAL_POINT_PATCHES.sleepHigh,
   ...CAT_COAT_PATCHES.sleep,
 };
-const SLEEP_LOW: FramePatterns = {
+const SLEEP_LOW: BaseFramePatterns = {
   socks: [SLEEP_BIB, ...SLEEP_PAWS],
   tabby: [
     { part: 'forehead', x: 28, y: 39, rows: ['#.....#', '#.....#'] },
@@ -219,8 +226,8 @@ const SLEEP_LOW: FramePatterns = {
   ...CAT_COAT_PATCHES.sleepLow,
 };
 
-export const CAT_PATTERN_PATCHES: Readonly<
-  Record<CatAnimation, readonly FramePatterns[]>
+const BASE_PATTERN_PATCHES: Readonly<
+  Record<CatAnimation, readonly BaseFramePatterns[]>
 > = {
   idle: CAT_SEAL_POINT_PATCHES.idle.map((seal_point) => ({
     ...IDLE,
@@ -364,6 +371,27 @@ export const CAT_PATTERN_PATCHES: Readonly<
     SLEEP_LOW,
   ],
 };
+
+function addCoatPresets(animation: CatAnimation): readonly FramePatterns[] {
+  return BASE_PATTERN_PATCHES[animation].map((patches, frame) => ({
+    ...patches,
+    red_point: patches.seal_point,
+    silver_shaded: CAT_SILVER_SHADED_PATCHES[animation][frame]!,
+    tabby_white: [
+      ...(CAT_TABBY_WHITE_DETAILS[animation]?.[frame] ?? []),
+      ...patches.tabby.filter((patch) => patch.part === 'back'),
+      ...patches.socks.map((patch) => ({ ...patch, marking: 2 as const })),
+    ],
+  }));
+}
+
+export const CAT_PATTERN_PATCHES = {
+  idle: addCoatPresets('idle'),
+  side: addCoatPresets('side'),
+  up: addCoatPresets('up'),
+  down: addCoatPresets('down'),
+  sleep: addCoatPresets('sleep'),
+} as const satisfies Record<CatAnimation, readonly FramePatterns[]>;
 
 const PARTS = new Set<MaskPatch['part']>([
   'bib',

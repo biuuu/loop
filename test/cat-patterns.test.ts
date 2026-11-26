@@ -29,6 +29,9 @@ const patternMarkings = {
   orange_white: [1],
   tortoiseshell: [1],
   seal_point: [1, 2],
+  tabby_white: [1, 2],
+  silver_shaded: [1],
+  red_point: [1, 2],
 } as const satisfies Record<CatPattern, readonly number[]>;
 const marked = (
   pattern: 'socks' | 'tabby',
@@ -98,6 +101,7 @@ test('all 41 source frames have bounded anatomical patches that select only actu
       frames++;
       for (const pattern of Object.keys(patternMarkings) as CatPattern[]) {
         const patches = CAT_PATTERN_PATCHES[animation][frame]![pattern];
+        const hasFaceMask = pattern === 'seal_point' || pattern === 'red_point';
         assert.ok(patches.length > 0);
         if (pattern === 'tortoiseshell')
           assert.equal(patches.length, animation === 'down' ? 1 : 2);
@@ -153,7 +157,7 @@ test('all 41 source frames have bounded anatomical patches that select only actu
             const isCoat =
               color === main ||
               color === shadow ||
-              (pattern === 'seal_point' && value === 2 && color === 0xffdeb1);
+              (hasFaceMask && value === 2 && color === 0xffdeb1);
             if (!value) {
               if (isCoat) remainingCoat++;
               continue;
@@ -173,16 +177,14 @@ test('all 41 source frames have bounded anatomical patches that select only actu
           }
         assert.deepEqual(
           [...markings].sort(),
-          pattern === 'seal_point' && animation === 'up'
-            ? [2]
-            : patternMarkings[pattern],
+          hasFaceMask && animation === 'up' ? [2] : patternMarkings[pattern],
           `${pattern}/${animation}/${frame} marking values`,
         );
         assert.ok(selected > 0 && remainingCoat > 0);
         // Front-facing point frames show mostly head, paws, and raised tail.
         if (
           pattern !== 'orange_white' &&
-          !(pattern === 'seal_point' && animation === 'down')
+          !(hasFaceMask && animation === 'down')
         ) {
           assert.ok(
             remainingCoat > selected,

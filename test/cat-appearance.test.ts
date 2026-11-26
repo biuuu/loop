@@ -160,6 +160,17 @@ test('each preset keeps its base and shades its spots across all poses while pre
     orange_white: { 1: [0xeda251, 0xd57836] },
     tortoiseshell: { 1: [0xa97a54, 0x8e6144] },
     seal_point: { 1: [0xad8361, 0x946a50], 2: [0x785644, 0x654637, 0x9b7055] },
+    tabby_white: { 1: [0x665142, 0x543e32], 2: [0xfff6e8, 0xe9decf] },
+    silver_shaded: { 1: [0xaeb5c2, 0x939dac] },
+    red_point: { 1: [0xd4a680, 0xbb8d63], 2: [0xbf8554, 0xa96a41, 0xd6a27a] },
+  };
+  const presetBodyColors: Partial<
+    Record<CatPresetPattern, readonly [number, number]>
+  > = {
+    seal_point: [0xf2e2c9, 0xdcc3a6],
+    tabby_white: [0xaa9983, 0x907b64],
+    silver_shaded: [0xf7f5ef, 0xdcdfe5],
+    red_point: [0xf8ead5, 0xe7d3b7],
   };
   for (const { appearance } of CAT_APPEARANCE_PRESETS) {
     const base = recolorCatPixels(original, {
@@ -168,6 +179,9 @@ test('each preset keeps its base and shades its spots across all poses while pre
     });
     const result = recolorCatPixels(original, appearance);
     const palette = palettes[appearance.pattern];
+    const bodyColors = presetBodyColors[appearance.pattern];
+    const hasFaceMask =
+      appearance.pattern === 'seal_point' || appearance.pattern === 'red_point';
     for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
       for (let frame = 0; frame < CAT_ANIMATIONS[animation].frames; frame++) {
         const mask = getPatternMask(appearance.pattern, animation, frame);
@@ -190,17 +204,14 @@ test('each preset keeps its base and shades its spots across all poses while pre
             if (mark) assert.ok(tones);
             const shade = color === 0xfb8c00 ? 0 : color === 0xef6c00 ? 1 : 2;
             const baseColor =
-              appearance.pattern === 'seal_point' && shade < 2
-                ? shade === 0
-                  ? 0xf2e2c9
-                  : 0xdcc3a6
-                : rgb(base, index);
+              (shade === 2 ? undefined : bodyColors?.[shade]) ??
+              rgb(base, index);
             assert.equal(rgb(result, index), tones?.[shade] ?? baseColor);
           }
         }
         assert.deepEqual(
           [...painted].sort(),
-          appearance.pattern === 'seal_point' && animation === 'up'
+          hasFaceMask && animation === 'up'
             ? [0, 2]
             : [0, ...Object.keys(palette).map(Number)],
           `${appearance.pattern}/${animation}/${frame}`,
@@ -256,6 +267,37 @@ test('seal point keeps the reviewed palette while following the tail, blinking, 
       color,
       `${animation}/${column}/${x},${y}`,
     );
+});
+
+test('the new coats keep distinct markings in the portrait and moving poses', () => {
+  const tabbyWhite = recolorCatPixels(original, {
+    coat: 'gray',
+    pattern: 'tabby_white',
+  });
+  const silver = recolorCatPixels(original, {
+    coat: 'white',
+    pattern: 'silver_shaded',
+  });
+  const redPoint = recolorCatPixels(original, {
+    coat: 'white',
+    pattern: 'red_point',
+  });
+
+  assert.equal(frameRgb(tabbyWhite, 'idle', 0, 27, 33), 0x665142);
+  assert.equal(frameRgb(tabbyWhite, 'idle', 0, 27, 46), 0xfff6e8);
+  assert.equal(frameRgb(tabbyWhite, 'side', 1, 31, 47), 0xfff6e8);
+  assert.equal(frameRgb(tabbyWhite, 'down', 1, 29, 40), 0xaa9983);
+  assert.equal(frameRgb(tabbyWhite, 'sleep', 2, 30, 44), 0xfff6e8);
+
+  assert.equal(frameRgb(silver, 'idle', 0, 26, 32), 0xaeb5c2);
+  assert.equal(frameRgb(silver, 'idle', 1, 44, 39), 0xaeb5c2);
+  assert.equal(frameRgb(silver, 'sleep', 2, 26, 37), 0xaeb5c2);
+  assert.equal(frameRgb(silver, 'sleep', 2, 26, 46), 0xf7f5ef);
+
+  assert.equal(frameRgb(redPoint, 'idle', 0, 29, 37), 0xd4a680);
+  assert.equal(frameRgb(redPoint, 'idle', 2, 47, 42), 0xbf8554);
+  assert.equal(frameRgb(redPoint, 'up', 3, 27, 50), 0xbf8554);
+  assert.equal(frameRgb(redPoint, 'sleep', 2, 29, 42), 0xd4a680);
 });
 
 test('pure black blends the connected outer contour while retaining open and blinking eyes', () => {

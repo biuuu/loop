@@ -68,9 +68,8 @@ const PALETTES = {
   CatAppearance['coat'],
   { main: number; shadow: number; light: number; stripe: number; ink: number }
 >;
-type SpotPalette = Readonly<
-  Partial<Record<number, { main: number; shadow: number; light?: number }>>
->;
+type FurColors = Readonly<{ main: number; shadow: number; light?: number }>;
+type SpotPalette = Readonly<Partial<Record<number, FurColors>>>;
 const SPOT_PALETTES = {
   socks: { 1: { main: 0xfff7e9, shadow: 0xe8dbc8 } },
   calico: {
@@ -84,8 +83,24 @@ const SPOT_PALETTES = {
     1: { main: 0xad8361, shadow: 0x946a50 },
     2: { main: 0x785644, shadow: 0x654637, light: 0x9b7055 },
   },
+  tabby_white: {
+    1: { main: 0x665142, shadow: 0x543e32 },
+    2: { main: 0xfff6e8, shadow: 0xe9decf },
+  },
+  silver_shaded: { 1: { main: 0xaeb5c2, shadow: 0x939dac } },
+  red_point: {
+    1: { main: 0xd4a680, shadow: 0xbb8d63 },
+    2: { main: 0xbf8554, shadow: 0xa96a41, light: 0xd6a27a },
+  },
 } satisfies Record<CatPresetPattern | 'socks', SpotPalette>;
-const SEAL_POINT_COAT = { ...PALETTES.cream, main: 0xf2e2c9, shadow: 0xdcc3a6 };
+const PRESET_BODY_COLORS: Readonly<
+  Partial<Record<CatAppearance['pattern'], FurColors>>
+> = {
+  seal_point: { main: 0xf2e2c9, shadow: 0xdcc3a6 },
+  tabby_white: { main: 0xaa9983, shadow: 0x907b64 },
+  silver_shaded: { main: 0xf7f5ef, shadow: 0xdcdfe5 },
+  red_point: { main: 0xf8ead5, shadow: 0xe7d3b7 },
+};
 
 // Separate the connected silhouette from enclosed facial details using the
 // untouched frame. Eight-way connections keep diagonal one-pixel contours intact.
@@ -154,10 +169,10 @@ export function recolorCatPixels(
   const result = new Uint8ClampedArray(pixels);
   if (appearance.coat === 'orange' && appearance.pattern === 'solid')
     return result;
-  const palette =
-    appearance.pattern === 'seal_point'
-      ? SEAL_POINT_COAT
-      : PALETTES[appearance.coat];
+  const palette = {
+    ...PALETTES[appearance.coat],
+    ...PRESET_BODY_COLORS[appearance.pattern],
+  };
   const spots: SpotPalette | undefined =
     appearance.pattern === 'solid'
       ? undefined
