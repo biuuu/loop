@@ -1,5 +1,4 @@
 import type { Playback } from '../shared/contracts';
-import { TRACK_LIKE_EFFECT_MS } from './track-reaction-effects';
 
 type NotePlayback = Pick<
   Playback,
@@ -9,6 +8,7 @@ type NotePlayback = Pick<
 export const DJ_NOTE_COUNT = 4;
 export const DJ_NOTE_LIFETIME_MS = 2400;
 export const DJ_NOTE_STAGGER_MS = DJ_NOTE_LIFETIME_MS / DJ_NOTE_COUNT;
+export const LIKE_NOTE_CYCLE_MS = 2400;
 
 // Follow the shared song timeline, independent of local audio/autoplay state.
 export function activeDjPlayback<T extends NotePlayback>(
@@ -41,18 +41,18 @@ export function likeNotePose(
   elapsedMs: number,
   reducedMotion = false,
 ): DjNotePose | undefined {
-  if (!(elapsedMs >= 0 && elapsedMs < TRACK_LIKE_EFFECT_MS)) return;
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return;
   if (reducedMotion)
     return { x: 32, y: -51, scale: 0.75, rotation: 0, alpha: 0.9 };
 
-  const progress = elapsedMs / TRACK_LIKE_EFFECT_MS;
+  const progress = (elapsedMs % LIKE_NOTE_CYCLE_MS) / LIKE_NOTE_CYCLE_MS;
   const travel = 1 - Math.pow(1 - progress, 1.5);
   return {
     x: 24 + travel * 34,
     y: -43 - travel * 22,
     scale: 0.62 + progress * 0.18,
     rotation: Math.sin(progress * Math.PI * 2) * 0.18,
-    alpha: 0.9 * Math.min(1, 0.3 + progress / 0.08, (1 - progress) / 0.3),
+    alpha: 0.26 + 0.64 * Math.min(1, progress / 0.12, (1 - progress) / 0.23),
   };
 }
 

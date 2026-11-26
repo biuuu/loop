@@ -5,10 +5,10 @@ import {
   DJ_NOTE_COUNT,
   DJ_NOTE_LIFETIME_MS,
   DJ_NOTE_STAGGER_MS,
+  LIKE_NOTE_CYCLE_MS,
   djNotePose,
   likeNotePose,
 } from '../src/client/dj-notes';
-import { TRACK_LIKE_EFFECT_MS } from '../src/client/track-reaction-effects';
 
 const playback = {
   djId: 'current-dj',
@@ -114,20 +114,24 @@ test('invalid pool indices or time cannot expose stray notes', () => {
     assert.equal(djNotePose(0, time).alpha, 0);
 });
 
-test('a like note drifts once above the cat and expires on its event clock', () => {
+test('one like note keeps drifting with a visible reset each cycle', () => {
   const start = likeNotePose(0)!;
-  const peak = likeNotePose(TRACK_LIKE_EFFECT_MS / 2)!;
-  const end = likeNotePose(TRACK_LIKE_EFFECT_MS - 1)!;
+  const peak = likeNotePose(LIKE_NOTE_CYCLE_MS / 2)!;
+  const end = likeNotePose(LIKE_NOTE_CYCLE_MS - 1)!;
   assert.ok(start.y < 0 && peak.y < start.y && end.y < peak.y);
   assert.ok(peak.x > start.x && end.x > peak.x);
-  assert.ok(peak.alpha > start.alpha && end.alpha < start.alpha);
-  for (const elapsed of [-1, TRACK_LIKE_EFFECT_MS, 10_000, NaN, Infinity])
+  assert.ok(
+    peak.alpha > start.alpha && end.alpha > 0 && end.alpha < peak.alpha,
+  );
+  assert.deepEqual(likeNotePose(LIKE_NOTE_CYCLE_MS), start);
+  assert.deepEqual(likeNotePose(LIKE_NOTE_CYCLE_MS * 51.5), peak);
+  for (const elapsed of [-1, NaN, Infinity])
     assert.equal(likeNotePose(elapsed), undefined);
 });
 
-test('a like note stays still for reduced motion and expires at the same time', () => {
+test('a like note stays visible and still for reduced motion across cycles', () => {
   const start = likeNotePose(0, true)!;
   assert.ok(start.y < 0 && start.alpha > 0);
-  assert.deepEqual(likeNotePose(TRACK_LIKE_EFFECT_MS - 1, true), start);
-  assert.equal(likeNotePose(TRACK_LIKE_EFFECT_MS, true), undefined);
+  assert.deepEqual(likeNotePose(LIKE_NOTE_CYCLE_MS - 1, true), start);
+  assert.deepEqual(likeNotePose(LIKE_NOTE_CYCLE_MS * 51.5, true), start);
 });

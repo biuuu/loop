@@ -373,6 +373,7 @@ const cats = new Map<
     label: Text;
     notes: { layer: Container; glyphs: Graphics[] };
     likeNote?: Graphics;
+    likeCycle?: { roundId: string; startedAt: number };
     fullLabel: string;
     facingRight: boolean;
     remoteMovement: ReturnType<typeof createRemoteMovement>;
@@ -671,6 +672,12 @@ onMounted(async () => {
     const drawFrame = () => {
       const localNow = Date.now();
       const now = localNow + room.offset;
+      const playback = room.snapshot?.playback;
+      const likeRoundId =
+        playback && now < playback.startedAt + playback.durationMs
+          ? playback.roundId
+          : undefined;
+      const likers = room.trackLikers;
       const users = (room.snapshot?.users || []).map((user) =>
         user.id === room.guest?.id ? room.renderParticipant(user, now) : user,
       );
@@ -733,7 +740,7 @@ onMounted(async () => {
         cat.body.pivot.y = frame.footY;
         cat.body.scale.set(frame.flipX ? -CAT_SCALE : CAT_SCALE, CAT_SCALE);
         cat.root.alpha = user.connected ? 1 : 0.45;
-        const playing = activeDjPlayback(user.id, room.snapshot?.playback, now);
+        const playing = activeDjPlayback(user.id, playback, now);
         cat.notes.layer.visible = playing !== null;
         if (playing) {
           // Allocate once, only when this cat first becomes the current DJ.
@@ -751,8 +758,12 @@ onMounted(async () => {
             );
           }
         }
-        const like = room.reactionFor(user.id, 'like', localNow);
-        if (like && !cat.likeNote) {
+        const likedRound =
+          user.connected && likers.has(user.id) ? likeRoundId : undefined;
+        if (!likedRound) cat.likeCycle = undefined;
+        else if (cat.likeCycle?.roundId !== likedRound)
+          cat.likeCycle = { roundId: likedRound, startedAt: localNow };
+        if (cat.likeCycle && !cat.likeNote) {
           cat.likeNote = makeDjNote(0, 0xc36f82);
           cat.likeNote.eventMode = 'none';
           cat.root.addChild(cat.likeNote);
@@ -760,7 +771,8 @@ onMounted(async () => {
         if (cat.likeNote)
           applyNotePose(
             cat.likeNote,
-            like && likeNotePose(localNow - like.receivedAt, reducedMotion),
+            cat.likeCycle &&
+              likeNotePose(localNow - cat.likeCycle.startedAt, reducedMotion),
           );
         const suffix = user.id === room.guest?.id ? ' · 你' : '';
         const fullLabel = `${user.nickname}${suffix}`;
@@ -775,7 +787,7 @@ onMounted(async () => {
             }
           }
         }
-        const vote = room.reactionFor(user.id, 'vote', localNow);
+        const vote = room.voteFor(user.id, localNow);
         let voteBubble = voteBubbles.get(user.id);
         if (vote) {
           if (!voteBubble) {

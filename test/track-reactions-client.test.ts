@@ -3,10 +3,7 @@ import test, { type TestContext } from 'node:test';
 import { createPinia, setActivePinia } from 'pinia';
 import { Socket } from 'socket.io-client';
 import { useRoom } from '../src/client/room';
-import {
-  TRACK_LIKE_EFFECT_MS,
-  TRACK_VOTE_EFFECT_MS,
-} from '../src/client/track-reaction-effects';
+import { TRACK_VOTE_EFFECT_MS } from '../src/client/track-reaction-effects';
 import type {
   Ack,
   Participant,
@@ -154,32 +151,35 @@ test('track reactions are confirmed once, scoped to the room and round, and fill
   sent[0]!.ack(new Error('late timeout'));
   assert.equal(room.error, '');
 
-  const like = room.reactionFor('a', 'like')!;
+  const like = room.latestReaction;
+  receive('playback:reaction', { ...ownLike });
   assert.equal(
-    room.reactionFor('a', 'like', like.receivedAt + TRACK_LIKE_EFFECT_MS - 1),
+    room.latestReaction,
     like,
+    'a duplicate never replays the sound',
   );
-  assert.equal(
-    room.reactionFor('a', 'like', like.receivedAt + TRACK_LIKE_EFFECT_MS),
-    undefined,
-  );
-  receive('playback:reaction', ownLike);
-  assert.equal(room.reactionFor('a', 'like'), undefined);
+  receive('playback:reaction', { ...ownLike, userId: 'b' });
   receive('room:snapshot', state);
-  assert.equal(room.likedTrack, true);
+  assert.deepEqual([...room.trackLikers], ['a', 'b']);
 
   disconnect();
   assert.equal(room.latestReaction, null);
+  assert.equal(room.trackLikers.size, 0);
   room.reactToTrack('vote');
   assert.equal(sent.length, 1);
   await room.connect('room');
   receive('room:snapshot', {
     ...state,
-    reactions: { roundId: 'first', likes: ['a'], votes: ['a'] },
+    reactions: { roundId: 'first', likes: ['a', 'b'], votes: ['a'] },
   });
   assert.equal(room.likedTrack, true);
+  assert.deepEqual([...room.trackLikers], ['a', 'b']);
   assert.equal(room.votedTrack, true);
   assert.equal(room.latestReaction, null);
+  receive('playback:updated', snapshot('first', 2));
+  assert.deepEqual([...room.trackLikers], ['a', 'b']);
+  receive('playback:updated', snapshot('second', 3));
+  assert.equal(room.trackLikers.size, 0);
 });
 
 test('DJ can vote but cannot like their own song, and active bubbles update without replaying after rotation', async (context) => {
@@ -196,20 +196,20 @@ test('DJ can vote but cannot like their own song, and active bubbles update with
     total: 3,
   } as const;
   receive('playback:reaction', vote);
-  assert.equal(room.reactionFor('a', 'vote')?.votes, 1);
+  assert.equal(room.voteFor('a')?.votes, 1);
   room.reactToTrack('vote');
   assert.deepEqual(sent[0]?.payload, { kind: 'vote', roundId: 'first' });
   receive('playback:reaction', { ...vote, userId: 'dj', votes: 2 });
   assert.equal(room.votedTrack, true);
-  assert.equal(room.reactionFor('a', 'vote')?.votes, 2);
+  assert.equal(room.voteFor('a')?.votes, 2);
   receive('playback:updated', snapshot('second', 2));
   assert.equal(room.votedTrack, false);
-  const bubble = room.reactionFor('dj', 'vote')!;
+  const bubble = room.voteFor('dj')!;
   assert.equal(bubble.votes, 2);
   receive('playback:reaction', { ...vote, userId: 'b' });
-  assert.equal(room.reactionFor('b', 'vote'), undefined);
+  assert.equal(room.voteFor('b'), undefined);
   assert.equal(
-    room.reactionFor('dj', 'vote', bubble.receivedAt + TRACK_VOTE_EFFECT_MS),
+    room.voteFor('dj', bubble.receivedAt + TRACK_VOTE_EFFECT_MS),
     undefined,
   );
 

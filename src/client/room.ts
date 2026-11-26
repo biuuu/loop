@@ -5,7 +5,7 @@ import { io, type Socket } from 'socket.io-client';
 import { createMovementScheduler } from './movement-scheduler';
 import { createLocalMovement } from './local-movement';
 import { createRoomEmotes } from './room-emotes';
-import { createTrackReactionEffects } from './track-reaction-effects';
+import { createTrackVoteEffects } from './track-reaction-effects';
 import { emoteCatalog, emoteUrl, loadEmoteCatalog } from './emote-catalog';
 import { createPlaylistReceiver, swapPlaylistTracks } from './playlist-view';
 import type { Direction } from './keyboard-movement';
@@ -133,7 +133,7 @@ export const useRoom = defineStore('room', () => {
   let identityRequest = 0;
   let authRequest = 0;
   const localEmotes = createRoomEmotes();
-  const localReactions = createTrackReactionEffects();
+  const localVotes = createTrackVoteEffects();
   const latestReaction = shallowRef<TrackReaction | null>(null);
   const acceptedReactions = shallowRef<TrackReactionState | null>(null);
   const pendingReaction = shallowRef<{
@@ -154,7 +154,7 @@ export const useRoom = defineStore('room', () => {
     stagePending.value = false;
     emoteGeneration++;
     localEmotes.clear();
-    localReactions.clear();
+    localVotes.clear();
     latestReaction.value = null;
     acceptedReactions.value = null;
     pendingReaction.value = null;
@@ -162,12 +162,8 @@ export const useRoom = defineStore('room', () => {
   function emoteFor(userId: string, now = Date.now()) {
     return localEmotes.get(userId, now);
   }
-  function reactionFor<Kind extends TrackReactionKind>(
-    userId: string,
-    kind: Kind,
-    now = Date.now(),
-  ) {
-    return localReactions.get(userId, kind, now);
+  function voteFor(userId: string, now = Date.now()) {
+    return localVotes.get(userId, now);
   }
   function reactionIds(kind: TrackReactionKind) {
     const state = acceptedReactions.value;
@@ -175,8 +171,11 @@ export const useRoom = defineStore('room', () => {
       return [];
     return kind === 'like' ? state.likes : state.votes;
   }
+  const trackLikers = computed<ReadonlySet<string>>(
+    () => new Set(reactionIds('like')),
+  );
   const likedTrack = computed(
-    () => !!guest.value && reactionIds('like').includes(guest.value.id),
+    () => !!guest.value && trackLikers.value.has(guest.value.id),
   );
   const votedTrack = computed(
     () => !!guest.value && reactionIds('vote').includes(guest.value.id),
@@ -310,10 +309,10 @@ export const useRoom = defineStore('room', () => {
         state.users.filter((user) => user.connected).map((user) => user.id),
       );
       localEmotes.retain(connected);
-      localReactions.retain(connected);
+      localVotes.retain(connected);
       receiveReactionState(state);
       if (state.playback)
-        localReactions.updateVoteCounts(
+        localVotes.updateVoteCounts(
           state.playback.roundId,
           reactionIds('vote').filter((id) => connected.has(id)).length,
           connected.size,
@@ -598,13 +597,10 @@ export const useRoom = defineStore('room', () => {
         ...state,
         [key]: [...state[key], event.userId],
       };
-      localReactions.receive(event, Date.now());
-      if (event.kind === 'vote')
-        localReactions.updateVoteCounts(
-          event.roundId,
-          event.votes,
-          event.total,
-        );
+      if (event.kind === 'vote') {
+        localVotes.receive(event, Date.now());
+        localVotes.updateVoteCounts(event.roundId, event.votes, event.total);
+      }
       latestReaction.value = event;
       const pending = pendingReaction.value;
       if (
@@ -1269,8 +1265,9 @@ export const useRoom = defineStore('room', () => {
     renderParticipant,
     emoteFor,
     emote,
-    reactionFor,
+    voteFor,
     latestReaction,
+    trackLikers,
     likedTrack,
     votedTrack,
     reactionPending,
