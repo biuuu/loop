@@ -50,9 +50,7 @@ const REAR_CROWN = [
   patch('ear', dark, 31, 33, ['..##.', '.###.', '.###.', '..###', '...##']),
 ];
 
-const FRONT_SHOULDER = patch('flank', orange, 27, 41, ['##.', '.##', '.#.']);
 const IDLE_BODY = [
-  FRONT_SHOULDER,
   patch('flank', dark, 32, 42, [
     '..#....',
     '.###...',
@@ -63,7 +61,6 @@ const IDLE_BODY = [
 ];
 const SIDE = [
   ...FACE,
-  FRONT_SHOULDER,
   patch('flank', dark, 32, 41, [
     '...#....',
     '.#####..',
@@ -85,7 +82,6 @@ const REAR_BODY = [
   ]),
 ];
 const SLEEP_BODY = [
-  patch('flank', orange, 27, 44, ['##', '#.']),
   patch('flank', dark, 33, 43, ['....##', '...###', '..####', '...##.']),
 ];
 

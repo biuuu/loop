@@ -275,7 +275,7 @@ test('new preset caps follow pose height while back markings follow the visible 
   }
 });
 
-test('calico keeps a white blaze between the two colored cheeks and a white chest between the flank patches', () => {
+test('calico keeps a white blaze, chest, and front legs below the colored cheeks', () => {
   const frame = CAT_IDLE_UP_COLUMN;
   const { orange, dark } = CAT_CALICO_MARKINGS;
   assert.equal(calicoMarking('idle', frame, 33, 32), orange);
@@ -286,13 +286,15 @@ test('calico keeps a white blaze between the two colored cheeks and a white ches
   assert.equal(calicoMarking('idle', frame, 25, 38), dark);
   assert.equal(calicoMarking('idle', frame, 26, 38), orange);
   assert.equal(calicoMarking('idle', frame, 34, 39), orange);
-  assert.equal(calicoMarking('idle', frame, 28, 43), orange);
   assert.equal(calicoMarking('idle', frame, 35, 45), dark);
   for (const [x, y] of [
     [29, 35],
     [30, 36],
     [29, 38],
     [30, 39],
+    [27, 41],
+    [29, 42],
+    [28, 43],
     [31, 43],
     [28, 44],
     [32, 44],
@@ -333,7 +335,8 @@ test('calico patches follow the ear in all walking directions and breathing pose
   }
   for (const [frame, ear] of poses[0].ears.entries()) {
     assert.equal(calicoMarking('side', frame, 35, ear + 14), dark);
-    assert.equal(calicoMarking('side', frame, 28, ear + 11), orange);
+    assert.equal(calicoMarking('side', frame, 26, ear + 7), orange);
+    assert.equal(calicoMarking('side', frame, 28, ear + 11), 0);
     assert.equal(calicoMarking('side', frame, 28, ear + 13), 0);
     assert.equal(calicoMarking('side', frame, 34, ear + 16), 0);
   }
@@ -347,7 +350,8 @@ test('calico patches follow the ear in all walking directions and breathing pose
   for (const [frame, ear] of poses[3].ears.entries()) {
     assert.equal(calicoMarking('sleep', frame, 26, ear + 4), dark);
     assert.equal(calicoMarking('sleep', frame, 37, 44), dark);
-    assert.equal(calicoMarking('sleep', frame, 27, 44), orange);
+    assert.equal(calicoMarking('sleep', frame, 26, ear + 7), orange);
+    assert.equal(calicoMarking('sleep', frame, 27, 44), 0);
     assert.equal(calicoMarking('sleep', frame, 27, 46), 0);
     assert.equal(calicoMarking('sleep', frame, 30, 46), 0);
   }

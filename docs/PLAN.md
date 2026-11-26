@@ -36,7 +36,7 @@
 - Add a selectable calico preset with a warm ivory base and irregular orange and dark patches that follow each pose.
 - Refresh the calico palette using the user's pixel-art reference: a near-white warm base, golden orange and muted gray-brown.
 - Use the same reference to enlarge calico markings on the face and body and alternate gold and gray-brown bands along the tail.
-- After visual review, retain the larger gray-brown cheek patch and slightly reduced gray-brown body patch. Keep the alternating tail bands and taper the golden-orange marking around the foreleg.
+- After visual review, retain the larger gray-brown cheek patch and slightly reduced gray-brown body patch. Keep the orange markings on the face and the alternating tail bands. Remove the orange patch by the forelegs, leaving warm white fur there.
 - Add cow-pattern and orange-and-white presets with distinct coat markings across the same poses.
 - Retire tortoiseshell and move pure black from the basic colors to a special black-cat preset. Adjust the black cat's eye color.
 - Use the same warm white fur tones for calico, cow-pattern and orange-and-white.
