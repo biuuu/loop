@@ -777,6 +777,9 @@ export async function createServer(
       room.mediaFailed(guest.id, payload, socket.id),
     );
     bind('playback:seek', (payload) => room.seek(guest.id, payload, socket.id));
+    bind('playback:react', (payload) =>
+      room.react(guest.id, payload, socket.id),
+    );
     const target = (payload: unknown) =>
       z.object({ userId: z.string().uuid() }).strict().parse(payload).userId;
     bind('stage:remove', (payload) =>

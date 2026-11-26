@@ -243,6 +243,17 @@ export interface RoomEmote {
   id: EmoteId;
   activity?: { sleepAt: number; revision: number };
 }
+export type TrackReactionKind = 'like' | 'vote';
+export type TrackReaction = {
+  roomId?: string;
+  roundId: string;
+  userId: string;
+} & ({ kind: 'like' } | { kind: 'vote'; votes: number; total: number });
+export interface TrackReactionState {
+  roundId: string;
+  likes: string[];
+  votes: string[];
+}
 export interface Playback {
   roundId: string;
   track: Track;
@@ -272,6 +283,7 @@ export interface RoomSnapshot extends PlaybackState {
   stage: string[];
   capacity: number;
   stageCapacity: number;
+  reactions?: TrackReactionState;
 }
 export interface Ack {
   ok: boolean;
@@ -322,6 +334,10 @@ export interface ClientEvents {
     payload: { roundId: string },
     ack: (result: Ack) => void,
   ) => void;
+  'playback:react': (
+    payload: { roundId: string; kind: TrackReactionKind },
+    ack: (result: Ack) => void,
+  ) => void;
   'playback:failed': (
     payload: { roundId: string },
     ack?: (result: Ack) => void,
@@ -341,6 +357,7 @@ export interface ServerEvents {
   'room:snapshot': (snapshot: RoomSnapshot) => void;
   'room:motion': (state: RoomMotion) => void;
   'playback:updated': (state: PlaybackState) => void;
+  'playback:reaction': (event: TrackReaction) => void;
   'room:emote': (event: RoomEmote) => void;
   'emotes:updated': (event: { revision: number }) => void;
   'room:replaced': () => void;

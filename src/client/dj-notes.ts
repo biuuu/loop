@@ -1,4 +1,5 @@
 import type { Playback } from '../shared/contracts';
+import { TRACK_LIKE_EFFECT_MS } from './track-reaction-effects';
 
 type NotePlayback = Pick<
   Playback,
@@ -34,6 +35,25 @@ export interface DjNotePose {
   scale: number;
   rotation: number;
   alpha: number;
+}
+
+export function likeNotePose(
+  elapsedMs: number,
+  reducedMotion = false,
+): DjNotePose | undefined {
+  if (!(elapsedMs >= 0 && elapsedMs < TRACK_LIKE_EFFECT_MS)) return;
+  if (reducedMotion)
+    return { x: 32, y: -51, scale: 0.75, rotation: 0, alpha: 0.9 };
+
+  const progress = elapsedMs / TRACK_LIKE_EFFECT_MS;
+  const travel = 1 - Math.pow(1 - progress, 1.5);
+  return {
+    x: 24 + travel * 34,
+    y: -43 - travel * 22,
+    scale: 0.62 + progress * 0.18,
+    rotation: Math.sin(progress * Math.PI * 2) * 0.18,
+    alpha: 0.9 * Math.min(1, 0.3 + progress / 0.08, (1 - progress) / 0.3),
+  };
 }
 
 export function djNotePose(

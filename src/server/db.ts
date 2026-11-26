@@ -30,6 +30,7 @@ import {
   COAT_UNLOCK_COST,
   DAILY_DJ_REWARD,
   DAILY_DJ_THRESHOLD_MS,
+  DAILY_LIKE_REWARD,
   INITIAL_POINTS,
   type PointsState,
 } from '../shared/points.js';
@@ -79,7 +80,7 @@ const readGuest = ({ id, nickname, coat, pattern }: GuestRow): Guest => ({
   appearance: { coat, pattern },
 });
 
-function djPlaybackDay(now: number) {
+function beijingDay(now: number) {
   const localMidnight =
     Math.floor((now + BEIJING_UTC_OFFSET_MS) / DAY_MS) * DAY_MS;
   return {
@@ -341,7 +342,7 @@ export class Store {
   }
   points(id: string, now = Date.now()): PointsState {
     return this.sql.transaction(() =>
-      this.readPoints(id, djPlaybackDay(now).date),
+      this.readPoints(id, beijingDay(now).date),
     )();
   }
   unlockAppearance(id: string, pattern: CatPresetPattern): PointsState {
@@ -349,7 +350,7 @@ export class Store {
     if (this.options.freeSpecialCoats) return this.points(id);
     return this.sql
       .transaction(() => {
-        const { date } = djPlaybackDay(Date.now());
+        const { date } = beijingDay(Date.now());
         if (this.hasUnlockedAppearance(id, pattern))
           return this.readPoints(id, date);
         if (this.pointsBalance(id).balance < COAT_UNLOCK_COST)
@@ -382,7 +383,7 @@ export class Store {
             played_ms=excluded.played_ms, credited_through_ms=excluded.credited_through_ms
         `);
         while (cursor < end) {
-          const { date, endsAt } = djPlaybackDay(cursor);
+          const { date, endsAt } = beijingDay(cursor);
           const through = Math.min(end, endsAt);
           const previous = this.dailyDjTime(id, date);
           // Server settlements advance in order. Ignore a replayed interval or prefix.
@@ -402,6 +403,14 @@ export class Store {
         return awarded;
       })
       .immediate();
+  }
+  awardDailyLike(id: string, now = Date.now()): number {
+    if (!this.pointsEnabled) return 0;
+    const { date } = beijingDay(now);
+    return (
+      this.insertPointsEntry(id, 'daily_like', date, DAILY_LIKE_REWARD) *
+      DAILY_LIKE_REWARD
+    );
   }
   private pointsBalance(id: string): Pick<PointsState, 'balance' | 'revision'> {
     return this.sql

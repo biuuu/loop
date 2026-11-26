@@ -84,6 +84,8 @@ export class RoomRegistry {
     };
     room.onPlaybackChange = (state) =>
       this.io.to(channel(id)).emit('playback:updated', this.scoped(id, state));
+    room.onTrackReaction = (event) =>
+      this.io.to(channel(id)).emit('playback:reaction', this.scoped(id, event));
     room.onMotion = (state) =>
       this.io.to(channel(id)).emit('room:motion', this.scoped(id, state));
     room.onEmote = (state) =>
@@ -93,7 +95,7 @@ export class RoomRegistry {
       if (current?.roomId === id && room!.isCurrent(userId, current.socket.id))
         current.socket.emit('playlist:reordered', state);
     };
-    room.onPointsAwarded = (userId, awarded) => {
+    room.onPointsAwarded = (userId, awarded, source) => {
       const current = this.active.get(userId);
       if (current?.roomId !== id || !room!.isCurrent(userId, current.socket.id))
         return;
@@ -101,6 +103,7 @@ export class RoomRegistry {
         const payload: PointsAwarded = {
           points: this.db.points(userId),
           awarded,
+          ...(source ? { source } : {}),
         };
         current.socket.emit('points:awarded', payload);
       } catch (error) {

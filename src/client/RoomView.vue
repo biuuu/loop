@@ -17,10 +17,10 @@ import RoomMembers from './RoomMembers.vue';
 import NeteasePlaylistSearch from './NeteasePlaylistSearch.vue';
 import NeteaseUserSearch from './NeteaseUserSearch.vue';
 import EmotePicker from './EmotePicker.vue';
+import RoomActions from './RoomActions.vue';
 import PlaylistQueue from './PlaylistQueue.vue';
 import {
   ArrowDown,
-  ArrowDownRight,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
@@ -52,6 +52,7 @@ import {
   PLAYLIST_LIMIT,
   SCENE,
   type Track,
+  type TrackReactionKind,
 } from '../shared/contracts';
 
 const props = defineProps<{ panelOpen?: boolean }>();
@@ -74,6 +75,36 @@ function updateMobileControls(event: MediaQueryListEvent) {
 }
 const sound = useAudio(() => mobileControls.value);
 const { issue, volume, progress, needsGesture } = sound;
+const reactionSoundFiles = { like: 'star.m4a', vote: 'next.m4a' } as const;
+const reactionClips = new Map<TrackReactionKind, HTMLAudioElement>();
+const reactionVolume = computed(() =>
+  mobileControls.value ? 1 : volume.value / 100,
+);
+watch(reactionVolume, (value) => {
+  for (const clip of reactionClips.values()) clip.volume = value;
+});
+watch(
+  () => room.latestReaction,
+  (event) => {
+    if (!event) {
+      for (const clip of reactionClips.values()) clip.pause();
+      return;
+    }
+    if (reactionVolume.value === 0) return;
+    let clip = reactionClips.get(event.kind);
+    if (!clip) {
+      clip = new Audio(
+        `${import.meta.env.BASE_URL}audio/${reactionSoundFiles[event.kind]}`,
+      );
+      reactionClips.set(event.kind, clip);
+    }
+    if (!clip.paused) return;
+    clip.volume = reactionVolume.value;
+    clip.currentTime = 0;
+    void clip.play().catch(() => {});
+  },
+  { flush: 'sync' },
+);
 const booting = ref(false);
 const tab = ref<'playlist' | 'search'>('playlist');
 const searchKind = ref<'song' | 'playlist' | 'user'>('song');
@@ -410,6 +441,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', keyboardVisibility);
 });
 onBeforeUnmount(() => {
+  for (const clip of reactionClips.values()) clip.pause();
   mobileControlsQuery.removeEventListener('change', updateMobileControls);
   window.removeEventListener('keydown', keyboardMove);
   window.removeEventListener('keyup', keyboardRelease);
@@ -583,10 +615,7 @@ onBeforeUnmount(() => {
               <span>{{ time(duration) }}</span>
             </div>
           </div>
-          <div
-            v-if="!mobileControls || room.onStage || canSkip"
-            class="sound-control"
-          >
+          <div v-if="!mobileControls || canSkip" class="sound-control">
             <div v-if="!mobileControls" class="volume-control">
               <button
                 type="button"
@@ -609,14 +638,6 @@ onBeforeUnmount(() => {
                   aria-label="播放音量"
               /></label>
             </div>
-            <button
-              v-if="mobileControls && room.onStage"
-              class="text-button"
-              :disabled="room.stagePending || room.connection !== 'connected'"
-              @click="requestLeave"
-            >
-              <ArrowDownRight aria-hidden="true" /> 离开舞台
-            </button>
             <button
               v-if="canSkip"
               class="text-button skip-button"
@@ -648,13 +669,11 @@ onBeforeUnmount(() => {
             @select="room.emote"
             @open="resetMovement"
           />
-          <button
-            v-if="room.onStage && !mobileControls"
+          <RoomActions
             :disabled="room.stagePending || room.connection !== 'connected'"
-            @click="requestLeave"
-          >
-            <ArrowDownRight aria-hidden="true" /> 离开舞台
-          </button>
+            @open="resetMovement"
+            @leave="requestLeave"
+          />
         </nav>
       </div>
       <dialog

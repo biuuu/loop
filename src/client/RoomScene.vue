@@ -46,7 +46,13 @@ import {
 } from '@lucide/vue';
 import { useRoom } from './room';
 import { createRemoteMovement, remoteFrameUser } from './remote-movement';
-import { activeDjPlayback, DJ_NOTE_COUNT, djNotePose } from './dj-notes';
+import {
+  activeDjPlayback,
+  DJ_NOTE_COUNT,
+  djNotePose,
+  likeNotePose,
+  type DjNotePose,
+} from './dj-notes';
 import {
   DEFAULT_STAGE_CAPACITY,
   SCENE,
@@ -311,10 +317,13 @@ const catTextures = new Map<string, Texture>();
 const appearanceSheets = new Map<string, Texture>();
 let originalCatImage: CanvasImageSource | undefined;
 const emoteImages = new Map<string, HTMLImageElement>();
+const voteBubbles = new Map<string, HTMLDivElement>();
 const failedEmoteUrls = new Set<string>();
-function clearEmoteImages() {
+function clearReactionBubbles() {
   for (const image of emoteImages.values()) image.parentElement?.remove();
+  for (const bubble of voteBubbles.values()) bubble.remove();
   emoteImages.clear();
+  voteBubbles.clear();
 }
 function appearanceTexture(
   appearance: CatAppearance | undefined,
@@ -363,6 +372,7 @@ const cats = new Map<
     body: Sprite;
     label: Text;
     notes: { layer: Container; glyphs: Graphics[] };
+    likeNote?: Graphics;
     fullLabel: string;
     facingRight: boolean;
     remoteMovement: ReturnType<typeof createRemoteMovement>;
@@ -450,10 +460,10 @@ function makeCat(user: Participant) {
     remoteMovement: createRemoteMovement(),
   };
 }
-function makeDjNote(index: number) {
+function makeDjNote(index: number, colorOverride?: number) {
   const colors = [0xb29458, 0x72938a, 0xb7806b];
   const glyph = new Graphics();
-  const color = colors[index % colors.length]!;
+  const color = colorOverride ?? colors[index % colors.length]!;
   glyph.ellipse(0, 0, 3.5, 2.3).fill(color);
   if (index % 3 === 1) {
     glyph.ellipse(9, -2, 3.5, 2.3).fill(color);
@@ -475,6 +485,14 @@ function makeDjNote(index: number) {
       .stroke({ color, width: 2.1, cap: 'round' });
   }
   return glyph;
+}
+function applyNotePose(glyph: Graphics, pose: DjNotePose | undefined) {
+  glyph.visible = !!pose && pose.alpha > 0;
+  if (!pose || !glyph.visible) return;
+  glyph.position.set(pose.x, pose.y);
+  glyph.scale.set(pose.scale);
+  glyph.rotation = pose.rotation;
+  glyph.alpha = pose.alpha;
 }
 onMounted(async () => {
   try {
@@ -660,7 +678,12 @@ onMounted(async () => {
         if (!users.some((user) => user.id === id)) {
           cat.root.destroy({ children: true });
           cats.delete(id);
+          emoteImages.get(id)?.parentElement?.remove();
+          emoteImages.delete(id);
+          voteBubbles.get(id)?.remove();
+          voteBubbles.delete(id);
         }
+      const reducedMotion = motionPreference.matches;
       for (const user of users) {
         let cat = cats.get(user.id);
         if (!cat) {
@@ -695,11 +718,10 @@ onMounted(async () => {
           displayUser.targetX !== displayUser.x
         )
           cat.facingRight = displayUser.targetX > displayUser.x;
-        const emote = room.emoteFor(user.id, localNow);
         const frame = catFrame(
           displayUser,
           now,
-          motionPreference.matches,
+          reducedMotion,
           cat.facingRight,
           remote?.walkStartedAt,
         );
@@ -723,18 +745,23 @@ onMounted(async () => {
             }
           for (let index = 0; index < cat.notes.glyphs.length; index++) {
             const glyph = cat.notes.glyphs[index]!;
-            const pose = djNotePose(
-              index,
-              now - playing.startedAt,
-              motionPreference.matches,
+            applyNotePose(
+              glyph,
+              djNotePose(index, now - playing.startedAt, reducedMotion),
             );
-            glyph.visible = pose.alpha > 0;
-            glyph.position.set(pose.x, pose.y);
-            glyph.scale.set(pose.scale);
-            glyph.rotation = pose.rotation;
-            glyph.alpha = pose.alpha;
           }
         }
+        const like = room.reactionFor(user.id, 'like', localNow);
+        if (like && !cat.likeNote) {
+          cat.likeNote = makeDjNote(0, 0xc36f82);
+          cat.likeNote.eventMode = 'none';
+          cat.root.addChild(cat.likeNote);
+        }
+        if (cat.likeNote)
+          applyNotePose(
+            cat.likeNote,
+            like && likeNotePose(localNow - like.receivedAt, reducedMotion),
+          );
         const suffix = user.id === room.guest?.id ? ' · 你' : '';
         const fullLabel = `${user.nickname}${suffix}`;
         if (cat.fullLabel !== fullLabel) {
@@ -748,6 +775,22 @@ onMounted(async () => {
             }
           }
         }
+        const vote = room.reactionFor(user.id, 'vote', localNow);
+        let voteBubble = voteBubbles.get(user.id);
+        if (vote) {
+          if (!voteBubble) {
+            voteBubble = document.createElement('div');
+            voteBubble.className = 'scene-emote scene-vote';
+            host.value?.appendChild(voteBubble);
+            voteBubbles.set(user.id, voteBubble);
+          }
+          const label = `投票切歌 ${vote.votes}/${vote.total}`;
+          if (voteBubble.textContent !== label) voteBubble.textContent = label;
+        } else if (voteBubble) {
+          voteBubble.remove();
+          voteBubbles.delete(user.id);
+        }
+        const emote = room.emoteFor(user.id, localNow);
         const url = emote?.url ?? (emote && emoteUrl(emote.id));
         let image = emoteImages.get(user.id);
         if (!url || failedEmoteUrls.has(url)) {
@@ -778,26 +821,25 @@ onMounted(async () => {
       }
       // Follow the same interpolated position that was rendered, including in reduced motion.
       updateCamera?.(instance.ticker.deltaMS);
-      for (const [id, image] of emoteImages) {
-        const cat = cats.get(id);
-        if (
-          !cat ||
-          !users.some((user) => user.id === id) ||
-          !room.emoteFor(id, localNow)
-        ) {
-          image.parentElement?.remove();
-          emoteImages.delete(id);
-          continue;
-        }
+      const view = camera.value;
+      for (const [id, cat] of cats) {
+        const imageBubble = emoteImages.get(id)?.parentElement;
+        const voteBubble = voteBubbles.get(id);
+        if (imageBubble && imageBubble.hidden !== !!voteBubble)
+          imageBubble.hidden = !!voteBubble;
+        const bubble = voteBubble ?? imageBubble;
+        if (!bubble) continue;
         const point = worldToScreen(
           { x: cat.root.x, y: cat.root.y - 61 },
-          camera.value,
+          view,
         );
-        const bubble = image.parentElement;
-        if (!bubble) continue;
-        bubble.style.width = `${64 * camera.value.scale}px`;
-        bubble.style.height = `${64 * camera.value.scale}px`;
-        bubble.style.padding = `${4 * camera.value.scale}px`;
+        if (voteBubble) {
+          bubble.style.setProperty('--vote-scale', `${view.scale}`);
+        } else {
+          bubble.style.width = `${64 * view.scale}px`;
+          bubble.style.height = `${64 * view.scale}px`;
+          bubble.style.padding = `${4 * view.scale}px`;
+        }
         bubble.style.left = `${point.x}px`;
         bubble.style.top = `${point.y}px`;
       }
@@ -835,7 +877,7 @@ function destroyScene() {
   scenery = undefined;
   cats.clear();
   disposeCatTextures();
-  clearEmoteImages();
+  clearReactionBubbles();
 }
 function showSceneFallback() {
   destroyScene();
@@ -1026,6 +1068,20 @@ onMounted(() => {
 }
 .room-canvas:not(.is-ready) > :deep(canvas) {
   visibility: hidden;
+}
+.room-canvas > :deep(.scene-emote[hidden]) {
+  display: none;
+}
+.room-canvas > :deep(.scene-vote) {
+  padding: 5px 9px;
+  transform: translate(-50%, -100%) scale(max(0.8, var(--vote-scale, 1)));
+  transform-origin: center bottom;
+  color: #61503b;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 .scene-loading {
   position: absolute;

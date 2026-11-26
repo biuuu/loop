@@ -594,7 +594,8 @@ textarea {
   margin-top: 8px;
 }
 .room-toolbar > button,
-.room-toolbar > .emote-picker > .emote-trigger {
+.room-toolbar > .emote-picker > .emote-trigger,
+.room-toolbar > .room-actions > .room-action-trigger {
   min-height: 40px;
   background: #fcfaf0f2;
   border-color: #fffdf2d1;
@@ -606,7 +607,8 @@ textarea {
   color: #45553e;
 }
 .room-toolbar > button:hover:not(:disabled),
-.room-toolbar > .emote-picker > .emote-trigger:hover:not(:disabled) {
+.room-toolbar > .emote-picker > .emote-trigger:hover:not(:disabled),
+.room-toolbar > .room-actions > .room-action-trigger:hover:not(:disabled) {
   background: #edf1e5;
 }
 .room-dialog {
@@ -1253,7 +1255,8 @@ h3 {
     flex: 1;
   }
   .room-toolbar > button,
-  .room-toolbar > .emote-picker > .emote-trigger {
+  .room-toolbar > .emote-picker > .emote-trigger,
+  .room-toolbar > .room-actions > .room-action-trigger {
     gap: 4px;
     font-size: 11px;
     white-space: nowrap;
@@ -1263,6 +1266,9 @@ h3 {
   }
   .room-toolbar > .emote-picker {
     flex: 0 0 42px;
+  }
+  .room-toolbar > .room-actions {
+    flex: 0 0 55px;
   }
   .room-dialog {
     width: 100%;
@@ -1363,7 +1369,8 @@ h3 {
     flex-shrink: 0;
   }
   .room-toolbar > button,
-  .room-toolbar > .emote-picker > .emote-trigger {
+  .room-toolbar > .emote-picker > .emote-trigger,
+  .room-toolbar > .room-actions > .room-action-trigger {
     min-height: 34px;
     font-size: 10px;
     padding: 4px 9px;

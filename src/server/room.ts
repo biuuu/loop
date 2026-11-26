@@ -25,7 +25,9 @@ import {
   type RoomEmote,
   type RoomMotion,
   type StageJoin,
+  type TrackReaction,
 } from '../shared/contracts.js';
+import type { PointsAwarded } from '../shared/points.js';
 import { catSleepDelay } from '../shared/cat-activity.js';
 import type { Store } from './db.js';
 import { EmoteCatalog } from './emote-catalog.js';
@@ -76,6 +78,9 @@ const spawnSeatXs = stageSeatXs(STAGE_CAPACITY);
 const SPAWN_ATTEMPTS = 24;
 const SPAWN_SEPARATION = 32;
 const playbackRoundSchema = z.object({ roundId: z.string().uuid() }).strict();
+const trackReactionSchema = playbackRoundSchema.extend({
+  kind: z.enum(['like', 'vote']),
+});
 const seekSchema = z
   .object({ roundId: z.string().uuid(), positionMs: z.number().nonnegative() })
   .strict();
@@ -99,6 +104,8 @@ export class Room {
   private stageDirty = false;
   private publishedStage: string[] = [];
   private playback: Playback | null = null;
+  private roundLikes = new Set<string>();
+  private roundVotes = new Set<string>();
   private djPlaybackFrom?: number;
   private unsettledDjPlayback: DjPlaybackInterval[] = [];
   private failedMedia = new Map<string, Set<string>>();
@@ -117,10 +124,15 @@ export class Room {
   onEmpty: () => void = () => {};
   onChange: (snapshot: RoomSnapshot) => void = () => {};
   onPlaybackChange: (state: PlaybackState) => void = () => {};
+  onTrackReaction: (event: TrackReaction) => void = () => {};
   onEmote: (event: RoomEmote) => void = () => {};
   onMotion: (event: RoomMotion) => void = () => {};
   onPlaylistChange: (guestId: string, state: PlaylistOrder) => void = () => {};
-  onPointsAwarded: (guestId: string, awarded: number) => void = () => {};
+  onPointsAwarded: (
+    guestId: string,
+    awarded: number,
+    source?: PointsAwarded['source'],
+  ) => void = () => {};
   hasMember(id: string) {
     return this.users.has(id);
   }
@@ -322,6 +334,15 @@ export class Room {
       users: [...this.users.values()],
       stage: this.stage,
       playback: this.playback,
+      ...(this.playback && (this.roundLikes.size || this.roundVotes.size)
+        ? {
+            reactions: {
+              roundId: this.playback.roundId,
+              likes: [...this.roundLikes].filter((id) => this.users.has(id)),
+              votes: [...this.roundVotes].filter((id) => this.users.has(id)),
+            },
+          }
+        : {}),
       resolving: this.resolving,
       notice: this.notice,
       capacity: ROOM_CAPACITY,
@@ -413,6 +434,8 @@ export class Room {
       this.invalidateResolution();
       clearTimeout(this.timer);
       this.playback = null;
+      this.roundLikes.clear();
+      this.roundVotes.clear();
       this.resolving = false;
       this.notice = null;
       this.checkpoint();
@@ -422,6 +445,7 @@ export class Room {
     else {
       this.checkpoint();
       this.publish();
+      this.reevaluateSkipVote();
     }
     return Promise.resolve();
   }
@@ -495,6 +519,7 @@ export class Room {
     this.checkpoint();
     this.publish();
     if (resume) void this.advance().catch(() => {});
+    else this.reevaluateSkipVote();
   }
   updateAppearance(id: string, appearance: CatAppearance) {
     const user = this.users.get(id);
@@ -520,6 +545,7 @@ export class Room {
     this.reserveMember(id, now + this.disconnectGraceMs, now);
     this.checkpoint();
     this.publish();
+    this.reevaluateSkipVote();
   }
   private get disconnectGraceMs() {
     return this.options.disconnectGraceMs ?? 30_000;
@@ -730,6 +756,44 @@ export class Room {
       await this.advance(Date.now());
     });
   }
+  react(id: string, input: unknown, connectionId: string) {
+    return this.enqueue(async () => {
+      this.user(id, connectionId);
+      const { roundId, kind } = trackReactionSchema.parse(input);
+      const playback = this.playback;
+      if (playback?.roundId !== roundId) throw new Error('歌曲已切换');
+      if (kind === 'like') {
+        if (playback.djId === id) throw new Error('不能给自己点赞');
+        if (this.roundLikes.has(id)) return;
+        const awarded = this.db.awardDailyLike(playback.djId);
+        this.roundLikes.add(id);
+        this.onTrackReaction({ roundId, userId: id, kind });
+        if (awarded) this.onPointsAwarded(playback.djId, awarded, 'like');
+      } else {
+        if (this.roundVotes.has(id)) return;
+        this.roundVotes.add(id);
+        const counts = this.voteCounts();
+        this.onTrackReaction({ roundId, userId: id, kind, ...counts });
+        await this.skipOnVoteMajority(counts);
+      }
+    });
+  }
+  private voteCounts() {
+    let votes = 0;
+    for (const id of this.roundVotes) if (this.connections.has(id)) votes++;
+    return { votes, total: this.connections.size };
+  }
+  private skipOnVoteMajority({ votes, total }: ReturnType<Room['voteCounts']>) {
+    if (votes * 2 > total) return this.advance(Date.now());
+  }
+  private reevaluateSkipVote() {
+    const roundId = this.playback?.roundId;
+    if (!roundId || !this.roundVotes.size) return;
+    void this.enqueue(() => {
+      if (this.playback?.roundId === roundId)
+        return this.skipOnVoteMajority(this.voteCounts());
+    }).catch(() => {});
+  }
   mediaFailed(id: string, input: unknown, connectionId?: string) {
     return this.enqueue(async () => {
       this.user(id, connectionId);
@@ -798,6 +862,8 @@ export class Room {
       this.finishPlayback(this.playback, endedAt);
     }
     this.playback = null;
+    this.roundLikes.clear();
+    this.roundVotes.clear();
     this.resolving = !this.waitingForReconnect;
     this.notice = notice;
     // Preserve the next DJ and retire the old round before resolving the URL.

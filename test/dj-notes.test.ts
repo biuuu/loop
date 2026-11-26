@@ -6,7 +6,9 @@ import {
   DJ_NOTE_LIFETIME_MS,
   DJ_NOTE_STAGGER_MS,
   djNotePose,
+  likeNotePose,
 } from '../src/client/dj-notes';
+import { TRACK_LIKE_EFFECT_MS } from '../src/client/track-reaction-effects';
 
 const playback = {
   djId: 'current-dj',
@@ -61,7 +63,10 @@ test('the fixed pool stays bounded and clear of nickname/emote zones across cycl
       assert.ok(Math.abs(pose.rotation) <= 0.3);
       assert.ok(pose.alpha >= 0 && pose.alpha <= 0.8);
       if (pose.alpha > 0.1) {
-        assert.ok(pose.y < -42, 'visible notes remain above the emission origin');
+        assert.ok(
+          pose.y < -42,
+          'visible notes remain above the emission origin',
+        );
         sides.add(Math.sign(pose.x));
       }
     }
@@ -107,4 +112,22 @@ test('invalid pool indices or time cannot expose stray notes', () => {
     assert.equal(djNotePose(index, 1000).alpha, 0);
   for (const time of [-1, NaN, Infinity])
     assert.equal(djNotePose(0, time).alpha, 0);
+});
+
+test('a like note drifts once above the cat and expires on its event clock', () => {
+  const start = likeNotePose(0)!;
+  const peak = likeNotePose(TRACK_LIKE_EFFECT_MS / 2)!;
+  const end = likeNotePose(TRACK_LIKE_EFFECT_MS - 1)!;
+  assert.ok(start.y < 0 && peak.y < start.y && end.y < peak.y);
+  assert.ok(peak.x > start.x && end.x > peak.x);
+  assert.ok(peak.alpha > start.alpha && end.alpha < start.alpha);
+  for (const elapsed of [-1, TRACK_LIKE_EFFECT_MS, 10_000, NaN, Infinity])
+    assert.equal(likeNotePose(elapsed), undefined);
+});
+
+test('a like note stays still for reduced motion and expires at the same time', () => {
+  const start = likeNotePose(0, true)!;
+  assert.ok(start.y < 0 && start.alpha > 0);
+  assert.deepEqual(likeNotePose(TRACK_LIKE_EFFECT_MS - 1, true), start);
+  assert.equal(likeNotePose(TRACK_LIKE_EFFECT_MS, true), undefined);
 });

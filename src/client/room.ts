@@ -1,10 +1,11 @@
 import { useTimedMessage } from './timed-message';
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, shallowRef } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 import { createMovementScheduler } from './movement-scheduler';
 import { createLocalMovement } from './local-movement';
 import { createRoomEmotes } from './room-emotes';
+import { createTrackReactionEffects } from './track-reaction-effects';
 import { emoteCatalog, emoteUrl, loadEmoteCatalog } from './emote-catalog';
 import { createPlaylistReceiver, swapPlaylistTracks } from './playlist-view';
 import type { Direction } from './keyboard-movement';
@@ -26,6 +27,9 @@ import type {
   PlaybackState,
   RoomInfo,
   StageJoin,
+  TrackReaction,
+  TrackReactionKind,
+  TrackReactionState,
 } from '../shared/contracts';
 
 export function applyPlaybackUpdate(
@@ -52,7 +56,7 @@ export function applyPlaybackUpdate(
     });
     stage = order;
   }
-  return {
+  const next = {
     ...current,
     stage,
     users,
@@ -62,6 +66,9 @@ export function applyPlaybackUpdate(
     resolving: state.resolving,
     notice: state.notice,
   };
+  if (next.reactions?.roundId !== state.playback?.roundId)
+    delete next.reactions;
+  return next;
 }
 
 class NicknameChangeCooldownError extends Error {
@@ -126,6 +133,18 @@ export const useRoom = defineStore('room', () => {
   let identityRequest = 0;
   let authRequest = 0;
   const localEmotes = createRoomEmotes();
+  const localReactions = createTrackReactionEffects();
+  const latestReaction = shallowRef<TrackReaction | null>(null);
+  const acceptedReactions = shallowRef<TrackReactionState | null>(null);
+  const pendingReaction = shallowRef<{
+    roundId: string;
+    kind: TrackReactionKind;
+  } | null>(null);
+  const reactionPending = computed(
+    () =>
+      !!pendingReaction.value &&
+      pendingReaction.value.roundId === snapshot.value?.playback?.roundId,
+  );
   let emoteGeneration = 0;
   let pendingSync: object | null = null;
   let pendingPlaylistReload: object | null = null;
@@ -135,9 +154,52 @@ export const useRoom = defineStore('room', () => {
     stagePending.value = false;
     emoteGeneration++;
     localEmotes.clear();
+    localReactions.clear();
+    latestReaction.value = null;
+    acceptedReactions.value = null;
+    pendingReaction.value = null;
   }
   function emoteFor(userId: string, now = Date.now()) {
     return localEmotes.get(userId, now);
+  }
+  function reactionFor<Kind extends TrackReactionKind>(
+    userId: string,
+    kind: Kind,
+    now = Date.now(),
+  ) {
+    return localReactions.get(userId, kind, now);
+  }
+  function reactionIds(kind: TrackReactionKind) {
+    const state = acceptedReactions.value;
+    if (!state || state.roundId !== snapshot.value?.playback?.roundId)
+      return [];
+    return kind === 'like' ? state.likes : state.votes;
+  }
+  const likedTrack = computed(
+    () => !!guest.value && reactionIds('like').includes(guest.value.id),
+  );
+  const votedTrack = computed(
+    () => !!guest.value && reactionIds('vote').includes(guest.value.id),
+  );
+  function receiveReactionState(state: RoomSnapshot) {
+    const roundId = state.playback?.roundId;
+    const known = acceptedReactions.value;
+    const fromSnapshot = state.reactions;
+    if (!roundId) {
+      acceptedReactions.value = null;
+    } else if (fromSnapshot?.roundId === roundId) {
+      // A snapshot made before a reaction can have the same room revision.
+      acceptedReactions.value =
+        known?.roundId === roundId
+          ? {
+              roundId,
+              likes: [...new Set([...known.likes, ...fromSnapshot.likes])],
+              votes: [...new Set([...known.votes, ...fromSnapshot.votes])],
+            }
+          : fromSnapshot;
+    } else if (known?.roundId !== roundId) {
+      acceptedReactions.value = { roundId, likes: [], votes: [] };
+    }
   }
   function setGuest(value: AccountProfile | null) {
     if (playlistReceiver.setIdentity(value?.id ?? null)) {
@@ -244,9 +306,18 @@ export const useRoom = defineStore('room', () => {
       if (!snapshot.value && !clockSamples.length)
         offset.value = state.serverTime - Date.now();
       snapshot.value = state;
-      localEmotes.retain(
+      const connected = new Set(
         state.users.filter((user) => user.connected).map((user) => user.id),
       );
+      localEmotes.retain(connected);
+      localReactions.retain(connected);
+      receiveReactionState(state);
+      if (state.playback)
+        localReactions.updateVoteCounts(
+          state.playback.roundId,
+          reactionIds('vote').filter((id) => connected.has(id)).length,
+          connected.size,
+        );
       const own = state.users.find((user) => user.id === guest.value?.id);
       if (!own?.connected || own.seat !== null) invalidateMovement();
       if (guest.value && own)
@@ -470,6 +541,7 @@ export const useRoom = defineStore('room', () => {
       )
         return;
       snapshot.value = applyPlaybackUpdate(snapshot.value, state);
+      receiveReactionState(snapshot.value);
     });
     active.on('room:emote', (event) => {
       const current = snapshot.value;
@@ -500,6 +572,48 @@ export const useRoom = defineStore('room', () => {
       }
       localEmotes.receive(event, Date.now(), emoteUrl(event.id));
     });
+    active.on('playback:reaction', (event: TrackReaction) => {
+      const current = snapshot.value;
+      if (
+        !isActive() ||
+        !matchesRoom(event) ||
+        !active.connected ||
+        connection.value !== 'connected' ||
+        !me.value?.connected ||
+        !current ||
+        current.playback?.roundId !== event.roundId ||
+        !current.users.some(
+          (user) => user.id === event.userId && user.connected,
+        ) ||
+        reactionIds(event.kind).includes(event.userId)
+      )
+        return;
+      const known = acceptedReactions.value;
+      const state =
+        known?.roundId === event.roundId
+          ? known
+          : { roundId: event.roundId, likes: [], votes: [] };
+      const key = event.kind === 'like' ? 'likes' : 'votes';
+      acceptedReactions.value = {
+        ...state,
+        [key]: [...state[key], event.userId],
+      };
+      localReactions.receive(event, Date.now());
+      if (event.kind === 'vote')
+        localReactions.updateVoteCounts(
+          event.roundId,
+          event.votes,
+          event.total,
+        );
+      latestReaction.value = event;
+      const pending = pendingReaction.value;
+      if (
+        event.userId === guestId &&
+        pending?.roundId === event.roundId &&
+        pending.kind === event.kind
+      )
+        pendingReaction.value = null;
+    });
     active.on('emotes:updated', (event) => {
       if (isActive() && event.revision !== emoteCatalog.value?.revision)
         void loadEmoteCatalog(true).catch(() => {});
@@ -507,20 +621,26 @@ export const useRoom = defineStore('room', () => {
     active.on('playlist:updated', (state) => {
       if (isActive()) applyPlaylist(state, playlistContext);
     });
-    active.on('points:awarded', ({ points: state, awarded }: PointsAwarded) => {
-      if (
-        !guestId ||
-        !isActive() ||
-        !active.connected ||
-        connection.value !== 'connected'
-      )
-        return;
-      applyPoints(state);
-      // A read can already reflect this award, including after the day rolls over.
-      if (state.revision <= lastPointsAwardRevision) return;
-      lastPointsAwardRevision = state.revision;
-      pointsReward.value = `放歌获得 ${awarded} 积分`;
-    });
+    active.on(
+      'points:awarded',
+      ({ points: state, awarded, source }: PointsAwarded) => {
+        if (
+          !guestId ||
+          !isActive() ||
+          !active.connected ||
+          connection.value !== 'connected'
+        )
+          return;
+        applyPoints(state);
+        // A read can already reflect this award, including after the day rolls over.
+        if (state.revision <= lastPointsAwardRevision) return;
+        lastPointsAwardRevision = state.revision;
+        pointsReward.value =
+          source === 'like'
+            ? `收到点赞，获得 ${awarded} 积分`
+            : `放歌获得 ${awarded} 积分`;
+      },
+    );
     active.on('playlist:reordered', (order) => {
       if (!isActive() || !active.connected || connection.value !== 'connected')
         return;
@@ -712,6 +832,36 @@ export const useRoom = defineStore('room', () => {
           if (socket === active && generation === emoteGeneration) ack(result);
         },
       );
+  }
+  function reactToTrack(kind: TrackReactionKind) {
+    const active = socket;
+    const playback = snapshot.value?.playback;
+    const own = me.value;
+    if (
+      !active?.connected ||
+      connection.value !== 'connected' ||
+      !own?.connected ||
+      !playback ||
+      reactionPending.value ||
+      (kind === 'like' && playback.djId === own.id) ||
+      reactionIds(kind).includes(own.id)
+    )
+      return;
+    const pending = { roundId: playback.roundId, kind };
+    pendingReaction.value = pending;
+    active
+      .timeout(8000)
+      .emit('playback:react', pending, (cause: Error | null, result: Ack) => {
+        if (pendingReaction.value !== pending) return;
+        pendingReaction.value = null;
+        if (
+          socket !== active ||
+          snapshot.value?.playback?.roundId !== pending.roundId
+        )
+          return;
+        if (cause) error.value = '操作超时，请重试';
+        else ack(result);
+      });
   }
   function reportPlaybackFailure(roundId: string) {
     if (
@@ -1119,6 +1269,12 @@ export const useRoom = defineStore('room', () => {
     renderParticipant,
     emoteFor,
     emote,
+    reactionFor,
+    latestReaction,
+    likedTrack,
+    votedTrack,
+    reactionPending,
+    reactToTrack,
     joinStage,
     leaveStage,
     skip,
