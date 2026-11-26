@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { io as connect, type Socket } from 'socket.io-client';
 import { createServer } from '../src/server/app.js';
@@ -113,6 +116,76 @@ test('only the authenticated account can spend its points and use its unlocked p
   const remaining = (await points(bob)).json<PointsState>();
   assert.equal(remaining.balance, 0);
   assert.equal(remaining.unlockedPresets.length, 1);
+});
+
+test('development can use locked coats at zero balance without granting production unlocks', async (context) => {
+  const root = mkdtempSync(join(tmpdir(), 'loop-dev-coats-'));
+  const dbPath = join(root, 'loop.sqlite');
+  let server = await createServer({ dbPath, music });
+  context.after(async () => {
+    await server.app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+  const { guest, token } = server.db.createGuest('Developer');
+  server.db.unlockAppearance(guest.id, 'calico');
+  const headers = { cookie: `loop_guest=${token}` };
+  const equip = () =>
+    server.app.inject({
+      method: 'PATCH',
+      url: '/api/me/appearance',
+      headers,
+      payload: RAGDOLL_APPEARANCE,
+    });
+  const points = async () =>
+    (
+      await server.app.inject({
+        url: '/api/me/points',
+        headers,
+      })
+    ).json<PointsState>();
+  assert.equal((await equip()).statusCode, 403);
+
+  await server.app.close();
+  server = await createServer({ dbPath, music, freeSpecialCoats: true });
+  const developmentPoints = await points();
+  assert.equal(developmentPoints.freeSpecialCoats, true);
+  assert.equal(developmentPoints.balance, 0);
+  assert.equal((await equip()).statusCode, 200);
+  assert.deepEqual(
+    server.db.guestById(guest.id).appearance,
+    RAGDOLL_APPEARANCE,
+  );
+  const unlock = await server.app.inject({
+    method: 'POST',
+    url: '/api/me/appearance/unlocks',
+    headers,
+    payload: { pattern: 'ragdoll' },
+  });
+  assert.equal(unlock.statusCode, 200);
+  assert.deepEqual(unlock.json<PointsState>(), developmentPoints);
+
+  await server.app.close();
+  server = await createServer({ dbPath, music, freeSpecialCoats: true });
+  assert.deepEqual(
+    server.db.guestById(guest.id).appearance,
+    RAGDOLL_APPEARANCE,
+  );
+  await server.app.close();
+  server = await createServer({
+    dbPath,
+    music,
+    buildId: 'test-build',
+    freeSpecialCoats: true,
+  });
+  assert.deepEqual(server.db.guestById(guest.id).appearance, {
+    coat: 'white',
+    pattern: 'solid',
+  });
+  const productionPoints = await points();
+  assert.equal(productionPoints.freeSpecialCoats, undefined);
+  assert.equal(productionPoints.balance, 0);
+  assert.deepEqual(productionPoints.unlockedPresets, ['calico']);
+  assert.equal((await equip()).statusCode, 403);
 });
 
 test('a daily award is delivered privately to its DJ without a room snapshot', async (context) => {

@@ -110,6 +110,7 @@ function socketToken(header: string | undefined) {
 export async function createServer(
   options: {
     buildId?: string;
+    freeSpecialCoats?: boolean;
     dbPath?: string;
     music?: MusicService;
     disconnectGraceMs?: number;
@@ -128,7 +129,10 @@ export async function createServer(
 ) {
   const { textFilter } = options;
   const app = Fastify({ logger: false, bodyLimit: 16_384 });
-  const db = new Store(options.dbPath);
+  const db = new Store(options.dbPath, undefined, {
+    freeSpecialCoats:
+      options.buildId === undefined && options.freeSpecialCoats === true,
+  });
   const emoteCatalog = new EmoteCatalog(db);
   const credentials = new NeteaseCredentialStore(options.neteaseCookieFile);
   const music =

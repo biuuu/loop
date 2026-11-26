@@ -5,6 +5,7 @@ const { app } = await createServer({
   textFilter: loadTextFilter(),
   buildId:
     typeof __LOOP_BUILD_ID__ === 'string' ? __LOOP_BUILD_ID__ : undefined,
+  freeSpecialCoats: process.argv.includes('--development'),
 });
 const shutdown = async () => {
   await app.close();

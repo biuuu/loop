@@ -40,6 +40,7 @@
 - Confirm 5 starting points, a 5-point cost per special coat, and a 1-point daily reward based on Beijing time. Carry over the currently equipped special coat for each existing account and give existing accounts the starting grant.
 - Separate ordinary colors and patterns from point-unlocked presets into two tabs in 我的小猫.
 - Show the points balance in 我的账号. Keep wardrobe actions visible at the bottom of the dialog while its content scrolls, following the room settings layout.
+- Allow direct use of special coats in development mode without spending points.
 - Idle cats should usually keep their tails raised, moving them only occasionally. After the independent eye overlay showed residual pixels, the user accepted keeping the original blink/tail animation together and adding a pause between full loops.
 - Idle cats face left or right according to their last horizontal movement; vertical movement retains the previous horizontal facing.
 - The user tried the supplied paw-licking action and asked to remove it after seeing it in the room.
@@ -218,6 +219,7 @@ The user approved the first release and its point values, day boundary and treat
 - Read balance, unlocks and daily progress through authenticated `GET /api/me/points`. Use `POST /api/me/appearance/unlocks` with a preset ID to unlock. Use server-side prices and require a matching account unlock in the current appearance save route. Keep locked previews available in 我的小猫 and show their cost. After an unlock, the selected preview can be saved through the normal flow. Send `points:awarded` privately to the player's current connection. Balances and progress stay outside public room snapshots.
 - Open the wardrobe on the tab of the saved appearance. Keep one preview selection per tab until the wardrobe closes. Load and refresh points in the special coats tab, and deliver the reward notice in either tab.
 - Refresh the account balance on opening 我的账号 and offer a retry if loading fails. Keep the wardrobe cancel and save or unlock buttons outside the scrollable content. Retain insufficient-points feedback in the bottom action area.
+- The source server launched by `npm run dev` allows authenticated users to save any valid preset directly. Publish the permission through the private points response so the wardrobe hides the unlock action in that mode. Development use creates no debit or permanent unlock. If the same database is opened by the normal server, reset a worn unpaid special pattern to the base coat. A production build always enforces unlocks.
 - Keep the stored `seal_point` identifier for the renamed 暹罗 preset. Add `ragdoll` as a 5-point special coat in SQLite migration 027. Preserve the reviewed idle frame's warm gray cheeks, pink inner ears, white chest and blue vertical eyes. Apply the markings across the existing idle, walking and sleep sprite frames and keep pale fur between the eyes and across the muzzle. Use the same atlas for preview, portraits and the room.
 
 ## Build sequence

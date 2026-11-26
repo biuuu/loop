@@ -188,6 +188,7 @@ const appearanceDraft = computed(() =>
 );
 function hasPreset(pattern: CatPresetPattern) {
   return (
+    room.points?.freeSpecialCoats ||
     room.points?.unlockedPresets.includes(pattern) ||
     (!room.points && room.guest?.appearance?.pattern === pattern)
   );

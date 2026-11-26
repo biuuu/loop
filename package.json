@@ -7,7 +7,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "concurrently -k -n api,web \"tsx watch --env-file-if-exists=.env src/server/index.ts\" \"vite --host 0.0.0.0\"",
+    "dev": "concurrently -k -n api,web \"tsx watch --env-file-if-exists=.env src/server/index.ts --development\" \"vite --host 0.0.0.0\"",
     "check": "vue-tsc --noEmit",
     "format": "prettier --write src test scripts *.json *.ts *.html *.md docs/*.md",
     "test": "node scripts/test.mjs",

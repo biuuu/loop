@@ -8,6 +8,7 @@ export const DAILY_DJ_THRESHOLD_MS = 180_000;
 export interface PointsState {
   balance: number;
   unlockedPresets: CatPresetPattern[];
+  freeSpecialCoats?: true;
   daily: { date: string; playedMs: number; awarded: boolean };
   revision: number;
 }

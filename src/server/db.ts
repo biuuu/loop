@@ -117,6 +117,7 @@ export class Store {
   constructor(
     path = process.env.DATABASE_PATH || 'data/loop.sqlite',
     migrationsPath = resolve('migrations'),
+    private readonly options: { freeSpecialCoats?: boolean } = {},
   ) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.sql = new Database(path);
@@ -172,6 +173,21 @@ export class Store {
               readFileSync(join(migrationsPath, migration.name), 'utf8'),
             );
             this.sql.pragma(`user_version = ${migration.version}`);
+          }
+          if (this.pointsEnabled && !this.options.freeSpecialCoats) {
+            // A database reused after development may have a worn but unpaid preset.
+            this.sql
+              .prepare(
+                `
+              UPDATE guests SET pattern='solid'
+              WHERE pattern NOT IN (${CAT_PATTERNS.map(() => '?').join(', ')})
+                AND NOT EXISTS (
+                  SELECT 1 FROM coat_unlocks
+                  WHERE guest_id=guests.id AND pattern=guests.pattern
+                )
+            `,
+              )
+              .run(...CAT_PATTERNS.map(({ id }) => id));
           }
         })
         .immediate();
@@ -311,6 +327,7 @@ export class Store {
         const preset = catAppearancePreset(appearance.pattern);
         if (
           this.pointsEnabled &&
+          !this.options.freeSpecialCoats &&
           preset &&
           !this.hasUnlockedAppearance(id, preset.appearance.pattern)
         )
@@ -329,6 +346,7 @@ export class Store {
   }
   unlockAppearance(id: string, pattern: CatPresetPattern): PointsState {
     if (!catAppearancePreset(pattern)) throw new Error('未知的特殊花色');
+    if (this.options.freeSpecialCoats) return this.points(id);
     return this.sql
       .transaction(() => {
         const { date } = djPlaybackDay(Date.now());
@@ -434,6 +452,7 @@ export class Store {
       ...balance,
       unlockedPresets,
       daily: { date, playedMs, awarded: playedMs === DAILY_DJ_REWARD_AT_MS },
+      ...(this.options.freeSpecialCoats ? { freeSpecialCoats: true } : {}),
     };
   }
   tracks(id: string, slot?: number): Track[] {
