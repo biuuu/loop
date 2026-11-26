@@ -21,7 +21,7 @@ function shiftY(patches: readonly MaskPatch[], dy: number) {
 
 // Both colors wrap from the ears into the cheeks, leaving a widening white blaze.
 const CROWN = [
-  patch('face', dark, 25, 32, ['.##..', '.###.', '.####', '####.', '####.']),
+  patch('face', dark, 25, 32, ['.##..', '.###.', '.###.', '####.', '###..']),
   patch('face', orange, 30, 32, [
     '...##.',
     '..###.',
@@ -32,7 +32,7 @@ const CROWN = [
 ];
 const FACE = [
   ...CROWN,
-  patch('face', dark, 25, 37, ['###', '#..', '##.', '.#.']),
+  patch('face', dark, 25, 37, ['##.', '#..', '##.', '.#.']),
   patch('face', orange, 26, 38, ['##.', '.##', '.#.']),
   patch('face', orange, 33, 37, ['###', '###', '###', '##.']),
 ];
@@ -44,7 +44,7 @@ const SLEEP_FACE = [
 ];
 const REAR_CROWN = [
   patch('ear', orange, 25, 33, ['.##..', '.###.', '.####', '####.', '###..']),
-  patch('ear', dark, 31, 33, ['..##.', '.###.', '####.', '.####', '...##']),
+  patch('ear', dark, 31, 33, ['..##.', '.###.', '.###.', '..###', '...##']),
 ];
 
 const IDLE_BODY = [
@@ -52,9 +52,9 @@ const IDLE_BODY = [
   patch('flank', dark, 32, 42, [
     '..#....',
     '.###...',
-    '#####..',
+    '.####..',
     '..#####',
-    '..####.',
+    '...###.',
   ]),
 ];
 const SIDE = [
@@ -63,9 +63,9 @@ const SIDE = [
   patch('flank', dark, 32, 41, [
     '...#....',
     '.#####..',
-    '########',
-    '.######.',
-    '..####..',
+    '.#######',
+    '..#####.',
+    '...###..',
   ]),
 ];
 const REAR_BODY = [
@@ -76,13 +76,13 @@ const REAR_BODY = [
     '..##',
     '..##',
     '..##',
-    '.###',
+    '..##',
     '..##',
   ]),
 ];
 const SLEEP_BODY = [
   patch('flank', orange, 26, 44, ['##.', '###', '##.']),
-  patch('flank', dark, 33, 43, ['....##', '..####', '.#####', '...##.']),
+  patch('flank', dark, 33, 43, ['....##', '...###', '..####', '...##.']),
 ];
 
 type TailStripe = (column: number, row: number) => boolean;

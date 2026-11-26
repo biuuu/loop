@@ -36,6 +36,7 @@
 - Add a selectable calico preset with a warm ivory base and irregular orange and dark patches that follow each pose.
 - Refresh the calico palette using the user's pixel-art reference: a near-white warm base, golden orange and muted gray-brown.
 - Use the same reference to enlarge calico markings on the face and body and alternate gold and gray-brown bands along the tail.
+- Slightly reduce the gray-brown area in the calico face and body patches after visual review, keeping the alternating tail bands.
 - Add cow-pattern, orange-and-white, and tortoiseshell presets with distinct coat markings across the same poses.
 - Offer 暹罗, 狸花白 and 布偶. Rename 海豹色 to 暹罗. Remove 红重点 and 银渐层 after visual review. Promote the reviewed 布偶 sample to a selectable special coat.
 - Require points to unlock special cat coats. Give every player enough initial points to unlock one special coat. Award points once per day when a player has played music on stage for more than three minutes. Allow more ways to earn points in future iterations.

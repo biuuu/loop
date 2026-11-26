@@ -283,11 +283,14 @@ test('calico keeps a white blaze between the two colored cheeks and a white ches
   assert.equal(calicoMarking('idle', frame, 28, 43), orange);
   assert.equal(calicoMarking('idle', frame, 35, 45), dark);
   for (const [x, y] of [
+    [29, 34],
     [29, 35],
     [30, 36],
+    [27, 37],
     [29, 38],
     [30, 39],
     [31, 43],
+    [32, 44],
   ] as const) {
     assert.equal(calicoMarking('idle', frame, x, y), 0);
   }
