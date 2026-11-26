@@ -276,20 +276,21 @@ test('calico keeps a white blaze between the two colored cheeks and a white ches
   const { orange, dark } = CAT_CALICO_MARKINGS;
   assert.equal(calicoMarking('idle', frame, 33, 32), orange);
   assert.equal(calicoMarking('idle', frame, 26, 32), dark);
+  assert.equal(calicoMarking('idle', frame, 29, 34), dark);
   assert.equal(calicoMarking('idle', frame, 26, 35), dark);
+  assert.equal(calicoMarking('idle', frame, 27, 37), dark);
   assert.equal(calicoMarking('idle', frame, 25, 38), dark);
   assert.equal(calicoMarking('idle', frame, 26, 38), orange);
   assert.equal(calicoMarking('idle', frame, 34, 39), orange);
   assert.equal(calicoMarking('idle', frame, 28, 43), orange);
   assert.equal(calicoMarking('idle', frame, 35, 45), dark);
   for (const [x, y] of [
-    [29, 34],
     [29, 35],
     [30, 36],
-    [27, 37],
     [29, 38],
     [30, 39],
     [31, 43],
+    [28, 44],
     [32, 44],
   ] as const) {
     assert.equal(calicoMarking('idle', frame, x, y), 0);
@@ -329,6 +330,7 @@ test('calico patches follow the ear in all walking directions and breathing pose
   for (const [frame, ear] of poses[0].ears.entries()) {
     assert.equal(calicoMarking('side', frame, 35, ear + 14), dark);
     assert.equal(calicoMarking('side', frame, 28, ear + 11), orange);
+    assert.equal(calicoMarking('side', frame, 28, ear + 13), 0);
     assert.equal(calicoMarking('side', frame, 34, ear + 16), 0);
   }
   for (const frame of poses[1].ears.keys()) {
@@ -341,7 +343,8 @@ test('calico patches follow the ear in all walking directions and breathing pose
   for (const [frame, ear] of poses[3].ears.entries()) {
     assert.equal(calicoMarking('sleep', frame, 26, ear + 4), dark);
     assert.equal(calicoMarking('sleep', frame, 37, 44), dark);
-    assert.equal(calicoMarking('sleep', frame, 27, 46), orange);
+    assert.equal(calicoMarking('sleep', frame, 27, 44), orange);
+    assert.equal(calicoMarking('sleep', frame, 27, 46), 0);
     assert.equal(calicoMarking('sleep', frame, 30, 46), 0);
   }
 });
