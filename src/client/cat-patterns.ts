@@ -3,7 +3,8 @@ import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
 import { CAT_COAT_PATCHES, type PresetFramePatterns } from './cat-coat-patches';
 import { CAT_RAGDOLL_PATCHES } from './cat-ragdoll';
 import { CAT_SEAL_POINT_PATCHES } from './cat-seal-point';
-import { CAT_TABBY_WHITE_DETAILS } from './cat-tabby-white';
+import { CAT_STRIPED_TAIL_PATCHES, CAT_TAIL_BANDS } from './cat-striped-tail';
+import { CAT_TABBY_STRIPES, CAT_TABBY_WHITE_BIBS } from './cat-tabby-markings';
 
 export const RAGDOLL_EYE_MARKING = 6;
 
@@ -82,6 +83,10 @@ const REAR_BACK: MaskPatch = {
   x: 27,
   y: 44,
   rows: ['##.#.##'],
+};
+const REAR_BACK_WITH_STRIPED_TAIL: MaskPatch = {
+  ...REAR_BACK,
+  rows: ['##...##'],
 };
 const REAR_RUMP: MaskPatch = {
   part: 'back',
@@ -280,16 +285,35 @@ const BASE_PATTERN_PATCHES: Readonly<
 };
 
 function addCoatPresets(animation: CatAnimation): readonly FramePatterns[] {
-  return BASE_PATTERN_PATCHES[animation].map((patches, frame) => ({
-    ...patches,
-    calico: CAT_CALICO_PATCHES[animation][frame]!,
-    ragdoll: CAT_RAGDOLL_PATCHES[animation][frame]!,
-    tabby_white: [
-      ...(CAT_TABBY_WHITE_DETAILS[animation]?.[frame] ?? []),
-      ...patches.tabby.filter((patch) => patch.part === 'back'),
-      ...patches.socks.map((patch) => ({ ...patch, marking: 2 as const })),
-    ],
-  }));
+  return BASE_PATTERN_PATCHES[animation].map((patches, frame) => {
+    const stripes =
+      animation === 'up'
+        ? patches.tabby
+            .filter(({ part }) => part === 'back')
+            .map((patch) =>
+              patch === REAR_BACK ? REAR_BACK_WITH_STRIPED_TAIL : patch,
+            )
+        : CAT_TABBY_STRIPES[animation][frame]!;
+    const tail = CAT_STRIPED_TAIL_PATCHES[animation][frame]!;
+    return {
+      ...patches,
+      calico: CAT_CALICO_PATCHES[animation][frame]!,
+      orange_white: [
+        ...patches.orange_white,
+        ...stripes.map((patch) => ({ ...patch, marking: 2 as const })),
+        ...tail,
+      ],
+      ragdoll: CAT_RAGDOLL_PATCHES[animation][frame]!,
+      tabby_white: [
+        ...stripes,
+        ...tail
+          .filter(({ marking }) => marking === CAT_TAIL_BANDS.dark)
+          .map((patch) => ({ ...patch, marking: 1 as const })),
+        ...CAT_TABBY_WHITE_BIBS[animation][frame]!,
+        ...patches.socks.map((patch) => ({ ...patch, marking: 2 as const })),
+      ],
+    };
+  });
 }
 
 export const CAT_PATTERN_PATCHES = {

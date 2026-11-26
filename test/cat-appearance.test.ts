@@ -243,10 +243,10 @@ test('each preset keeps its base and shades its spots across all poses while pre
   > = {
     calico: { 1: [0xfbb747, 0xdd9234], 2: [0x79696d, 0x65545a] },
     cow: { 2: [0x453d40, 0x342c30] },
-    orange_white: { 1: [0xf4ac52, 0xda8a3c] },
+    orange_white: { 1: [0xf4ac52, 0xda8a3c], 2: [0xbd752e, 0xa85d26] },
     tortoiseshell: { 1: [0xa97a54, 0x8e6144] },
     seal_point: { 1: [0xad8361, 0x946a50], 2: [0x785644, 0x654637, 0x9b7055] },
-    tabby_white: { 1: [0x665142, 0x543e32], 2: [0xfff6e8, 0xe9decf] },
+    tabby_white: { 1: [0x675f66, 0x534b51], 2: [0xfffaf4, 0xebdccd, 0xf5dfcc] },
     ragdoll: {
       1: [0xb7a7a0, 0x9a8a88],
       2: [0x948887, 0x7e7377],
@@ -262,7 +262,7 @@ test('each preset keeps its base and shades its spots across all poses while pre
     cow: [0xfffaf4, 0xebdccd, 0xf5dfcc],
     orange_white: [0xfffaf4, 0xebdccd, 0xf5dfcc],
     seal_point: [0xf2e2c9, 0xdcc3a6],
-    tabby_white: [0xaa9983, 0x907b64],
+    tabby_white: [0xa7a1a4, 0x837b80, 0xf5dfcc],
     ragdoll: [0xeee6dd, 0xd7c9bf, 0xfaf8f3],
   };
   for (const { appearance } of CAT_APPEARANCE_PRESETS) {
@@ -371,27 +371,27 @@ test('seal point keeps the reviewed palette while following the tail, blinking, 
     );
 });
 
-test('tabby white leaves the mouth area clear and retains the chest and paw markings', () => {
+test('tabby white joins the muzzle to the chest as the head bobs, leaving the eyes and paws distinct', () => {
   const tabbyWhite = recolorCatPixels(original, {
     coat: 'gray',
     pattern: 'tabby_white',
   });
-  const body = 0xaa9983;
-  const white = 0xfff6e8;
+  const body = 0xa7a1a4;
+  const white = 0xfffaf4;
   for (let frame = 0; frame < CAT_ANIMATIONS.idle.frames; frame++) {
-    for (const x of [29, 30, 31])
-      assert.equal(frameRgb(tabbyWhite, 'idle', frame, x, 40), body);
-    assert.equal(frameRgb(tabbyWhite, 'idle', frame, 29, 41), white);
+    assert.equal(frameRgb(tabbyWhite, 'idle', frame, 30, 38), body);
+    for (const y of [39, 40, 41])
+      assert.equal(frameRgb(tabbyWhite, 'idle', frame, 30, y), white);
   }
-  for (const [frame, mouthY] of [40, 39, 40, 40, 39, 40].entries()) {
-    for (const x of [29, 30, 31])
-      assert.equal(frameRgb(tabbyWhite, 'side', frame, x, mouthY), body);
-    assert.equal(frameRgb(tabbyWhite, 'side', frame, 28, mouthY + 1), white);
+  for (const [frame, muzzleY] of [39, 38, 39, 39, 38, 39].entries()) {
+    assert.equal(frameRgb(tabbyWhite, 'side', frame, 30, muzzleY - 1), body);
+    for (const y of [muzzleY, muzzleY + 1, muzzleY + 2])
+      assert.equal(frameRgb(tabbyWhite, 'side', frame, 30, y), white);
   }
-  assert.equal(frameRgb(tabbyWhite, 'idle', 0, 27, 33), 0x665142);
+  assert.equal(frameRgb(tabbyWhite, 'idle', 0, 27, 33), 0x675f66);
   assert.equal(frameRgb(tabbyWhite, 'idle', 0, 27, 46), white);
   assert.equal(frameRgb(tabbyWhite, 'side', 1, 31, 47), white);
-  assert.equal(frameRgb(tabbyWhite, 'down', 1, 29, 40), body);
+  assert.equal(frameRgb(tabbyWhite, 'down', 1, 29, 40), white);
   assert.equal(frameRgb(tabbyWhite, 'sleep', 2, 30, 44), white);
 });
 

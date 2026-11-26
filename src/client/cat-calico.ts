@@ -1,8 +1,11 @@
 import type { MaskPatch } from './cat-patterns';
-import { CAT_SEAL_POINT_PATCHES } from './cat-seal-point';
-import { CAT_ANIMATIONS, type CatAnimation } from './cat-sprite';
+import { CAT_STRIPED_TAIL_PATCHES, CAT_TAIL_BANDS } from './cat-striped-tail';
+import type { CatAnimation } from './cat-sprite';
 
-export const CAT_CALICO_MARKINGS = { orange: 1, dark: 2 } as const;
+export const CAT_CALICO_MARKINGS = {
+  orange: CAT_TAIL_BANDS.light,
+  dark: CAT_TAIL_BANDS.dark,
+} as const;
 const { orange, dark } = CAT_CALICO_MARKINGS;
 
 function patch(
@@ -86,46 +89,6 @@ const SLEEP_BODY = [
   patch('flank', dark, 33, 43, ['....##', '...###', '..####', '...##.']),
 ];
 
-type TailStripe = (column: number, row: number) => boolean;
-
-// Partition the existing tail pixels into stripes. The bands follow each pose's
-// tail shape, including the horizontal flick and the curl on the floor.
-function stripedTail(patches: readonly MaskPatch[], isOrange: TailStripe) {
-  return patches
-    .filter(({ part }) => part === 'tail')
-    .flatMap((tail) =>
-      [dark, orange].flatMap((marking) => {
-        const rows = tail.rows.map((row, y) =>
-          row.replace(/#/g, (_, x: number) =>
-            isOrange(tail.x + x, tail.y + y) === (marking === orange)
-              ? '#'
-              : '.',
-          ),
-        );
-        return rows.some((row) => row.includes('#'))
-          ? [{ ...tail, marking, rows }]
-          : [];
-      }),
-    );
-}
-
-const raisedStripe: TailStripe = (_, y) => y === 40 || y === 41 || y === 43;
-const angledStripe: TailStripe = (_, y) => y === 41 || y === 42 || y === 44;
-const lowStripe: TailStripe = (x, y) => y === 43 || (y === 45 && x >= 40);
-const flatStripe: TailStripe = (x) =>
-  (x >= 41 && x <= 42) || (x >= 45 && x <= 46);
-const IDLE_STRIPES = [
-  raisedStripe,
-  angledStripe,
-  lowStripe,
-  flatStripe,
-  lowStripe,
-  angledStripe,
-];
-const SLEEP_TAIL = stripedTail(
-  CAT_SEAL_POINT_PATCHES.sleepHigh,
-  (_, y) => y === 45 || y === 47 || y === 48,
-);
 const SIDE_HIGH = shiftY(SIDE, -1);
 const REAR_CROWN_HIGH = shiftY(REAR_CROWN, -1);
 const FACE_LOW = shiftY(FACE, 1);
@@ -134,35 +97,27 @@ const SLEEP_FACE_LOW = shiftY(SLEEP_FACE, 1);
 export const CAT_CALICO_PATCHES: Readonly<
   Record<CatAnimation, readonly (readonly MaskPatch[])[]>
 > = {
-  idle: CAT_SEAL_POINT_PATCHES.idle.map((regions, frame) => [
+  idle: CAT_STRIPED_TAIL_PATCHES.idle.map((tail) => [
     ...FACE,
     ...IDLE_BODY,
-    ...stripedTail(regions, IDLE_STRIPES[frame % IDLE_STRIPES.length]!),
+    ...tail,
   ]),
-  side: CAT_SEAL_POINT_PATCHES.side.map((regions, frame) => {
-    const high = frame === 1 || frame === 4;
-    const dy = high ? -1 : 0;
-    return [
-      ...(high ? SIDE_HIGH : SIDE),
-      ...stripedTail(regions, (_, y) => y === 42 + dy || y === 44 + dy),
-    ];
-  }),
-  up: CAT_SEAL_POINT_PATCHES.up.map((regions, frame) => [
+  side: CAT_STRIPED_TAIL_PATCHES.side.map((tail, frame) => [
+    ...(frame === 1 || frame === 4 ? SIDE_HIGH : SIDE),
+    ...tail,
+  ]),
+  up: CAT_STRIPED_TAIL_PATCHES.up.map((tail, frame) => [
     ...(frame % 2 === 0 ? REAR_CROWN : REAR_CROWN_HIGH),
     ...REAR_BODY,
-    ...stripedTail(regions, (_, y) => y === 40 || y === 41 || y === 44),
+    ...tail,
   ]),
-  down: CAT_SEAL_POINT_PATCHES.down.map((regions, frame) => {
-    const high = frame === 1;
-    const dy = high ? -1 : 0;
-    return [
-      ...(high ? FACE : FACE_LOW),
-      ...stripedTail(regions, (_, y) => [27, 28, 30, 31].includes(y - dy)),
-    ];
-  }),
-  sleep: Array.from({ length: CAT_ANIMATIONS.sleep.frames }, (_, frame) => [
+  down: CAT_STRIPED_TAIL_PATCHES.down.map((tail, frame) => [
+    ...(frame === 1 ? FACE : FACE_LOW),
+    ...tail,
+  ]),
+  sleep: CAT_STRIPED_TAIL_PATCHES.sleep.map((tail, frame) => [
     ...(frame % 4 < 2 ? SLEEP_FACE : SLEEP_FACE_LOW),
     ...SLEEP_BODY,
-    ...SLEEP_TAIL,
+    ...tail,
   ]),
 };

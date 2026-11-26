@@ -41,7 +41,7 @@ export const CAT_APPEARANCE_PRESETS = [
   {
     appearance: { coat: 'white', pattern: 'orange_white' },
     label: '橘白',
-    swatch: 'linear-gradient(125deg, #f4ac52 52%, #fffaf4 52%)',
+    swatch: 'linear-gradient(125deg, #bd752e 24%, #f4ac52 52%, #fffaf4 52%)',
   },
   {
     appearance: { coat: 'black', pattern: 'tortoiseshell' },
@@ -56,7 +56,7 @@ export const CAT_APPEARANCE_PRESETS = [
   {
     appearance: { coat: 'gray', pattern: 'tabby_white' },
     label: '狸花白',
-    swatch: 'linear-gradient(125deg, #665142 24%, #aa9983 52%, #fff6e8 52%)',
+    swatch: 'linear-gradient(125deg, #675f66 24%, #a7a1a4 52%, #fffaf4 52%)',
   },
   {
     appearance: RAGDOLL_APPEARANCE,

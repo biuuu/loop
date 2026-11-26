@@ -27,7 +27,7 @@ const patternMarkings = {
   tabby: [1],
   calico: [1, 2],
   cow: [2],
-  orange_white: [1],
+  orange_white: [1, 2],
   tortoiseshell: [1],
   seal_point: [1, 2],
   tabby_white: [1, 2],
@@ -221,12 +221,20 @@ test('coat preset portraits show a cow cap, an orange blaze, and a tortoiseshell
   assert.deepEqual(presetMarkings('idle', frame, 30, 36), [2, 0, 0]);
   assert.deepEqual(presetMarkings('idle', frame, 29, 36), [0, 0, 0]);
   assert.deepEqual(presetMarkings('idle', frame, 34, 36), [2, 1, 0]);
+  assert.equal(
+    getPatternMask('orange_white', 'idle', frame)[38 * CAT_CELL_SIZE + 26],
+    2,
+  );
+  assert.equal(
+    getPatternMask('orange_white', 'idle', frame)[38 * CAT_CELL_SIZE + 30],
+    0,
+  );
   assert.deepEqual(presetMarkings('idle', frame, 26, 39), [0, 0, 0]);
   for (const x of [28, 32]) {
     assert.equal(frameRgb(source, 'idle', frame, x, 37), ink);
     assert.deepEqual(presetMarkings('idle', frame, x, 37), [0, 0, 0]);
   }
-  assert.deepEqual(presetMarkings('idle', frame, 35, 44), [2, 1, 1]);
+  assert.deepEqual(presetMarkings('idle', frame, 35, 44), [2, 2, 1]);
   assert.deepEqual(presetMarkings('idle', frame, 29, 43), [0, 0, 0]);
   assert.deepEqual(presetMarkings('idle', frame, 27, 46), [0, 0, 0]);
 });
@@ -249,7 +257,7 @@ test('new preset caps follow pose height while back markings follow the visible 
       );
       assert.deepEqual(
         presetMarkings(animation, frame, 30, ear + 4),
-        [2, 0, 1],
+        [2, 2, 1],
       );
     }
   }
@@ -262,7 +270,7 @@ test('new preset caps follow pose height while back markings follow the visible 
     assert.deepEqual(presetMarkings('up', frame, 34, ear + 1), [0, 1, 1]);
     assert.deepEqual(presetMarkings('up', frame, 27, 43), [2, 1, 0]);
     assert.deepEqual(presetMarkings('up', frame, 33, 42), [0, 1, 1]);
-    assert.deepEqual(presetMarkings('up', frame, 30, 43), [0, 0, 0]);
+    assert.deepEqual(presetMarkings('up', frame, 30, 43), [0, 2, 0]);
   }
   for (const frame of poses[2].ears.keys()) {
     assert.deepEqual(presetMarkings('sleep', frame, 35, 44), [2, 1, 1]);
@@ -349,7 +357,7 @@ test('calico patches follow the ear in all walking directions and breathing pose
   }
 });
 
-test('calico tail alternates golden orange and gray-brown along every tail pose', () => {
+test('calico, orange white, and tabby white alternate tail bands in every tail pose', () => {
   const { orange, dark } = CAT_CALICO_MARKINGS;
   const idleTails = [
     [
@@ -390,12 +398,18 @@ test('calico tail alternates golden orange and gray-brown along every tail pose'
     dy = 0,
   ) => {
     const second = first === dark ? orange : dark;
+    const orangeWhite = getPatternMask('orange_white', animation, frame);
+    const tabbyWhite = getPatternMask('tabby_white', animation, frame);
     for (const [index, [x, y]] of coordinates.entries()) {
+      const band = index % 2 === 0 ? first : second;
+      const pixel = (y + dy) * CAT_CELL_SIZE + x;
       assert.equal(
         calicoMarking(animation, frame, x, y + dy),
-        index % 2 === 0 ? first : second,
+        band,
         `${animation}/${frame}/${x},${y + dy}`,
       );
+      assert.equal(orangeWhite[pixel], band);
+      assert.equal(tabbyWhite[pixel], band === dark ? 1 : 0);
     }
   };
   for (let frame = 0; frame < CAT_ANIMATIONS.idle.frames; frame++) {

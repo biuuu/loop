@@ -25,9 +25,10 @@ const ORANGE_CAP: MaskPatch = {
   rows: [
     '.##.....##.',
     '.###...###.',
-    '.####.####.',
-    '#####.#####',
+    '.#########.',
+    '###########',
     '####...####',
+    '##.......##',
     '##.......##',
   ],
 };
@@ -192,18 +193,12 @@ export const CAT_COAT_PATCHES = {
   },
   front: {
     cow: shiftRows([COW_CAP], 1),
-    orange_white: [
-      ...shiftRows([ORANGE_CAP], 1),
-      { part: 'back', x: 28, y: 32, rows: ['##.##', '.#.#.'] },
-    ],
+    orange_white: shiftRows([ORANGE_CAP], 1),
     tortoiseshell: shiftRows([TORTIE_CAP], 1),
   },
   frontHigh: {
     cow: [COW_CAP],
-    orange_white: [
-      ORANGE_CAP,
-      { part: 'back', x: 28, y: 31, rows: ['##.##', '.#.#.'] },
-    ],
+    orange_white: [ORANGE_CAP],
     tortoiseshell: [TORTIE_CAP],
   },
   sleep: {
