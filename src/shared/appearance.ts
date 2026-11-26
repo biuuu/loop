@@ -17,6 +17,10 @@ export const CAT_PATTERNS = [
 ] as const;
 
 export const CALICO_APPEARANCE = { coat: 'white', pattern: 'calico' } as const;
+export const SEAL_POINT_APPEARANCE = {
+  coat: 'cream',
+  pattern: 'seal_point',
+} as const;
 
 export const CAT_APPEARANCE_PRESETS = [
   {
@@ -39,6 +43,11 @@ export const CAT_APPEARANCE_PRESETS = [
     appearance: { coat: 'black', pattern: 'tortoiseshell' },
     label: '玳瑁',
     swatch: 'linear-gradient(125deg, #a97a54 37%, #50515a 37%)',
+  },
+  {
+    appearance: SEAL_POINT_APPEARANCE,
+    label: '海豹重点色',
+    swatch: 'linear-gradient(125deg, #785644 24%, #ad8361 44%, #f2e2c9 44%)',
   },
 ] as const;
 

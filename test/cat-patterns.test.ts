@@ -28,6 +28,7 @@ const patternMarkings = {
   cow: [2],
   orange_white: [1],
   tortoiseshell: [1],
+  seal_point: [1, 2],
 } as const satisfies Record<CatPattern, readonly number[]>;
 const marked = (
   pattern: 'socks' | 'tabby',
@@ -116,6 +117,8 @@ test('all 41 source frames have bounded anatomical patches that select only actu
               'back',
               'ear',
               'temple',
+              'face',
+              'tail',
             ].includes(patch.part),
           );
           assert.equal(
@@ -147,7 +150,10 @@ test('all 41 source frames have bounded anatomical patches that select only actu
           for (let x = 0; x < 64; x++) {
             const value = mask[y * 64 + x]!;
             const color = frameRgb(source, animation, frame, x, y);
-            const isCoat = color === main || color === shadow;
+            const isCoat =
+              color === main ||
+              color === shadow ||
+              (pattern === 'seal_point' && value === 2 && color === 0xffdeb1);
             if (!value) {
               if (isCoat) remainingCoat++;
               continue;
@@ -167,11 +173,17 @@ test('all 41 source frames have bounded anatomical patches that select only actu
           }
         assert.deepEqual(
           [...markings].sort(),
-          patternMarkings[pattern],
+          pattern === 'seal_point' && animation === 'up'
+            ? [2]
+            : patternMarkings[pattern],
           `${pattern}/${animation}/${frame} marking values`,
         );
         assert.ok(selected > 0 && remainingCoat > 0);
-        if (pattern !== 'orange_white') {
+        // Front-facing point frames show mostly head, paws, and raised tail.
+        if (
+          pattern !== 'orange_white' &&
+          !(pattern === 'seal_point' && animation === 'down')
+        ) {
           assert.ok(
             remainingCoat > selected,
             `base coat majority in ${pattern}/${animation}/${frame}`,

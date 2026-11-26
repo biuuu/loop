@@ -17,12 +17,12 @@ import {
   type Track,
 } from '../shared/contracts.js';
 import {
-  CALICO_APPEARANCE,
   CAT_APPEARANCE_PRESETS,
   CAT_COATS,
   CAT_PATTERNS,
   catAppearanceSchema,
   type CatAppearance,
+  type CatPresetPattern,
 } from '../shared/appearance.js';
 import { ENVIRONMENTS } from '../shared/environments.js';
 import {
@@ -32,8 +32,13 @@ import {
 } from './room-checkpoint.js';
 
 const BASELINE_VERSION = 11;
-const CALICO_SCHEMA_VERSION = 20;
-const CAT_PRESETS_SCHEMA_VERSION = 21;
+const CAT_PRESET_SCHEMA_VERSIONS: Record<CatPresetPattern, number> = {
+  calico: 20,
+  cow: 21,
+  orange_white: 21,
+  tortoiseshell: 21,
+  seal_point: 22,
+};
 const MIXABLE_CAT_APPEARANCES = CAT_COATS.flatMap(({ id: coat }) =>
   CAT_PATTERNS.map(({ id: pattern }) => ({ coat, pattern })),
 );
@@ -96,14 +101,12 @@ export class Store {
           throw new Error(`Missing migration ${expected}`);
       }
       const latest = migrations.at(-1)!.version;
-      const presets =
-        latest >= CAT_PRESETS_SCHEMA_VERSION
-          ? PRESET_CAT_APPEARANCES
-          : [CALICO_APPEARANCE];
-      this.guestAppearances =
-        latest >= CALICO_SCHEMA_VERSION
-          ? [...MIXABLE_CAT_APPEARANCES, ...presets]
-          : MIXABLE_CAT_APPEARANCES;
+      this.guestAppearances = [
+        ...MIXABLE_CAT_APPEARANCES,
+        ...PRESET_CAT_APPEARANCES.filter(
+          ({ pattern }) => latest >= CAT_PRESET_SCHEMA_VERSIONS[pattern],
+        ),
+      ];
       this.sql
         .transaction(() => {
           const version = Number(

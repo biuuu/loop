@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import {
   copyFileSync,
   mkdirSync,
@@ -6,6 +7,7 @@ import {
   readdirSync,
   rmSync,
 } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { test } from 'node:test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,15 +16,31 @@ import {
   CALICO_APPEARANCE,
   CAT_APPEARANCE_PRESETS,
   CAT_COATS,
+  SEAL_POINT_APPEARANCE,
 } from '../src/shared/appearance.js';
 import type { Guest } from '../src/shared/contracts.js';
 
-for (const previous of [19, 20]) {
-  test(`upgrading from migration ${previous} preserves guest and room data and enforces the fixed presets`, () => {
+for (const [previous, savedAppearance, supportedPresets] of [
+  [19, { coat: 'pure_black', pattern: 'tabby' }, []],
+  [20, CALICO_APPEARANCE, ['calico']],
+  [
+    21,
+    { coat: 'black', pattern: 'tortoiseshell' },
+    ['calico', 'cow', 'orange_white', 'tortoiseshell'],
+  ],
+] as const) {
+  test(`upgrading from migration ${previous} preserves guest and room data and enforces the fixed presets`, (context) => {
     const root = mkdtempSync(join(tmpdir(), 'loop-cat-presets-'));
     const dbPath = join(root, 'test.sqlite');
     const migrations = join(root, 'migrations');
     let db: Store | undefined;
+    // Select the last allowed appearance to check which presets each schema admits.
+    const pickLast = context.mock.method(
+      crypto,
+      'randomInt',
+      (max: number) => max - 1,
+    );
+    syncBuiltinESMExports();
     try {
       mkdirSync(migrations);
       for (const name of readdirSync('migrations').filter(
@@ -32,11 +50,11 @@ for (const previous of [19, 20]) {
       db = new Store(dbPath, migrations);
       assert.equal(db.sql.pragma('user_version', { simple: true }), previous);
       const owner = db.createUser('Owner');
+      assert.equal(
+        owner.guest.appearance?.pattern,
+        supportedPresets.at(-1) ?? 'tabby',
+      );
       const other = db.createGuest('Other');
-      const savedAppearance =
-        previous === 20
-          ? CALICO_APPEARANCE
-          : ({ coat: 'pure_black', pattern: 'tabby' } as const);
       db.updateAppearance(owner.guest.id, savedAppearance);
       db.add(owner.guest.id, {
         id: '1',
@@ -53,7 +71,8 @@ for (const previous of [19, 20]) {
       const update = 'UPDATE guests SET coat=?, pattern=? WHERE id=?';
       const updateOld = db.sql.prepare(update);
       for (const { appearance } of CAT_APPEARANCE_PRESETS) {
-        if (previous === 20 && appearance.pattern === 'calico') continue;
+        if (supportedPresets.some((pattern) => pattern === appearance.pattern))
+          continue;
         assert.throws(
           () =>
             updateOld.run(appearance.coat, appearance.pattern, owner.guest.id),
@@ -78,12 +97,16 @@ for (const previous of [19, 20]) {
       db = undefined;
 
       db = new Store(dbPath);
-      assert.equal(db.sql.pragma('user_version', { simple: true }), 21);
+      assert.equal(db.sql.pragma('user_version', { simple: true }), 22);
       assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
       assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
       assert.deepEqual(readRows(db), before);
       assert.deepEqual(db.guest(owner.token)?.appearance, savedAppearance);
       assert.deepEqual(db.guest(other.token), other.guest);
+      assert.deepEqual(
+        db.createGuest('Random cat').guest.appearance,
+        SEAL_POINT_APPEARANCE,
+      );
       const updateNew = db.sql.prepare(update);
       const presetGuests: { token: string; guest: Guest }[] = [];
       for (const { appearance, label } of CAT_APPEARANCE_PRESETS) {
@@ -110,6 +133,8 @@ for (const previous of [19, 20]) {
       assert.deepEqual(db.guest(owner.token)?.appearance, savedAppearance);
       assert.deepEqual(db.guest(other.token), other.guest);
     } finally {
+      pickLast.mock.restore();
+      syncBuiltinESMExports();
       db?.close();
       rmSync(root, { recursive: true, force: true });
     }

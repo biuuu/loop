@@ -12,15 +12,11 @@ import {
   type CatAnimation,
 } from '../src/client/cat-sprite';
 import {
-  SEAL_POINT_SAMPLE,
-  sealPointSampleMask,
-} from '../src/client/cat-seal-point-sample';
-import {
   CAT_APPEARANCE_PRESETS,
   CAT_COATS,
   CAT_PATTERNS,
   DEFAULT_CAT_APPEARANCE,
-  catAppearanceSchema,
+  SEAL_POINT_APPEARANCE,
   type CatPresetPattern,
 } from '../src/shared/appearance';
 
@@ -157,12 +153,13 @@ test('every pattern affects real coat pixels in every used animation frame and p
 test('each preset keeps its base and shades its spots across all poses while preserving source details', () => {
   const palettes: Record<
     CatPresetPattern,
-    Partial<Record<number, readonly [number, number]>>
+    Partial<Record<number, readonly [number, number, number?]>>
   > = {
     calico: { 1: [0xd98947, 0xb96b36], 2: [0x554b4e, 0x41383c] },
     cow: { 2: [0x38353b, 0x29262c] },
     orange_white: { 1: [0xeda251, 0xd57836] },
     tortoiseshell: { 1: [0xa97a54, 0x8e6144] },
+    seal_point: { 1: [0xad8361, 0x946a50], 2: [0x785644, 0x654637, 0x9b7055] },
   };
   for (const { appearance } of CAT_APPEARANCE_PRESETS) {
     const base = recolorCatPixels(original, {
@@ -181,22 +178,31 @@ test('each preset keeps its base and shades its spots across all poses while pre
             const color = rgb(original, index);
             const mark = mask[y * CAT_CELL_SIZE + x] ?? 0;
             assert.equal(result[index + 3], original[index + 3]);
-            if (!original[index + 3] || !isCoat(color)) {
+            if (
+              !original[index + 3] ||
+              (!isCoat(color) && color !== 0xffdeb1)
+            ) {
               assert.equal(rgb(result, index), rgb(base, index));
               continue;
             }
-            painted.add(mark);
+            if (isCoat(color)) painted.add(mark);
             const tones = palette[mark];
             if (mark) assert.ok(tones);
-            assert.equal(
-              rgb(result, index),
-              tones ? tones[color === 0xef6c00 ? 1 : 0] : rgb(base, index),
-            );
+            const shade = color === 0xfb8c00 ? 0 : color === 0xef6c00 ? 1 : 2;
+            const baseColor =
+              appearance.pattern === 'seal_point' && shade < 2
+                ? shade === 0
+                  ? 0xf2e2c9
+                  : 0xdcc3a6
+                : rgb(base, index);
+            assert.equal(rgb(result, index), tones?.[shade] ?? baseColor);
           }
         }
         assert.deepEqual(
           [...painted].sort(),
-          [0, ...Object.keys(palette).map(Number)],
+          appearance.pattern === 'seal_point' && animation === 'up'
+            ? [0, 2]
+            : [0, ...Object.keys(palette).map(Number)],
           `${appearance.pattern}/${animation}/${frame}`,
         );
       }
@@ -204,49 +210,52 @@ test('each preset keeps its base and shades its spots across all poses while pre
   }
 });
 
-test('seal point sample colors the face and extremities in the displayed poses only', () => {
-  assert.equal(catAppearanceSchema.safeParse(SEAL_POINT_SAMPLE).success, false);
-  const result = recolorCatPixels(original, SEAL_POINT_SAMPLE);
-  const landmarks = {
-    idle: [
-      [26, 32, 0x785644], // Ear
-      [29, 37, 0xad8361], // Face mask
-      [28, 37, 0x482a00], // Open eye
-      [41, 38, 0x785644], // Tail
-      [27, 46, 0x785644], // Paw
-      [33, 43, 0xf2e2c9], // Torso
-    ],
-    sleep: [
-      [26, 36, 0x785644],
-      [29, 41, 0xad8361],
-      [28, 41, 0x482a00], // Closed eye
-      [45, 47, 0x785644],
-      [26, 46, 0x785644],
-      [33, 45, 0xf2e2c9],
-    ],
-  } as const;
-  for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
-    for (let column = 0; column < CAT_ANIMATIONS[animation].frames; column++) {
-      const mask = sealPointSampleMask(animation, column);
-      if (column !== 0 || (animation !== 'idle' && animation !== 'sleep')) {
-        assert.equal(mask, undefined);
-        continue;
-      }
-      assert.ok(mask);
-      for (const [x, y, color] of landmarks[animation])
-        assert.equal(frameRgb(result, animation, column, x, y), color);
-      for (const [pixel, mark] of mask.entries()) {
-        const x = pixel % CAT_CELL_SIZE;
-        const y = Math.floor(pixel / CAT_CELL_SIZE);
-        const index = frameIndex(animation, column, x, y);
-        assert.equal(result[index + 3], original[index + 3]);
-        if (mark)
-          assert.ok(isCoat(rgb(original, index)), `${animation}/${x},${y}`);
-        if (rgb(original, index) === 0x482a00)
-          assert.equal(rgb(result, index), 0x482a00);
-      }
-    }
-  }
+test('seal point keeps the reviewed palette while following the tail, blinking, breath and steps', () => {
+  const result = recolorCatPixels(original, SEAL_POINT_APPEARANCE);
+  const face = 0xad8361;
+  const point = 0x785644;
+  const ink = 0x482a00;
+  const cream = 0xf2e2c9;
+  const landmarks = [
+    ['idle', 0, 26, 32, point],
+    ['idle', 0, 29, 37, face],
+    ['idle', 0, 28, 37, ink],
+    ['idle', 0, 41, 38, point],
+    ['idle', 0, 27, 46, point],
+    ['idle', 0, 33, 43, cream],
+    ['idle', 1, 44, 39, point],
+    ['idle', 2, 47, 42, point],
+    ['idle', 3, 28, 37, face],
+    ['idle', 3, 28, 38, ink],
+    ['idle', 3, 48, 45, point],
+    ['side', 0, 28, 47, 0x9b7055], // Source paw highlight
+    ['side', 1, 29, 36, face],
+    ['side', 1, 46, 39, point],
+    ['side', 1, 31, 47, point],
+    ['side', 1, 32, 44, cream],
+    ['up', 0, 28, 38, point],
+    ['up', 2, 32, 38, point],
+    ['up', 3, 27, 50, point],
+    ['down', 0, 30, 25, point],
+    ['down', 1, 28, 24, point],
+    ['down', 2, 32, 44, point],
+    ['sleep', 0, 26, 36, point],
+    ['sleep', 0, 29, 41, face],
+    ['sleep', 0, 28, 41, ink],
+    ['sleep', 2, 28, 42, ink],
+    ['sleep', 2, 29, 42, face],
+    ['sleep', 0, 45, 47, point],
+    ['sleep', 2, 45, 47, point],
+    ['sleep', 0, 26, 46, point],
+    ['sleep', 2, 26, 46, point],
+    ['sleep', 0, 33, 45, cream],
+  ] as const;
+  for (const [animation, column, x, y, color] of landmarks)
+    assert.equal(
+      frameRgb(result, animation, column, x, y),
+      color,
+      `${animation}/${column}/${x},${y}`,
+    );
 });
 
 test('pure black blends the connected outer contour while retaining open and blinking eyes', () => {

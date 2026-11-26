@@ -1,5 +1,6 @@
 import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
 import { CAT_COAT_PATCHES, type PresetFramePatterns } from './cat-coat-patches';
+import { CAT_SEAL_POINT_PATCHES } from './cat-seal-point';
 
 export const CAT_CALICO_MARKINGS = { orange: 1, dark: 2 } as const;
 
@@ -13,7 +14,9 @@ export interface MaskPatch {
     | 'flank'
     | 'back'
     | 'ear'
-    | 'temple';
+    | 'temple'
+    | 'face'
+    | 'tail';
   readonly x: number;
   readonly y: number;
   readonly rows: readonly string[];
@@ -23,6 +26,7 @@ export interface FramePatterns extends PresetFramePatterns {
   readonly socks: readonly MaskPatch[];
   readonly tabby: readonly MaskPatch[];
   readonly calico: readonly MaskPatch[];
+  readonly seal_point: readonly MaskPatch[];
 }
 
 const CALICO_EAR: MaskPatch = {
@@ -99,7 +103,7 @@ const CALICO_SLEEP_FLANK: MaskPatch = {
 
 // Coordinates are frame-local source pixels. Only the regions named here were
 // compared for reuse: blinking eyes, tail swings and sleep Zs lie outside them.
-const IDLE: FramePatterns = {
+const IDLE: Omit<FramePatterns, 'seal_point'> = {
   socks: [
     { part: 'bib', x: 28, y: 41, rows: ['.#..', '####', '.##.', '..#.'] },
     { part: 'frontPaw', x: 27, y: 45, rows: ['#..#', '#.##'] },
@@ -165,6 +169,7 @@ const FRONT_STANDING: FramePatterns = {
   socks: [{ part: 'frontPaw', x: 28, y: 43, rows: ['#...#', '#...#'] }],
   tabby: FRONT_TABBY_HIGH,
   calico: [CALICO_EAR, CALICO_TEMPLE],
+  seal_point: CAT_SEAL_POINT_PATCHES.down[1],
   ...CAT_COAT_PATCHES.frontHigh,
 };
 
@@ -196,6 +201,7 @@ const SLEEP_HIGH: FramePatterns = {
     { ...CALICO_TEMPLE, y: 38 },
     CALICO_SLEEP_FLANK,
   ],
+  seal_point: CAT_SEAL_POINT_PATCHES.sleepHigh,
   ...CAT_COAT_PATCHES.sleep,
 };
 const SLEEP_LOW: FramePatterns = {
@@ -209,26 +215,17 @@ const SLEEP_LOW: FramePatterns = {
     { ...CALICO_TEMPLE, y: 39 },
     CALICO_SLEEP_FLANK,
   ],
+  seal_point: CAT_SEAL_POINT_PATCHES.sleepLow,
   ...CAT_COAT_PATCHES.sleepLow,
 };
 
 export const CAT_PATTERN_PATCHES: Readonly<
   Record<CatAnimation, readonly FramePatterns[]>
 > = {
-  idle: [
-    IDLE,
-    IDLE,
-    IDLE,
-    IDLE,
-    IDLE,
-    IDLE,
-    IDLE,
-    IDLE,
-    IDLE,
-    IDLE,
-    IDLE,
-    IDLE,
-  ],
+  idle: CAT_SEAL_POINT_PATCHES.idle.map((seal_point) => ({
+    ...IDLE,
+    seal_point,
+  })),
   side: [
     {
       socks: [
@@ -238,6 +235,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: SIDE_TABBY,
       calico: CALICO_SIDE,
+      seal_point: CAT_SEAL_POINT_PATCHES.side[0],
       ...CAT_COAT_PATCHES.side,
     },
     {
@@ -248,6 +246,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: SIDE_TABBY_HIGH,
       calico: CALICO_SIDE_HIGH,
+      seal_point: CAT_SEAL_POINT_PATCHES.side[1],
       ...CAT_COAT_PATCHES.sideHigh,
     },
     {
@@ -258,6 +257,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: SIDE_TABBY,
       calico: CALICO_SIDE,
+      seal_point: CAT_SEAL_POINT_PATCHES.side[2],
       ...CAT_COAT_PATCHES.side,
     },
     {
@@ -268,6 +268,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: SIDE_TABBY,
       calico: CALICO_SIDE,
+      seal_point: CAT_SEAL_POINT_PATCHES.side[3],
       ...CAT_COAT_PATCHES.side,
     },
     {
@@ -278,6 +279,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: SIDE_TABBY_HIGH,
       calico: CALICO_SIDE_HIGH,
+      seal_point: CAT_SEAL_POINT_PATCHES.side[4],
       ...CAT_COAT_PATCHES.sideHigh,
     },
     {
@@ -288,6 +290,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: SIDE_TABBY,
       calico: CALICO_SIDE,
+      seal_point: CAT_SEAL_POINT_PATCHES.side[5],
       ...CAT_COAT_PATCHES.side,
     },
   ],
@@ -296,6 +299,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       socks: [{ part: 'rearPaw', x: 28, y: 50, rows: ['#...#', '#...#'] }],
       tabby: [REAR_NAPE, REAR_BACK, REAR_RUMP],
       calico: CALICO_REAR,
+      seal_point: CAT_SEAL_POINT_PATCHES.up[0],
       ...CAT_COAT_PATCHES.rear,
     },
     {
@@ -304,12 +308,14 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: [REAR_NAPE_HIGH, REAR_BACK, REAR_RUMP_STEP],
       calico: CALICO_REAR_HIGH,
+      seal_point: CAT_SEAL_POINT_PATCHES.up[1],
       ...CAT_COAT_PATCHES.rearHigh,
     },
     {
       socks: [{ part: 'rearPaw', x: 28, y: 50, rows: ['#...#', '#...#'] }],
       tabby: [REAR_NAPE, REAR_BACK, REAR_RUMP],
       calico: CALICO_REAR,
+      seal_point: CAT_SEAL_POINT_PATCHES.up[2],
       ...CAT_COAT_PATCHES.rear,
     },
     {
@@ -318,6 +324,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       ],
       tabby: [REAR_NAPE_HIGH, REAR_BACK, REAR_RUMP_STEP],
       calico: CALICO_REAR_HIGH,
+      seal_point: CAT_SEAL_POINT_PATCHES.up[3],
       ...CAT_COAT_PATCHES.rearHigh,
     },
   ],
@@ -326,6 +333,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       socks: [{ part: 'frontPaw', x: 28, y: 43, rows: ['#', '#'] }],
       tabby: FRONT_TABBY,
       calico: CALICO_FRONT,
+      seal_point: CAT_SEAL_POINT_PATCHES.down[0],
       ...CAT_COAT_PATCHES.front,
     },
     FRONT_STANDING,
@@ -333,6 +341,7 @@ export const CAT_PATTERN_PATCHES: Readonly<
       socks: [{ part: 'frontPaw', x: 32, y: 43, rows: ['#', '#'] }],
       tabby: FRONT_TABBY,
       calico: CALICO_FRONT,
+      seal_point: CAT_SEAL_POINT_PATCHES.down[2],
       ...CAT_COAT_PATCHES.front,
     },
   ],
@@ -365,6 +374,8 @@ const PARTS = new Set<MaskPatch['part']>([
   'back',
   'ear',
   'temple',
+  'face',
+  'tail',
 ]);
 const masks = new Map<string, Uint8Array>();
 
@@ -374,7 +385,8 @@ export function getPatternMask(
   animation: CatAnimation,
   frame: number,
 ): Uint8Array {
-  if (!Object.hasOwn(IDLE, pattern)) throw new Error('Unknown cat pattern');
+  if (!Object.hasOwn(CAT_PATTERN_PATCHES.idle[0]!, pattern))
+    throw new Error('Unknown cat pattern');
   if (!Object.hasOwn(CAT_ANIMATIONS, animation))
     throw new Error('Unknown cat animation');
   const frames = CAT_PATTERN_PATCHES[animation];
