@@ -9,14 +9,18 @@ import {
 import {
   CAT_ANIMATIONS,
   CAT_CELL_SIZE,
+  CAT_IDLE_UP_COLUMN,
   type CatAnimation,
 } from '../src/client/cat-sprite';
+import { recolorRagdollSample } from '../src/client/cat-ragdoll-sample';
 import {
   CAT_APPEARANCE_PRESETS,
   CAT_COATS,
   CAT_PATTERNS,
   DEFAULT_CAT_APPEARANCE,
   SEAL_POINT_APPEARANCE,
+  catAppearancePreset,
+  catAppearanceSchema,
   type CatPresetPattern,
 } from '../src/shared/appearance';
 
@@ -25,6 +29,43 @@ import { frameIndex, frameRgb, sourcePixels, rgb } from './helpers/cat-source';
 
 const original = sourcePixels();
 const isCoat = (color: number) => color === 0xfb8c00 || color === 0xef6c00;
+
+test('the bicolor ragdoll sample keeps the cat silhouette and the Siamese rename keeps its ID', () => {
+  const frame = new Uint8ClampedArray(CAT_CELL_SIZE ** 2 * 4);
+  for (let y = 0; y < CAT_CELL_SIZE; y++) {
+    const start = frameIndex('idle', CAT_IDLE_UP_COLUMN, 0, y);
+    frame.set(
+      original.subarray(start, start + CAT_CELL_SIZE * 4),
+      y * CAT_CELL_SIZE * 4,
+    );
+  }
+  const source = frame.slice();
+  recolorRagdollSample(frame);
+  for (let index = 3; index < frame.length; index += 4)
+    assert.equal(frame[index], source[index]);
+  const colorAt = (x: number, y: number) =>
+    rgb(frame, (y * CAT_CELL_SIZE + x) * 4);
+  assert.equal(colorAt(26, 32), 0x788ba4); // Ear
+  assert.equal(colorAt(29, 34), 0x788ba4);
+  assert.equal(colorAt(30, 34), 0xe4dad5); // Upper tip of the white V
+  assert.equal(colorAt(28, 36), 0xf6f0e9);
+  assert.equal(colorAt(27, 36), 0x788ba4);
+  assert.equal(colorAt(28, 37), 0x4579b2);
+  assert.equal(colorAt(32, 38), 0x2d506f);
+  assert.equal(colorAt(34, 43), 0xb1b9c9);
+  assert.equal(colorAt(41, 38), 0x788ba4);
+  assert.equal(colorAt(27, 46), 0xf6f0e9); // Paw
+  assert.equal(
+    catAppearanceSchema.safeParse({ coat: 'white', pattern: 'ragdoll-sample' })
+      .success,
+    false,
+  );
+  assert.equal(catAppearancePreset('seal_point')?.label, '暹罗');
+  assert.deepEqual(catAppearanceSchema.parse(SEAL_POINT_APPEARANCE), {
+    coat: 'cream',
+    pattern: 'seal_point',
+  });
+});
 
 test('packed appearance sheet includes all sixteen sleep frames from the original first row', () => {
   assert.equal(CAT_APPEARANCE_WIDTH, 1024);

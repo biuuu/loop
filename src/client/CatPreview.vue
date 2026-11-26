@@ -8,12 +8,18 @@ import {
   type CatAppearance,
 } from '../shared/appearance';
 import { createAppearanceSheet } from './cat-appearance';
+import { createRagdollSampleFrame } from './cat-ragdoll-sample';
 import { CAT_CELL_SIZE, CAT_IDLE_UP_COLUMN } from './cat-sprite';
 
-const props = defineProps<{ appearance: CatAppearance; portrait?: boolean }>();
+const props = defineProps<{
+  appearance: CatAppearance;
+  portrait?: boolean;
+  ragdollSample?: boolean;
+}>();
 const canvas = ref<HTMLCanvasElement>();
 const unavailable = ref(false);
 const label = computed(() => {
+  if (props.ragdollSample) return '布偶花色样品';
   const preset = catAppearancePreset(props.appearance.pattern);
   if (preset) return preset.label;
   return `${CAT_COATS.find((coat) => coat.id === props.appearance.coat)?.label}，${CAT_PATTERNS.find((pattern) => pattern.id === props.appearance.pattern)?.label}`;
@@ -26,6 +32,7 @@ watch(
     () => props.appearance.coat,
     () => props.appearance.pattern,
     () => props.portrait,
+    () => props.ragdollSample,
   ],
   async () => {
     const current = ++revision;
@@ -34,10 +41,10 @@ watch(
     try {
       const image = await Assets.load<Texture>('/Cat/Cat.png');
       if (disposed || current !== revision || !canvas.value) return;
-      const sheet = createAppearanceSheet(
-        image.source.resource as CanvasImageSource,
-        appearance,
-      );
+      const source = image.source.resource as CanvasImageSource;
+      const sheet = props.ragdollSample
+        ? createRagdollSampleFrame(source)
+        : createAppearanceSheet(source, appearance);
       const context = canvas.value.getContext('2d');
       if (!context) throw new Error('Cat preview canvas is unavailable');
       context.imageSmoothingEnabled = false;
@@ -49,7 +56,7 @@ watch(
         : { x: 0, y: 0, size: CAT_CELL_SIZE };
       context.drawImage(
         sheet,
-        CAT_IDLE_UP_COLUMN * CAT_CELL_SIZE + crop.x,
+        (props.ragdollSample ? 0 : CAT_IDLE_UP_COLUMN * CAT_CELL_SIZE) + crop.x,
         crop.y,
         crop.size,
         crop.size,

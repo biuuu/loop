@@ -46,7 +46,7 @@ export const CAT_APPEARANCE_PRESETS = [
   },
   {
     appearance: SEAL_POINT_APPEARANCE,
-    label: '海豹色',
+    label: '暹罗',
     swatch: 'linear-gradient(125deg, #785644 24%, #ad8361 44%, #f2e2c9 44%)',
   },
   {

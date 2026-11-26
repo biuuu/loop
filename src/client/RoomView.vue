@@ -15,6 +15,7 @@ import { neteaseCover } from './netease-cover';
 import RoomScene from './RoomScene.vue';
 import RoomMembers from './RoomMembers.vue';
 import CatPreview from './CatPreview.vue';
+import { RAGDOLL_SAMPLE_SWATCH } from './cat-ragdoll-sample';
 import NeteasePlaylistSearch from './NeteasePlaylistSearch.vue';
 import NeteaseUserSearch from './NeteaseUserSearch.vue';
 import EmotePicker from './EmotePicker.vue';
@@ -181,6 +182,14 @@ const basicAppearance = ref<CatAppearance>({ ...DEFAULT_CAT_APPEARANCE });
 const specialAppearance = ref<
   (typeof CAT_APPEARANCE_PRESETS)[number]['appearance']
 >(CAT_APPEARANCE_PRESETS[0].appearance);
+const ragdollSampleSelected = ref(false);
+const previewingRagdoll = computed(
+  () => appearanceTab.value === 'special' && ragdollSampleSelected.value,
+);
+function selectSpecialAppearance(appearance: typeof specialAppearance.value) {
+  specialAppearance.value = appearance;
+  ragdollSampleSelected.value = false;
+}
 const appearanceDraft = computed(() =>
   appearanceTab.value === 'basic'
     ? basicAppearance.value
@@ -194,7 +203,9 @@ function hasPreset(pattern: CatPresetPattern) {
 }
 const lockedPreset = computed(() => {
   const { pattern } = specialAppearance.value;
-  return appearanceTab.value === 'special' && !hasPreset(pattern)
+  return appearanceTab.value === 'special' &&
+    !previewingRagdoll.value &&
+    !hasPreset(pattern)
     ? pattern
     : undefined;
 });
@@ -298,6 +309,7 @@ function openAppearance() {
   };
   specialAppearance.value =
     preset?.appearance ?? CAT_APPEARANCE_PRESETS[0].appearance;
+  ragdollSampleSelected.value = false;
   appearanceTab.value = preset ? 'special' : 'basic';
   room.error = '';
   void openModal('appearance');
@@ -311,7 +323,7 @@ watch(
   { flush: 'sync' },
 );
 async function applyAppearance() {
-  if (appearanceAction.value) return;
+  if (appearanceAction.value || previewingRagdoll.value) return;
   const pattern = lockedPreset.value;
   if (pattern && (!room.points || missingPoints.value)) return;
   const version = appearanceOpenVersion;
@@ -872,7 +884,10 @@ onBeforeUnmount(() => {
               </button>
             </div>
             <div class="cat-preview-card">
-              <CatPreview :appearance="appearanceDraft" />
+              <CatPreview
+                :appearance="appearanceDraft"
+                :ragdoll-sample="previewingRagdoll"
+              />
             </div>
             <p v-if="room.pointsReward" class="wardrobe-reward" role="status">
               {{ room.pointsReward }}
@@ -959,6 +974,7 @@ onBeforeUnmount(() => {
                   class="cat-option"
                   :class="{
                     selected:
+                      !previewingRagdoll &&
                       specialAppearance.pattern === preset.appearance.pattern,
                   }"
                 >
@@ -967,9 +983,10 @@ onBeforeUnmount(() => {
                     name="special-cat-coat"
                     :value="preset.appearance.pattern"
                     :checked="
+                      !previewingRagdoll &&
                       specialAppearance.pattern === preset.appearance.pattern
                     "
-                    @change="specialAppearance = preset.appearance"
+                    @change="selectSpecialAppearance(preset.appearance)"
                   />
                   <span
                     class="coat-swatch"
@@ -984,6 +1001,24 @@ onBeforeUnmount(() => {
                     <LockKeyhole aria-hidden="true" />{{ COAT_UNLOCK_COST }}
                     积分
                   </span>
+                </label>
+                <label
+                  class="cat-option"
+                  :class="{ selected: previewingRagdoll }"
+                >
+                  <input
+                    type="radio"
+                    name="special-cat-coat"
+                    value="ragdoll-sample"
+                    :checked="previewingRagdoll"
+                    @change="ragdollSampleSelected = true"
+                  />
+                  <span
+                    class="coat-swatch"
+                    :style="{ background: RAGDOLL_SAMPLE_SWATCH }"
+                    aria-hidden="true"
+                  />
+                  布偶（样品）
                 </label>
               </div>
             </fieldset>
@@ -1009,7 +1044,7 @@ onBeforeUnmount(() => {
                 </label>
               </div>
             </fieldset>
-            <p v-if="!lockedPreset" class="library-hint">
+            <p v-if="!lockedPreset && !previewingRagdoll" class="library-hint">
               保存后房间里的大家都能看到，下次回来也会保留。
             </p>
           </form>
@@ -1213,12 +1248,16 @@ onBeforeUnmount(() => {
           <button class="text-button" @click="room.error = ''">关闭提示</button>
         </p>
         <footer v-if="modal === 'appearance'" class="wardrobe-footer">
-          <p v-if="lockedPreset && missingPoints" class="library-hint">
+          <p v-if="previewingRagdoll" class="library-hint">样品仅供预览。</p>
+          <p v-else-if="lockedPreset && missingPoints" class="library-hint">
             解锁还差 {{ missingPoints }} 积分。
           </p>
           <div class="confirm-actions">
-            <button type="button" @click="closeModal">取消</button>
+            <button type="button" @click="closeModal">
+              {{ previewingRagdoll ? '关闭' : '取消' }}
+            </button>
             <button
+              v-if="!previewingRagdoll"
               class="primary"
               type="submit"
               form="cat-wardrobe-form"

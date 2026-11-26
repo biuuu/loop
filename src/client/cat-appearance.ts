@@ -14,41 +14,41 @@ export const CAT_PACKED_ROWS: Record<CatAnimation, number> = {
 };
 export const CAT_APPEARANCE_WIDTH = CAT_ANIMATIONS.sleep.frames * CAT_CELL_SIZE;
 export const CAT_APPEARANCE_HEIGHT = 5 * CAT_CELL_SIZE;
-const ORIGINAL = {
+export const ORIGINAL_CAT_PALETTE = {
   main: 0xfb8c00,
   shadow: 0xef6c00,
   light: 0xffdeb1,
   ink: 0x482a00,
 };
 const PALETTES = {
-  orange: { ...ORIGINAL, stripe: 0xc85c00 },
+  orange: { ...ORIGINAL_CAT_PALETTE, stripe: 0xc85c00 },
   gray: {
     main: 0x929ba5,
     shadow: 0x717b88,
     light: 0xd5d9dc,
     stripe: 0x515c6b,
-    ink: ORIGINAL.ink,
+    ink: ORIGINAL_CAT_PALETTE.ink,
   },
   cream: {
     main: 0xe6c99c,
     shadow: 0xc7a679,
     light: 0xfff0d5,
     stripe: 0x9f7b52,
-    ink: ORIGINAL.ink,
+    ink: ORIGINAL_CAT_PALETTE.ink,
   },
   black: {
     main: 0x50515a,
     shadow: 0x393a45,
     light: 0xa3a2a6,
     stripe: 0x252631,
-    ink: ORIGINAL.ink,
+    ink: ORIGINAL_CAT_PALETTE.ink,
   },
   white: {
     main: 0xf1eee5,
     shadow: 0xd3cfc3,
     light: 0xfffaf2,
     stripe: 0xa8a297,
-    ink: ORIGINAL.ink,
+    ink: ORIGINAL_CAT_PALETTE.ink,
   },
   pure_black: {
     main: 0x000000,
@@ -114,7 +114,7 @@ function outerInkPixels(
     ((pixels[offset]! << 16) |
       (pixels[offset + 1]! << 8) |
       pixels[offset + 2]!) ===
-      ORIGINAL.ink;
+      ORIGINAL_CAT_PALETTE.ink;
   for (let start = 0; start < visited.length; start++) {
     if (
       visited[start] ||
@@ -198,13 +198,13 @@ export function recolorCatPixels(
             pixels[offset + 2]!;
           const patch = spots?.[mask?.[y * CAT_CELL_SIZE + x] ?? 0];
           const replacement =
-            color === ORIGINAL.main
+            color === ORIGINAL_CAT_PALETTE.main
               ? (patch?.main ?? palette.main)
-              : color === ORIGINAL.shadow
+              : color === ORIGINAL_CAT_PALETTE.shadow
                 ? (patch?.shadow ?? palette.shadow)
-                : color === ORIGINAL.light
+                : color === ORIGINAL_CAT_PALETTE.light
                   ? (patch?.light ?? palette.light)
-                  : color === ORIGINAL.ink
+                  : color === ORIGINAL_CAT_PALETTE.ink
                     ? outerInk?.[y * CAT_CELL_SIZE + x]
                       ? 0x030303
                       : palette.ink
