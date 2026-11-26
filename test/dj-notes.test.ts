@@ -5,9 +5,7 @@ import {
   DJ_NOTE_COUNT,
   DJ_NOTE_LIFETIME_MS,
   DJ_NOTE_STAGGER_MS,
-  LIKE_NOTE_CYCLE_MS,
   djNotePose,
-  likeNotePose,
 } from '../src/client/dj-notes';
 
 const playback = {
@@ -112,26 +110,4 @@ test('invalid pool indices or time cannot expose stray notes', () => {
     assert.equal(djNotePose(index, 1000).alpha, 0);
   for (const time of [-1, NaN, Infinity])
     assert.equal(djNotePose(0, time).alpha, 0);
-});
-
-test('one like note keeps drifting with a visible reset each cycle', () => {
-  const start = likeNotePose(0)!;
-  const peak = likeNotePose(LIKE_NOTE_CYCLE_MS / 2)!;
-  const end = likeNotePose(LIKE_NOTE_CYCLE_MS - 1)!;
-  assert.ok(start.y < 0 && peak.y < start.y && end.y < peak.y);
-  assert.ok(peak.x > start.x && end.x > peak.x);
-  assert.ok(
-    peak.alpha > start.alpha && end.alpha > 0 && end.alpha < peak.alpha,
-  );
-  assert.deepEqual(likeNotePose(LIKE_NOTE_CYCLE_MS), start);
-  assert.deepEqual(likeNotePose(LIKE_NOTE_CYCLE_MS * 51.5), peak);
-  for (const elapsed of [-1, NaN, Infinity])
-    assert.equal(likeNotePose(elapsed), undefined);
-});
-
-test('a like note stays visible and still for reduced motion across cycles', () => {
-  const start = likeNotePose(0, true)!;
-  assert.ok(start.y < 0 && start.alpha > 0);
-  assert.deepEqual(likeNotePose(LIKE_NOTE_CYCLE_MS - 1, true), start);
-  assert.deepEqual(likeNotePose(LIKE_NOTE_CYCLE_MS * 51.5, true), start);
 });
