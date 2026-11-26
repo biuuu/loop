@@ -34,6 +34,7 @@
 - Try selectable coat colors and simple patterns for the room cats, with a preview before saving. Assign a random coat and pattern once when creating a new user, then persist that appearance.
 - Preserve the existing dark gray and ivory coats, adding pure black and pure white as separate options. Pure black should have a subdued outer outline, with readable eyes.
 - Add a selectable calico preset with a warm ivory base and irregular orange and dark patches that follow each pose.
+- Refresh the calico palette using the user's pixel-art reference: a near-white warm base, golden orange and muted gray-brown.
 - Add cow-pattern, orange-and-white, and tortoiseshell presets with distinct coat markings across the same poses.
 - Offer 暹罗, 狸花白 and 布偶. Rename 海豹色 to 暹罗. Remove 红重点 and 银渐层 after visual review. Promote the reviewed 布偶 sample to a selectable special coat.
 - Require points to unlock special cat coats. Give every player enough initial points to unlock one special coat. Award points once per day when a player has played music on stage for more than three minutes. Allow more ways to earn points in future iterations.

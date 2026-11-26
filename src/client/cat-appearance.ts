@@ -77,8 +77,8 @@ type SpotPalette = Readonly<Partial<Record<number, FurColors>>>;
 const SPOT_PALETTES = {
   socks: { 1: { main: 0xfff7e9, shadow: 0xe8dbc8 } },
   calico: {
-    [CAT_CALICO_MARKINGS.orange]: { main: 0xd98947, shadow: 0xb96b36 },
-    [CAT_CALICO_MARKINGS.dark]: { main: 0x554b4e, shadow: 0x41383c },
+    [CAT_CALICO_MARKINGS.orange]: { main: 0xfbb747, shadow: 0xdd9234 },
+    [CAT_CALICO_MARKINGS.dark]: { main: 0x79696d, shadow: 0x65545a },
   },
   cow: { 2: { main: 0x38353b, shadow: 0x29262c } },
   orange_white: { 1: { main: 0xeda251, shadow: 0xd57836 } },
@@ -102,6 +102,7 @@ const SPOT_PALETTES = {
 const PRESET_BODY_COLORS: Readonly<
   Partial<Record<CatAppearance['pattern'], FurColors & { ink?: number }>>
 > = {
+  calico: { main: 0xfffaf4, shadow: 0xebdccd, light: 0xf5dfcc },
   seal_point: { main: 0xf2e2c9, shadow: 0xdcc3a6 },
   tabby_white: { main: 0xaa9983, shadow: 0x907b64 },
   ragdoll: { main: 0xeee6dd, shadow: 0xd7c9bf, light: 0xfaf8f3, ink: 0x413a40 },

@@ -31,7 +31,7 @@ export const CAT_APPEARANCE_PRESETS = [
     appearance: CALICO_APPEARANCE,
     label: '三花',
     swatch:
-      'conic-gradient(#f1eee5 0 120deg, #d98947 120deg 235deg, #554b4e 235deg)',
+      'conic-gradient(#fffaf4 0 120deg, #fbb747 120deg 235deg, #79696d 235deg)',
   },
   {
     appearance: { coat: 'white', pattern: 'cow' },
