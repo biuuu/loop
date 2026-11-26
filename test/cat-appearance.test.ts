@@ -45,16 +45,21 @@ test('the bicolor ragdoll sample keeps the cat silhouette and the Siamese rename
     assert.equal(frame[index], source[index]);
   const colorAt = (x: number, y: number) =>
     rgb(frame, (y * CAT_CELL_SIZE + x) * 4);
-  assert.equal(colorAt(26, 32), 0x788ba4); // Ear
-  assert.equal(colorAt(29, 34), 0x788ba4);
-  assert.equal(colorAt(30, 34), 0xe4dad5); // Upper tip of the white V
-  assert.equal(colorAt(28, 36), 0xf6f0e9);
-  assert.equal(colorAt(27, 36), 0x788ba4);
-  assert.equal(colorAt(28, 37), 0x4579b2);
-  assert.equal(colorAt(32, 38), 0x2d506f);
-  assert.equal(colorAt(34, 43), 0xb1b9c9);
-  assert.equal(colorAt(41, 38), 0x788ba4);
-  assert.equal(colorAt(27, 46), 0xf6f0e9); // Paw
+  assert.equal(colorAt(26, 32), 0xb7a7a0); // Ear and its pink interior
+  assert.equal(colorAt(27, 32), 0xc1969c);
+  assert.equal(colorAt(29, 34), 0xb7a7a0);
+  assert.equal(colorAt(30, 34), 0xeee7e0); // Upper tip of the white V
+  assert.equal(colorAt(27, 39), 0xb7a7a0); // Warm gray cheek below the eye
+  assert.equal(colorAt(29, 39), 0xfaf8f3);
+  assert.equal(colorAt(30, 39), 0xc18b93); // Nose
+  assert.equal(colorAt(28, 36), 0x304359);
+  assert.equal(colorAt(28, 37), 0xb5dbf2);
+  assert.equal(colorAt(27, 38), 0x537fa8);
+  assert.equal(colorAt(32, 38), 0x537fa8);
+  assert.equal(colorAt(29, 42), 0xfaf8f3); // Ruffles around the chest
+  assert.equal(colorAt(34, 43), 0xd6c8bf);
+  assert.equal(colorAt(41, 38), 0x948887);
+  assert.equal(colorAt(27, 46), 0xfaf8f3); // Paw
   assert.equal(
     catAppearanceSchema.safeParse({ coat: 'white', pattern: 'ragdoll-sample' })
       .success,

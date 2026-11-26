@@ -218,7 +218,7 @@ The user approved the first release and its point values, day boundary and treat
 - Read balance, unlocks and daily progress through authenticated `GET /api/me/points`. Use `POST /api/me/appearance/unlocks` with a preset ID to unlock. Use server-side prices and require a matching account unlock in the current appearance save route. Keep locked previews available in 我的小猫 and show their cost. After an unlock, the selected preview can be saved through the normal flow. Send `points:awarded` privately to the player's current connection. Balances and progress stay outside public room snapshots.
 - Open the wardrobe on the tab of the saved appearance. Keep one preview selection per tab until the wardrobe closes. Load and refresh points in the special coats tab, and deliver the reward notice in either tab.
 - Refresh the account balance on opening 我的账号 and offer a retry if loading fails. Keep the wardrobe cancel and save or unlock buttons outside the scrollable content. Retain insufficient-points feedback in the bottom action area.
-- Keep the stored `seal_point` identifier for the renamed 暹罗 preset. Add a preview-only bicolor ragdoll to the special coats tab. The wardrobe renders its idle source pose with a pale inverted V, cool points and blue eyes. Keep the sample outside the persistent catalog until the artwork is reviewed.
+- Keep the stored `seal_point` identifier for the renamed 暹罗 preset. Add a preview-only bicolor ragdoll to the special coats tab. After the user's reference, use warmer gray cheeks, larger blue eyes with highlights, pink details on the ears and nose, and a fuller white chest on the idle source pose. Keep the sample outside the persistent catalog until the artwork is reviewed.
 
 ## Build sequence
 

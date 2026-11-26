@@ -7,7 +7,7 @@ import {
 } from './cat-sprite';
 
 export const RAGDOLL_SAMPLE_SWATCH =
-  'linear-gradient(125deg, #788ba4 31%, #b1b9c9 51%, #f6f0e9 51%)';
+  'linear-gradient(125deg, #948887 26%, #b7a7a0 46%, #faf8f3 46%)';
 
 // The white opening widens down from the forehead into the muzzle.
 const FACE = {
@@ -17,19 +17,38 @@ const FACE = {
     '.##.....##.',
     '.###...###.',
     '.####.####.',
+    '#####.#####',
     '####...####',
-    '###.....###',
-    '##.......##',
-    '#.........#',
+    '####...####',
+    '.####.####.',
+    '.###...###.',
   ],
 };
+const CHEST = {
+  x: 27,
+  y: 41,
+  rows: [
+    '#######...',
+    '######....',
+    '######....',
+    '#####.....',
+    '#.###.....',
+    '#.##....##',
+  ],
+};
+const EYES = { x: 27, y: 36, rows: ['.D...D.', 'DH...DH', 'BB...BB'] };
+const EYE_COLORS = { D: 0x304359, H: 0xb5dbf2, B: 0x537fa8 } as const;
+const INNER_EARS = { x: 27, y: 32, rows: ['#.....#', '#.....#'] };
+const PINK = { main: 0xd7a6aa, shadow: 0xc1969c };
 const SADDLE = { x: 32, y: 42, rows: ['.##..', '####.', '.####'] };
 const TAIL = CAT_SEAL_POINT_PATCHES.idle[0].find(
   ({ part }) => part === 'tail',
 )!;
-const POINTS = { main: 0x788ba4, shadow: 0x566881 };
-const BACK = { main: 0xb1b9c9, shadow: 0x96a1b1 };
-const BODY = { main: 0xf6f0e9, shadow: 0xe4dad5 };
+const POINTS = { main: 0xb7a7a0, shadow: 0x9a8a88 };
+const BACK = { main: 0xd6c8bf, shadow: 0xb7aaa3 };
+const BODY = { main: 0xeee6dd, shadow: 0xd7c9bf };
+const WHITE = { main: 0xfaf8f3, shadow: 0xeee7e0 };
+const TAIL_COLORS = { main: 0x948887, shadow: 0x7e7377 };
 
 function hasMark(
   patch: { x: number; y: number; rows: readonly string[] },
@@ -48,20 +67,27 @@ export function recolorRagdollSample(pixels: Uint8ClampedArray) {
       if (!pixels[index + 3]) continue;
       const color =
         (pixels[index]! << 16) | (pixels[index + 1]! << 8) | pixels[index + 2]!;
+      const eye = EYES.rows[y - EYES.y]?.[x - EYES.x];
       let replacement: number;
-      if (color === source.main || color === source.shadow) {
-        const fur =
-          hasMark(FACE, x, y) || hasMark(TAIL, x, y)
-            ? POINTS
-            : hasMark(SADDLE, x, y)
-              ? BACK
-              : BODY;
-        replacement = color === source.main ? fur.main : fur.shadow;
+      if (eye === 'D' || eye === 'H' || eye === 'B') {
+        replacement = EYE_COLORS[eye];
+      } else if (color === source.main || color === source.shadow) {
+        let fur = BODY;
+        if (hasMark(INNER_EARS, x, y)) fur = PINK;
+        else if (hasMark(FACE, x, y)) fur = POINTS;
+        else if (hasMark(TAIL, x, y)) fur = TAIL_COLORS;
+        else if (hasMark(SADDLE, x, y)) fur = BACK;
+        else if (y <= 40 || hasMark(CHEST, x, y)) fur = WHITE;
+        replacement =
+          x === 30 && y === 39
+            ? 0xc18b93
+            : color === source.main
+              ? fur.main
+              : fur.shadow;
       } else if (color === source.ink) {
-        const eye = (x === 28 || x === 32) && (y === 37 || y === 38);
-        replacement = eye ? (y === 37 ? 0x4579b2 : 0x2d506f) : 0x384251;
+        replacement = 0x413a40;
       } else if (color === source.light) {
-        replacement = 0xfffbf6;
+        replacement = WHITE.main;
       } else continue;
       pixels[index] = replacement >>> 16;
       pixels[index + 1] = (replacement >>> 8) & 255;
