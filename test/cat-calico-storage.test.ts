@@ -20,7 +20,14 @@ import {
 } from '../src/shared/appearance.js';
 import type { Guest } from '../src/shared/contracts.js';
 
-for (const [previous, savedAppearance, supportedPresets] of [
+const RED_POINT_APPEARANCE = { coat: 'white', pattern: 'red_point' } as const;
+
+for (const [
+  previous,
+  savedAppearance,
+  supportedPresets,
+  migratedAppearance = savedAppearance,
+] of [
   [19, { coat: 'pure_black', pattern: 'tabby' }, []],
   [20, CALICO_APPEARANCE, ['calico']],
   [
@@ -32,6 +39,20 @@ for (const [previous, savedAppearance, supportedPresets] of [
     22,
     SEAL_POINT_APPEARANCE,
     ['calico', 'cow', 'orange_white', 'tortoiseshell', 'seal_point'],
+  ],
+  [
+    23,
+    RED_POINT_APPEARANCE,
+    [
+      'calico',
+      'cow',
+      'orange_white',
+      'tortoiseshell',
+      'seal_point',
+      'tabby_white',
+      'silver_shaded',
+    ],
+    { coat: 'white', pattern: 'solid' },
   ],
 ] as const) {
   test(`upgrading from migration ${previous} preserves guest and room data and enforces the fixed presets`, (context) => {
@@ -61,7 +82,14 @@ for (const [previous, savedAppearance, supportedPresets] of [
         supportedPresets.at(-1) ?? 'tabby',
       );
       const other = db.createGuest('Other');
-      db.updateAppearance(owner.guest.id, savedAppearance);
+      const update = 'UPDATE guests SET coat=?, pattern=? WHERE id=?';
+      const updateOld = db.sql.prepare(update);
+      updateOld.run(
+        savedAppearance.coat,
+        savedAppearance.pattern,
+        owner.guest.id,
+      );
+      assert.deepEqual(db.guest(owner.token)?.appearance, savedAppearance);
       db.add(owner.guest.id, {
         id: '1',
         title: 'Saved track',
@@ -74,11 +102,14 @@ for (const [previous, savedAppearance, supportedPresets] of [
       db.sql
         .prepare('INSERT INTO auth_identities VALUES (?,?,?,?)')
         .run(owner.guest.id, 'email', 'owner@example.com', Date.now());
-      const update = 'UPDATE guests SET coat=?, pattern=? WHERE id=?';
-      const updateOld = db.sql.prepare(update);
-      for (const { appearance } of CAT_APPEARANCE_PRESETS) {
-        if (supportedPresets.some((pattern) => pattern === appearance.pattern))
+      for (const { appearance, label } of CAT_APPEARANCE_PRESETS) {
+        if (
+          supportedPresets.some((pattern) => pattern === appearance.pattern)
+        ) {
+          const cat = db.createGuest(label);
+          db.updateAppearance(cat.guest.id, appearance);
           continue;
+        }
         assert.throws(
           () =>
             updateOld.run(appearance.coat, appearance.pattern, owner.guest.id),
@@ -95,24 +126,34 @@ for (const [previous, savedAppearance, supportedPresets] of [
         'room_bans',
       ];
       const readRows = (store: Store) =>
-        tables.map((table) =>
-          store.sql.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),
+        Object.fromEntries(
+          tables.map((table) => [
+            table,
+            store.sql
+              .prepare(`SELECT * FROM ${table} ORDER BY rowid`)
+              .all() as Record<string, unknown>[],
+          ]),
         );
-      const before = readRows(db);
+      const expected = readRows(db);
+      const storedOwner = expected.guests?.find(
+        (row) => row.id === owner.guest.id,
+      );
+      assert.ok(storedOwner);
+      Object.assign(storedOwner, migratedAppearance);
       db.close();
       db = undefined;
 
       db = new Store(dbPath);
-      assert.equal(db.sql.pragma('user_version', { simple: true }), 23);
+      assert.equal(db.sql.pragma('user_version', { simple: true }), 24);
       assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
       assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
-      assert.deepEqual(readRows(db), before);
-      assert.deepEqual(db.guest(owner.token)?.appearance, savedAppearance);
+      assert.deepEqual(readRows(db), expected);
+      assert.deepEqual(db.guest(owner.token)?.appearance, migratedAppearance);
       assert.deepEqual(db.guest(other.token), other.guest);
       for (const [index, appearance] of [
-        { coat: 'white', pattern: 'red_point' },
         { coat: 'white', pattern: 'silver_shaded' },
         { coat: 'gray', pattern: 'tabby_white' },
+        SEAL_POINT_APPEARANCE,
       ].entries()) {
         pickFromEnd = index + 1;
         assert.deepEqual(
@@ -122,6 +163,15 @@ for (const [previous, savedAppearance, supportedPresets] of [
       }
       pickFromEnd = 1;
       const updateNew = db.sql.prepare(update);
+      assert.throws(
+        () =>
+          updateNew.run(
+            RED_POINT_APPEARANCE.coat,
+            RED_POINT_APPEARANCE.pattern,
+            owner.guest.id,
+          ),
+        /CHECK/,
+      );
       const presetGuests: { token: string; guest: Guest }[] = [];
       for (const { appearance, label } of CAT_APPEARANCE_PRESETS) {
         const { guest, token } = db.createGuest(label);
@@ -144,7 +194,7 @@ for (const [previous, savedAppearance, supportedPresets] of [
       db = new Store(dbPath);
       for (const { token, guest } of presetGuests)
         assert.deepEqual(db.guest(token), guest);
-      assert.deepEqual(db.guest(owner.token)?.appearance, savedAppearance);
+      assert.deepEqual(db.guest(owner.token)?.appearance, migratedAppearance);
       assert.deepEqual(db.guest(other.token), other.guest);
     } finally {
       pickLast.mock.restore();

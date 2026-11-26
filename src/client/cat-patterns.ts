@@ -33,7 +33,6 @@ interface BaseFramePatterns extends PresetFramePatterns {
 interface FramePatterns extends BaseFramePatterns {
   readonly tabby_white: readonly MaskPatch[];
   readonly silver_shaded: readonly MaskPatch[];
-  readonly red_point: readonly MaskPatch[];
 }
 
 const CALICO_EAR: MaskPatch = {
@@ -372,23 +371,9 @@ const BASE_PATTERN_PATCHES: Readonly<
   ],
 };
 
-const RED_POINT_FACE = ['..###..', '..###..', '..###..', '.#####.', '...#...'];
-const RED_POINT_SLEEP_FACE = [
-  '..###...',
-  '..##....',
-  '..###...',
-  '.#####..',
-  '...#....',
-];
-
 function addCoatPresets(animation: CatAnimation): readonly FramePatterns[] {
-  const redPointFace =
-    animation === 'sleep' ? RED_POINT_SLEEP_FACE : RED_POINT_FACE;
   return BASE_PATTERN_PATCHES[animation].map((patches, frame) => ({
     ...patches,
-    red_point: patches.seal_point.map((patch) =>
-      patch.part === 'face' ? { ...patch, rows: redPointFace } : patch,
-    ),
     silver_shaded: CAT_SILVER_SHADED_PATCHES[animation][frame]!,
     tabby_white: [
       ...(CAT_TABBY_WHITE_DETAILS[animation]?.[frame] ?? []),

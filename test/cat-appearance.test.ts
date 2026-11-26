@@ -161,16 +161,14 @@ test('each preset keeps its base and shades its spots across all poses while pre
     tortoiseshell: { 1: [0xa97a54, 0x8e6144] },
     seal_point: { 1: [0xad8361, 0x946a50], 2: [0x785644, 0x654637, 0x9b7055] },
     tabby_white: { 1: [0x665142, 0x543e32], 2: [0xfff6e8, 0xe9decf] },
-    silver_shaded: { 1: [0xaeb5c2, 0x939dac], 2: [0xd8d9df, 0xc0c5d0] },
-    red_point: { 1: [0xe9ab79, 0xd08455], 2: [0xdc7d49, 0xbc5b36, 0xeba06e] },
+    silver_shaded: { 1: [0xa1a8b5, 0x929baa], 2: [0xe2e5eb, 0xcdd3de] },
   };
   const presetBodyColors: Partial<
-    Record<CatPresetPattern, readonly [number, number]>
+    Record<CatPresetPattern, readonly [number, number, number?]>
   > = {
     seal_point: [0xf2e2c9, 0xdcc3a6],
     tabby_white: [0xaa9983, 0x907b64],
-    silver_shaded: [0xf7f5ef, 0xdcdfe5],
-    red_point: [0xf8ead5, 0xe7d3b7],
+    silver_shaded: [0xcdd1d9, 0xb5bcc8, 0xe2e5eb],
   };
   for (const { appearance } of CAT_APPEARANCE_PRESETS) {
     const base = recolorCatPixels(original, {
@@ -180,8 +178,7 @@ test('each preset keeps its base and shades its spots across all poses while pre
     const result = recolorCatPixels(original, appearance);
     const palette = palettes[appearance.pattern];
     const bodyColors = presetBodyColors[appearance.pattern];
-    const hasFaceMask =
-      appearance.pattern === 'seal_point' || appearance.pattern === 'red_point';
+    const hasFaceMask = appearance.pattern === 'seal_point';
     for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
       const rearFaceMarking = hasFaceMask
         ? 1
@@ -204,16 +201,21 @@ test('each preset keeps its base and shades its spots across all poses while pre
               !original[index + 3] ||
               (!isCoat(color) && color !== 0xffdeb1)
             ) {
-              assert.equal(rgb(result, index), rgb(base, index));
+              const silverInk =
+                appearance.pattern === 'silver_shaded' &&
+                original[index + 3] &&
+                color === 0x482a00;
+              assert.equal(
+                rgb(result, index),
+                silverInk ? 0x3f434d : rgb(base, index),
+              );
               continue;
             }
             if (isCoat(color)) painted.add(mark);
             const tones = palette[mark];
             if (mark) assert.ok(tones);
             const shade = color === 0xfb8c00 ? 0 : color === 0xef6c00 ? 1 : 2;
-            const baseColor =
-              (shade === 2 ? undefined : bodyColors?.[shade]) ??
-              rgb(base, index);
+            const baseColor = bodyColors?.[shade] ?? rgb(base, index);
             assert.equal(rgb(result, index), tones?.[shade] ?? baseColor);
           }
         }
@@ -284,30 +286,22 @@ test('the new coats keep distinct markings in the portrait and moving poses', ()
     coat: 'white',
     pattern: 'silver_shaded',
   });
-  const redPoint = recolorCatPixels(original, {
-    coat: 'white',
-    pattern: 'red_point',
-  });
-
   assert.equal(frameRgb(tabbyWhite, 'idle', 0, 27, 33), 0x665142);
   assert.equal(frameRgb(tabbyWhite, 'idle', 0, 27, 46), 0xfff6e8);
   assert.equal(frameRgb(tabbyWhite, 'side', 1, 31, 47), 0xfff6e8);
   assert.equal(frameRgb(tabbyWhite, 'down', 1, 29, 40), 0xaa9983);
   assert.equal(frameRgb(tabbyWhite, 'sleep', 2, 30, 44), 0xfff6e8);
 
-  assert.equal(frameRgb(silver, 'idle', 0, 26, 32), 0xaeb5c2);
-  assert.equal(frameRgb(silver, 'idle', 0, 26, 37), 0xd8d9df);
-  assert.equal(frameRgb(silver, 'idle', 1, 44, 39), 0xaeb5c2);
-  assert.equal(frameRgb(silver, 'down', 1, 26, 37), 0xd8d9df);
-  assert.equal(frameRgb(silver, 'down', 1, 30, 37), 0xf7f5ef);
-  assert.equal(frameRgb(silver, 'sleep', 2, 26, 37), 0xaeb5c2);
-  assert.equal(frameRgb(silver, 'sleep', 2, 26, 46), 0xf7f5ef);
-
-  assert.equal(frameRgb(redPoint, 'idle', 0, 27, 37), 0xf8ead5);
-  assert.equal(frameRgb(redPoint, 'idle', 0, 29, 37), 0xe9ab79);
-  assert.equal(frameRgb(redPoint, 'idle', 2, 47, 42), 0xdc7d49);
-  assert.equal(frameRgb(redPoint, 'up', 3, 27, 50), 0xdc7d49);
-  assert.equal(frameRgb(redPoint, 'sleep', 2, 29, 42), 0xe9ab79);
+  assert.equal(frameRgb(silver, 'idle', 0, 26, 32), 0xa1a8b5);
+  assert.equal(frameRgb(silver, 'idle', 0, 26, 37), 0xcdd1d9);
+  assert.equal(frameRgb(silver, 'idle', 0, 30, 42), 0xe2e5eb);
+  assert.equal(frameRgb(silver, 'idle', 1, 44, 39), 0xa1a8b5);
+  assert.equal(frameRgb(silver, 'down', 1, 28, 37), 0x3f434d);
+  assert.equal(frameRgb(silver, 'down', 1, 30, 37), 0xcdd1d9);
+  assert.equal(frameRgb(silver, 'down', 1, 30, 40), 0xe2e5eb);
+  assert.equal(frameRgb(silver, 'sleep', 2, 26, 37), 0xa1a8b5);
+  assert.equal(frameRgb(silver, 'sleep', 2, 30, 44), 0xe2e5eb);
+  assert.equal(frameRgb(silver, 'sleep', 2, 26, 46), 0xcdd1d9);
 });
 
 test('pure black blends the connected outer contour while retaining open and blinking eyes', () => {

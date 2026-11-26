@@ -65,7 +65,7 @@ test('migration 18 gives existing rooms a 120-minute limit and persists zero', (
     db = undefined;
 
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 23);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 24);
     assert.deepEqual(db.roomDetails(createdRoom.id), {
       ...createdRoom,
       description: '',

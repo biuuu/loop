@@ -31,7 +31,6 @@ const patternMarkings = {
   seal_point: [1, 2],
   tabby_white: [1, 2],
   silver_shaded: [1, 2],
-  red_point: [1, 2],
 } as const satisfies Record<CatPattern, readonly number[]>;
 const marked = (
   pattern: 'socks' | 'tabby',
@@ -101,7 +100,7 @@ test('all 41 source frames have bounded anatomical patches that select only actu
       frames++;
       for (const pattern of Object.keys(patternMarkings) as CatPattern[]) {
         const patches = CAT_PATTERN_PATCHES[animation][frame]![pattern];
-        const hasFaceMask = pattern === 'seal_point' || pattern === 'red_point';
+        const hasFaceMask = pattern === 'seal_point';
         assert.ok(patches.length > 0);
         if (pattern === 'tortoiseshell')
           assert.equal(patches.length, animation === 'down' ? 1 : 2);

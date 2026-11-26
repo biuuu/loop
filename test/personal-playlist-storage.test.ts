@@ -58,7 +58,7 @@ test('upgrading version 13 and 14 preserves playlist order and the saved selecti
     db.close();
 
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 23);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 24);
     assert.deepEqual(db.guest(token), guest);
     assert.deepEqual(db.playlist(guest.id), {
       tracks: [song('1')],
