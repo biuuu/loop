@@ -4,6 +4,12 @@ import {
 } from '../shared/appearance';
 import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
 import { CAT_CALICO_MARKINGS, getPatternMask } from './cat-patterns';
+import {
+  SEAL_POINT_SAMPLE,
+  sealPointSampleMask,
+} from './cat-seal-point-sample';
+
+export type CatRenderAppearance = CatAppearance | typeof SEAL_POINT_SAMPLE;
 
 export const CAT_PACKED_ROWS: Record<CatAnimation, number> = {
   idle: 0,
@@ -81,6 +87,11 @@ const SPOT_PALETTES = {
   orange_white: { 1: { main: 0xeda251, shadow: 0xd57836 } },
   tortoiseshell: { 1: { main: 0xa97a54, shadow: 0x8e6144 } },
 } satisfies Record<CatPresetPattern | 'socks', SpotPalette>;
+const SEAL_POINT_COAT = { ...PALETTES.cream, main: 0xf2e2c9, shadow: 0xdcc3a6 };
+const SEAL_POINT_MARKINGS = {
+  1: { main: 0xad8361, shadow: 0x946a50 },
+  2: { main: 0x785644, shadow: 0x654637 },
+} satisfies SpotPalette;
 
 // Separate the connected silhouette from enclosed facial details using the
 // untouched frame. Eight-way connections keep diagonal one-pixel contours intact.
@@ -142,20 +153,25 @@ function outerInkPixels(
 /** Recolor a packed sheet while retaining alpha and every eye/outline pixel's position. */
 export function recolorCatPixels(
   pixels: Uint8ClampedArray,
-  appearance: CatAppearance,
+  appearance: CatRenderAppearance,
 ) {
   if (pixels.length !== CAT_APPEARANCE_WIDTH * CAT_APPEARANCE_HEIGHT * 4)
     throw new Error('Unexpected cat appearance sheet size');
   const result = new Uint8ClampedArray(pixels);
   if (appearance.coat === 'orange' && appearance.pattern === 'solid')
     return result;
-  const palette = PALETTES[appearance.coat];
+  const palette =
+    appearance.pattern === SEAL_POINT_SAMPLE.pattern
+      ? SEAL_POINT_COAT
+      : PALETTES[appearance.coat];
   const spots: SpotPalette | undefined =
     appearance.pattern === 'solid'
       ? undefined
       : appearance.pattern === 'tabby'
         ? { 1: { main: palette.stripe, shadow: palette.stripe } }
-        : SPOT_PALETTES[appearance.pattern];
+        : appearance.pattern === SEAL_POINT_SAMPLE.pattern
+          ? SEAL_POINT_MARKINGS
+          : SPOT_PALETTES[appearance.pattern];
   for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
     const sequence = CAT_ANIMATIONS[animation];
     const row = CAT_PACKED_ROWS[animation];
@@ -163,7 +179,9 @@ export function recolorCatPixels(
       const mask =
         appearance.pattern === 'solid'
           ? undefined
-          : getPatternMask(appearance.pattern, animation, column);
+          : appearance.pattern === SEAL_POINT_SAMPLE.pattern
+            ? sealPointSampleMask(animation, column)
+            : getPatternMask(appearance.pattern, animation, column);
       const outerInk =
         appearance.coat === 'pure_black'
           ? outerInkPixels(pixels, column, row)
@@ -214,7 +232,7 @@ export function recolorCatPixels(
 /** Pack only the animation rows used by the room; original art stays untouched. */
 export function createAppearanceSheet(
   image: CanvasImageSource,
-  appearance: CatAppearance,
+  appearance: CatRenderAppearance,
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = CAT_APPEARANCE_WIDTH;

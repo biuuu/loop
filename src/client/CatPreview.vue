@@ -5,15 +5,41 @@ import {
   CAT_COATS,
   CAT_PATTERNS,
   catAppearancePreset,
-  type CatAppearance,
 } from '../shared/appearance';
-import { createAppearanceSheet } from './cat-appearance';
+import {
+  createAppearanceSheet,
+  CAT_PACKED_ROWS,
+  type CatRenderAppearance,
+} from './cat-appearance';
+import { SEAL_POINT_SAMPLE } from './cat-seal-point-sample';
 import { CAT_CELL_SIZE, CAT_IDLE_UP_COLUMN } from './cat-sprite';
 
-const props = defineProps<{ appearance: CatAppearance; portrait?: boolean }>();
+const props = defineProps<{
+  appearance: CatRenderAppearance;
+  portrait?: boolean;
+  sleeping?: boolean;
+}>();
 const canvas = ref<HTMLCanvasElement>();
 const unavailable = ref(false);
+const isSample = computed(
+  () => props.appearance.pattern === SEAL_POINT_SAMPLE.pattern,
+);
+// Keep existing avatars on the tighter head crop. Crop the full sample poses
+// too, so the transparent padding does not consume the comparison tiles.
+const crop = computed(() =>
+  props.portrait
+    ? { x: 22, y: 28, size: 16 }
+    : props.sleeping
+      ? { x: 24, y: 31, size: 24 }
+      : isSample.value
+        ? { x: 22, y: 27, size: 24 }
+        : { x: 0, y: 0, size: CAT_CELL_SIZE },
+);
+const canvasSize = computed(() =>
+  isSample.value ? crop.value.size : CAT_CELL_SIZE,
+);
 const label = computed(() => {
+  if (isSample.value) return '海豹重点色样品';
   const preset = catAppearancePreset(props.appearance.pattern);
   if (preset) return preset.label;
   return `${CAT_COATS.find((coat) => coat.id === props.appearance.coat)?.label}，${CAT_PATTERNS.find((pattern) => pattern.id === props.appearance.pattern)?.label}`;
@@ -26,6 +52,7 @@ watch(
     () => props.appearance.coat,
     () => props.appearance.pattern,
     () => props.portrait,
+    () => props.sleeping,
   ],
   async () => {
     const current = ++revision;
@@ -41,22 +68,21 @@ watch(
       const context = canvas.value.getContext('2d');
       if (!context) throw new Error('Cat preview canvas is unavailable');
       context.imageSmoothingEnabled = false;
-      context.clearRect(0, 0, CAT_CELL_SIZE, CAT_CELL_SIZE);
-      // The idle cell has generous transparent margins. A header portrait
-      // samples its head directly so the tiny avatar remains recognizable.
-      const crop = props.portrait
-        ? { x: 22, y: 28, size: 16 }
-        : { x: 0, y: 0, size: CAT_CELL_SIZE };
+      const { x, y, size } = crop.value;
+      const target = canvasSize.value;
+      const row = props.sleeping ? CAT_PACKED_ROWS.sleep : CAT_PACKED_ROWS.idle;
+      const column = props.sleeping ? 0 : CAT_IDLE_UP_COLUMN;
+      context.clearRect(0, 0, target, target);
       context.drawImage(
         sheet,
-        CAT_IDLE_UP_COLUMN * CAT_CELL_SIZE + crop.x,
-        crop.y,
-        crop.size,
-        crop.size,
+        column * CAT_CELL_SIZE + x,
+        row * CAT_CELL_SIZE + y,
+        size,
+        size,
         0,
         0,
-        CAT_CELL_SIZE,
-        CAT_CELL_SIZE,
+        target,
+        target,
       );
       unavailable.value = false;
     } catch {
@@ -72,11 +98,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="cat-preview">
+  <div class="cat-preview" :class="{ 'is-sample': isSample }">
     <canvas
       ref="canvas"
-      width="64"
-      height="64"
+      :width="canvasSize"
+      :height="canvasSize"
       role="img"
       :aria-label="label"
     />
@@ -94,6 +120,10 @@ onBeforeUnmount(() => {
   height: 192px;
   max-width: 100%;
   image-rendering: pixelated;
+}
+.cat-preview.is-sample canvas {
+  width: 96px;
+  height: auto;
 }
 .preview-unavailable {
   font-size: 0.85rem;

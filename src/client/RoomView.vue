@@ -15,6 +15,7 @@ import { neteaseCover } from './netease-cover';
 import RoomScene from './RoomScene.vue';
 import RoomMembers from './RoomMembers.vue';
 import CatPreview from './CatPreview.vue';
+import { SEAL_POINT_SAMPLE } from './cat-seal-point-sample';
 import NeteasePlaylistSearch from './NeteasePlaylistSearch.vue';
 import NeteaseUserSearch from './NeteaseUserSearch.vue';
 import EmotePicker from './EmotePicker.vue';
@@ -169,6 +170,7 @@ function focusIntroduction(event: PointerEvent) {
 type Modal = 'library' | 'members' | 'appearance';
 const modal = ref<Modal | null>(null);
 const appearanceDraft = ref<CatAppearance>({ ...DEFAULT_CAT_APPEARANCE });
+const showCoatSample = ref(false);
 const selectedPreset = computed(() =>
   catAppearancePreset(appearanceDraft.value.pattern),
 );
@@ -218,6 +220,7 @@ function openAppearance() {
       room.me?.appearance ??
       DEFAULT_CAT_APPEARANCE),
   };
+  showCoatSample.value = false;
   room.error = '';
   void openModal('appearance');
 }
@@ -729,6 +732,30 @@ onBeforeUnmount(() => {
               <CatPreview :appearance="appearanceDraft" />
               <p>挑一套喜欢的花色，和大家一起听歌。</p>
             </div>
+            <details
+              class="cat-coat-sample"
+              @toggle="
+                showCoatSample = ($event.currentTarget as HTMLDetailsElement)
+                  .open
+              "
+            >
+              <summary>试试海豹重点色</summary>
+              <div v-if="showCoatSample" class="cat-sample-poses">
+                <figure>
+                  <CatPreview :appearance="SEAL_POINT_SAMPLE" portrait />
+                  <figcaption>头像</figcaption>
+                </figure>
+                <figure>
+                  <CatPreview :appearance="SEAL_POINT_SAMPLE" />
+                  <figcaption>待机</figcaption>
+                </figure>
+                <figure>
+                  <CatPreview :appearance="SEAL_POINT_SAMPLE" sleeping />
+                  <figcaption>睡觉</figcaption>
+                </figure>
+                <p class="library-hint">花色样品，仅供预览。</p>
+              </div>
+            </details>
             <fieldset :disabled="appearanceSaving">
               <legend>毛色</legend>
               <div class="cat-options">

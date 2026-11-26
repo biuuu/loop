@@ -220,6 +220,34 @@ textarea {
   margin: 0 0 8px;
   font-size: 13px;
 }
+.cat-coat-sample {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 13px;
+}
+.cat-coat-sample summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.cat-sample-poses {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  text-align: center;
+}
+.cat-sample-poses figure {
+  margin: 0;
+  padding: 6px 4px;
+  border-radius: 8px;
+  background: #e9e6d8;
+}
+.cat-sample-poses .library-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
 .cat-wardrobe fieldset {
   border: 0;
   padding: 0;

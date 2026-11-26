@@ -12,15 +12,20 @@ import {
   type CatAnimation,
 } from '../src/client/cat-sprite';
 import {
+  SEAL_POINT_SAMPLE,
+  sealPointSampleMask,
+} from '../src/client/cat-seal-point-sample';
+import {
   CAT_APPEARANCE_PRESETS,
   CAT_COATS,
   CAT_PATTERNS,
   DEFAULT_CAT_APPEARANCE,
+  catAppearanceSchema,
   type CatPresetPattern,
 } from '../src/shared/appearance';
 
 import { getPatternMask } from '../src/client/cat-patterns';
-import { frameIndex, sourcePixels, rgb } from './helpers/cat-source';
+import { frameIndex, frameRgb, sourcePixels, rgb } from './helpers/cat-source';
 
 const original = sourcePixels();
 const isCoat = (color: number) => color === 0xfb8c00 || color === 0xef6c00;
@@ -194,6 +199,51 @@ test('each preset keeps its base and shades its spots across all poses while pre
           [0, ...Object.keys(palette).map(Number)],
           `${appearance.pattern}/${animation}/${frame}`,
         );
+      }
+    }
+  }
+});
+
+test('seal point sample colors the face and extremities in the displayed poses only', () => {
+  assert.equal(catAppearanceSchema.safeParse(SEAL_POINT_SAMPLE).success, false);
+  const result = recolorCatPixels(original, SEAL_POINT_SAMPLE);
+  const landmarks = {
+    idle: [
+      [26, 32, 0x785644], // Ear
+      [29, 37, 0xad8361], // Face mask
+      [28, 37, 0x482a00], // Open eye
+      [41, 38, 0x785644], // Tail
+      [27, 46, 0x785644], // Paw
+      [33, 43, 0xf2e2c9], // Torso
+    ],
+    sleep: [
+      [26, 36, 0x785644],
+      [29, 41, 0xad8361],
+      [28, 41, 0x482a00], // Closed eye
+      [45, 47, 0x785644],
+      [26, 46, 0x785644],
+      [33, 45, 0xf2e2c9],
+    ],
+  } as const;
+  for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
+    for (let column = 0; column < CAT_ANIMATIONS[animation].frames; column++) {
+      const mask = sealPointSampleMask(animation, column);
+      if (column !== 0 || (animation !== 'idle' && animation !== 'sleep')) {
+        assert.equal(mask, undefined);
+        continue;
+      }
+      assert.ok(mask);
+      for (const [x, y, color] of landmarks[animation])
+        assert.equal(frameRgb(result, animation, column, x, y), color);
+      for (const [pixel, mark] of mask.entries()) {
+        const x = pixel % CAT_CELL_SIZE;
+        const y = Math.floor(pixel / CAT_CELL_SIZE);
+        const index = frameIndex(animation, column, x, y);
+        assert.equal(result[index + 3], original[index + 3]);
+        if (mark)
+          assert.ok(isCoat(rgb(original, index)), `${animation}/${x},${y}`);
+        if (rgb(original, index) === 0x482a00)
+          assert.equal(rgb(result, index), 0x482a00);
       }
     }
   }
