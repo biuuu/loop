@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import { createPinia, setActivePinia } from 'pinia';
 import { Socket } from 'socket.io-client';
+import { effectScope } from 'vue';
+import { useAudioPreferences, useReactionAudio } from '../src/client/audio';
 import { useRoom } from '../src/client/room';
 import { TRACK_VOTE_EFFECT_MS } from '../src/client/track-reaction-effects';
 import type {
@@ -229,4 +231,89 @@ test('DJ can vote but cannot like their own song, and active bubbles update with
   });
   assert.equal(room.points?.balance, 7);
   assert.equal(room.pointsReward, '给歌曲点赞，获得 1 积分');
+});
+
+test('the local sound switch pauses both reaction clips, persists, and resumes only for new events', async (context) => {
+  const { room, receive } = await fixture(context);
+  const storage = new Map<string, string>();
+  const clips: Clip[] = [];
+  class Clip {
+    paused = true;
+    playCalls = 0;
+    volume = 1;
+    currentTime = 0;
+    constructor(public src: string) {
+      clips.push(this);
+    }
+    async play() {
+      this.playCalls++;
+      this.paused = false;
+    }
+    pause() {
+      this.paused = true;
+    }
+  }
+  for (const [name, value] of Object.entries({
+    Audio: Clip,
+    localStorage: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, setting: string) => storage.set(key, setting),
+    },
+  })) {
+    const original = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { value, configurable: true });
+    context.after(() => {
+      if (original) Object.defineProperty(globalThis, name, original);
+      else Reflect.deleteProperty(globalThis, name);
+    });
+  }
+
+  const preferences = useAudioPreferences();
+  const scope = effectScope();
+  context.after(() => scope.stop());
+  scope.run(() => useReactionAudio(() => 0.65, '/'));
+  assert.equal(preferences.reactionSounds, true);
+
+  receive('room:snapshot', snapshot());
+  const like = {
+    roomId: 'room',
+    roundId: 'first',
+    kind: 'like',
+    userId: 'a',
+  } as const;
+  const vote = { ...like, kind: 'vote', votes: 1, total: 3 } as const;
+  receive('playback:reaction', like);
+  receive('playback:reaction', vote);
+  assert.deepEqual(
+    clips.map((clip) => clip.src),
+    ['/audio/star.m4a', '/audio/next.m4a'],
+  );
+  assert.ok(clips.every((clip) => !clip.paused && clip.volume === 0.65));
+
+  preferences.reactionSounds = false;
+  assert.ok(clips.every((clip) => clip.paused));
+  assert.equal(useAudioPreferences(createPinia()).reactionSounds, false);
+  receive('playback:reaction', { ...like, userId: 'b' });
+  receive('playback:reaction', { ...vote, userId: 'b', votes: 2 });
+  assert.equal(room.trackLikers.has('b'), true);
+  assert.equal(room.voteFor('b')?.votes, 2);
+  assert.deepEqual(
+    clips.map((clip) => clip.playCalls),
+    [1, 1],
+  );
+
+  preferences.reactionSounds = true;
+  assert.deepEqual(
+    clips.map((clip) => clip.playCalls),
+    [1, 1],
+  );
+  receive('playback:updated', snapshot('second', 2));
+  receive('playback:reaction', { ...like, roundId: 'second' });
+  receive('playback:reaction', { ...vote, roundId: 'second' });
+  assert.deepEqual(
+    clips.map((clip) => clip.playCalls),
+    [2, 2],
+  );
+  scope.stop();
+  assert.ok(clips.every((clip) => clip.paused));
 });

@@ -251,7 +251,7 @@ function save() {
             当前曲目播到上限后自动切歌。修改从下一首起生效。
           </small>
         </label>
-        <label class="room-join-switch">
+        <label class="toggle-switch">
           <span>暂停新访客进入</span>
           <input
             v-model="joinPolicy"

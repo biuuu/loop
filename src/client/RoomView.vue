@@ -45,14 +45,13 @@ const directions = [
   { icon: ArrowRight, label: '右', x: 50, y: 0 },
 ];
 import { request, useRoom } from './room';
-import { useAudio } from './audio';
+import { useAudio, useReactionAudio } from './audio';
 import {
   DEFAULT_STAGE_CAPACITY,
   PLAYLIST_COUNT_LIMIT,
   PLAYLIST_LIMIT,
   SCENE,
   type Track,
-  type TrackReactionKind,
 } from '../shared/contracts';
 
 const props = defineProps<{ panelOpen?: boolean }>();
@@ -75,35 +74,9 @@ function updateMobileControls(event: MediaQueryListEvent) {
 }
 const sound = useAudio(() => mobileControls.value);
 const { issue, volume, progress, needsGesture } = sound;
-const reactionSoundFiles = { like: 'star.m4a', vote: 'next.m4a' } as const;
-const reactionClips = new Map<TrackReactionKind, HTMLAudioElement>();
-const reactionVolume = computed(() =>
-  mobileControls.value ? 1 : volume.value / 100,
-);
-watch(reactionVolume, (value) => {
-  for (const clip of reactionClips.values()) clip.volume = value;
-});
-watch(
-  () => room.latestReaction,
-  (event) => {
-    if (!event) {
-      for (const clip of reactionClips.values()) clip.pause();
-      return;
-    }
-    if (reactionVolume.value === 0) return;
-    let clip = reactionClips.get(event.kind);
-    if (!clip) {
-      clip = new Audio(
-        `${import.meta.env.BASE_URL}audio/${reactionSoundFiles[event.kind]}`,
-      );
-      reactionClips.set(event.kind, clip);
-    }
-    if (!clip.paused) return;
-    clip.volume = reactionVolume.value;
-    clip.currentTime = 0;
-    void clip.play().catch(() => {});
-  },
-  { flush: 'sync' },
+useReactionAudio(
+  () => (mobileControls.value ? 1 : volume.value / 100),
+  import.meta.env.BASE_URL,
 );
 const booting = ref(false);
 const tab = ref<'playlist' | 'search'>('playlist');
@@ -441,7 +414,6 @@ onMounted(() => {
   document.addEventListener('visibilitychange', keyboardVisibility);
 });
 onBeforeUnmount(() => {
-  for (const clip of reactionClips.values()) clip.pause();
   mobileControlsQuery.removeEventListener('change', updateMobileControls);
   window.removeEventListener('keydown', keyboardMove);
   window.removeEventListener('keyup', keyboardRelease);

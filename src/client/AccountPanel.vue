@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useTimedMessage } from './timed-message';
+import { useAudioPreferences } from './audio';
 import { ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
 import { ArrowLeft, Coins, ListMusic, Palette, Shuffle, X } from '@lucide/vue';
 import { randomNickname } from './nicknames';
@@ -19,6 +20,7 @@ const emit = defineEmits<{
   appearance: [];
 }>();
 const room = useRoom();
+const audioPreferences = useAudioPreferences();
 const dialog = ref<HTMLDialogElement | null>(null);
 let returnFocus: HTMLElement | null = null;
 onMounted(() => {
@@ -296,6 +298,17 @@ function logout(all = false) {
         >
           <Palette aria-hidden="true" />修改花色
         </button>
+        <label class="toggle-switch account-sound-switch">
+          <span>点赞与投票切歌音效</span>
+          <input
+            v-model="audioPreferences.reactionSounds"
+            type="checkbox"
+            role="switch"
+          />
+          <span class="switch-track" aria-hidden="true"
+            ><span class="switch-thumb"
+          /></span>
+        </label>
         <p class="library-hint">此浏览器会记住当前身份、歌单和房间。</p>
       </template>
       <div
@@ -489,6 +502,11 @@ function logout(all = false) {
 }
 .account-appearance-button {
   margin-top: 12px;
+}
+.account-sound-switch {
+  margin-top: 12px;
+  padding-block: 8px;
+  font-size: 14px;
 }
 .account-netease {
   margin-top: 20px;

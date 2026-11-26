@@ -57,6 +57,7 @@
 - The user reviews visual changes directly. Do not automatically run browser tests or take screenshots after routine visual edits; use type checks and focused logic tests where needed.
 - Audio is enabled by default without an enable-sound button. If browser policy blocks playback, retry automatically on an ordinary page gesture. Use a consistent icon library for UI controls instead of character symbols.
 - Remember the chosen volume locally in the browser and restore it after refresh or reopening, including a saved volume of zero.
+- Provide one switch in 我的账号 for song-like and skip-vote sound effects. Default to on and remember the choice in the current browser. The switch takes effect immediately and applies only to those two sounds.
 - Clicking the desktop player's volume icon mutes audio; clicking it again restores the preceding audible volume. The icon shows mute at zero. Hide the volume controls on mobile and use the device's volume with no additional attenuation; keep the desktop preference stored.
 - New rooms default to five stage seats. Room owners can configure 1–6 stage positions in room settings. The stage artwork, seat markers, hit areas and selection controls adapt together.
 - Room owners can choose a stage time limit from zero to twelve hours, defaulting to two hours. Zero sends a DJ back to the floor after one song. Otherwise, only the DJ finishing their own turn steps down if their time since joining the stage has reached the limit.

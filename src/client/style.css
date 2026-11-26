@@ -2240,7 +2240,7 @@ select {
   background: #e9eddf;
   border-color: #bbc4ad;
 }
-.panel-form .room-join-switch {
+label.toggle-switch {
   position: relative;
   display: flex;
   flex-direction: row;
@@ -2249,7 +2249,7 @@ select {
   gap: 12px;
   cursor: pointer;
 }
-.room-join-switch input {
+.toggle-switch input {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -2274,17 +2274,17 @@ select {
   box-shadow: 0 1px 3px #28301c33;
   transition: transform 0.2s ease;
 }
-.room-join-switch input:checked + .switch-track {
+.toggle-switch input:checked + .switch-track {
   background: var(--sage);
 }
-.room-join-switch input:checked + .switch-track .switch-thumb {
+.toggle-switch input:checked + .switch-track .switch-thumb {
   transform: translateX(18px);
 }
-.room-join-switch input:focus-visible + .switch-track {
+.toggle-switch input:focus-visible + .switch-track {
   outline: 3px solid #a87850;
   outline-offset: 3px;
 }
-.room-join-switch input:disabled + .switch-track {
+.toggle-switch input:disabled + .switch-track {
   opacity: 0.5;
   cursor: default;
 }

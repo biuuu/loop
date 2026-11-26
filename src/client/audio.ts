@@ -1,9 +1,83 @@
-import { ref, watch, watchSyncEffect, onBeforeUnmount } from 'vue';
+import { defineStore } from 'pinia';
+import {
+  ref,
+  watch,
+  watchSyncEffect,
+  onBeforeUnmount,
+  onScopeDispose,
+} from 'vue';
+import type { TrackReactionKind } from '../shared/contracts';
 import { useRoom } from './room';
 
 const VOLUME_STORAGE_KEY = 'loop:volume';
 const AUDIBLE_VOLUME_STORAGE_KEY = 'loop:volume:audible';
+const REACTION_SOUND_STORAGE_KEY = 'loop:reaction-sounds';
+const reactionSoundFiles = { like: 'star.m4a', vote: 'next.m4a' } as const;
 const MEDIA_ERR_ABORTED = 1;
+
+export const useAudioPreferences = defineStore('audio-preferences', () => {
+  const reactionSounds = ref(true);
+  try {
+    reactionSounds.value =
+      localStorage.getItem(REACTION_SOUND_STORAGE_KEY) !== 'false';
+  } catch {
+    // The switch still works for the current page if storage is blocked.
+  }
+  watch(
+    reactionSounds,
+    (enabled) => {
+      try {
+        localStorage.setItem(REACTION_SOUND_STORAGE_KEY, String(enabled));
+      } catch {
+        // Keep the current selection even if it cannot be saved.
+      }
+    },
+    { flush: 'sync' },
+  );
+  return { reactionSounds };
+});
+
+export function useReactionAudio(volume: () => number, baseUrl: string) {
+  const room = useRoom();
+  const preferences = useAudioPreferences();
+  const clips = new Map<TrackReactionKind, HTMLAudioElement>();
+  function pauseClips() {
+    for (const clip of clips.values()) clip.pause();
+  }
+  onScopeDispose(pauseClips);
+  watch(volume, (value) => {
+    for (const clip of clips.values()) clip.volume = value;
+  });
+  watch(
+    () => preferences.reactionSounds,
+    (enabled) => {
+      if (!enabled) pauseClips();
+    },
+    { flush: 'sync' },
+  );
+  watch(
+    () => room.latestReaction,
+    (event) => {
+      if (!event) {
+        pauseClips();
+        return;
+      }
+      const level = volume();
+      if (!preferences.reactionSounds || level === 0) return;
+      let clip = clips.get(event.kind);
+      if (!clip) {
+        clip = new Audio(`${baseUrl}audio/${reactionSoundFiles[event.kind]}`);
+        clips.set(event.kind, clip);
+      }
+      if (!clip.paused) return;
+      clip.volume = level;
+      clip.currentTime = 0;
+      void clip.play().catch(() => {});
+    },
+    { flush: 'sync' },
+  );
+}
+
 function savedVolume(key = VOLUME_STORAGE_KEY): number {
   try {
     const stored = localStorage.getItem(key);
