@@ -50,12 +50,15 @@ test('the bicolor ragdoll sample keeps the cat silhouette and the Siamese rename
   assert.equal(colorAt(29, 34), 0xb7a7a0);
   assert.equal(colorAt(30, 34), 0xeee7e0); // Upper tip of the white V
   assert.equal(colorAt(27, 39), 0xb7a7a0); // Warm gray cheek below the eye
-  assert.equal(colorAt(29, 39), 0xfaf8f3);
-  assert.equal(colorAt(30, 39), 0xc18b93); // Nose
-  assert.equal(colorAt(28, 36), 0x304359);
-  assert.equal(colorAt(28, 37), 0xb5dbf2);
-  assert.equal(colorAt(27, 38), 0x537fa8);
-  assert.equal(colorAt(32, 38), 0x537fa8);
+  for (const x of [29, 30, 31]) assert.equal(colorAt(x, 39), 0xfaf8f3);
+  let bluePixels = 0;
+  for (let y = 0; y < CAT_CELL_SIZE; y++)
+    for (let x = 0; x < CAT_CELL_SIZE; x++) {
+      if (colorAt(x, y) !== 0x3e668d) continue;
+      assert.ok((x === 28 || x === 32) && (y === 37 || y === 38));
+      bluePixels++;
+    }
+  assert.equal(bluePixels, 4);
   assert.equal(colorAt(29, 42), 0xfaf8f3); // Ruffles around the chest
   assert.equal(colorAt(34, 43), 0xd6c8bf);
   assert.equal(colorAt(41, 38), 0x948887);

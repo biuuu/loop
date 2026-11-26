@@ -36,8 +36,6 @@ const CHEST = {
     '#.##....##',
   ],
 };
-const EYES = { x: 27, y: 36, rows: ['.D...D.', 'DH...DH', 'BB...BB'] };
-const EYE_COLORS = { D: 0x304359, H: 0xb5dbf2, B: 0x537fa8 } as const;
 const INNER_EARS = { x: 27, y: 32, rows: ['#.....#', '#.....#'] };
 const PINK = { main: 0xd7a6aa, shadow: 0xc1969c };
 const SADDLE = { x: 32, y: 42, rows: ['.##..', '####.', '.####'] };
@@ -67,25 +65,18 @@ export function recolorRagdollSample(pixels: Uint8ClampedArray) {
       if (!pixels[index + 3]) continue;
       const color =
         (pixels[index]! << 16) | (pixels[index + 1]! << 8) | pixels[index + 2]!;
-      const eye = EYES.rows[y - EYES.y]?.[x - EYES.x];
       let replacement: number;
-      if (eye === 'D' || eye === 'H' || eye === 'B') {
-        replacement = EYE_COLORS[eye];
-      } else if (color === source.main || color === source.shadow) {
+      if (color === source.main || color === source.shadow) {
         let fur = BODY;
         if (hasMark(INNER_EARS, x, y)) fur = PINK;
         else if (hasMark(FACE, x, y)) fur = POINTS;
         else if (hasMark(TAIL, x, y)) fur = TAIL_COLORS;
         else if (hasMark(SADDLE, x, y)) fur = BACK;
         else if (y <= 40 || hasMark(CHEST, x, y)) fur = WHITE;
-        replacement =
-          x === 30 && y === 39
-            ? 0xc18b93
-            : color === source.main
-              ? fur.main
-              : fur.shadow;
+        replacement = color === source.main ? fur.main : fur.shadow;
       } else if (color === source.ink) {
-        replacement = 0x413a40;
+        const eye = (x === 28 || x === 32) && (y === 37 || y === 38);
+        replacement = eye ? 0x3e668d : 0x413a40;
       } else if (color === source.light) {
         replacement = WHITE.main;
       } else continue;
