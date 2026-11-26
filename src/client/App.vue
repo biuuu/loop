@@ -7,6 +7,7 @@ import { watchDeploymentVersion } from './deployment-version';
 import RoomView from './RoomView.vue';
 import RoomDirectory from './RoomDirectory.vue';
 import AccountPanel from './AccountPanel.vue';
+import CatWardrobe from './CatWardrobe.vue';
 import RoomSettings from './RoomSettings.vue';
 import CatPreview from './CatPreview.vue';
 import AdminNetease from './AdminNetease.vue';
@@ -16,6 +17,7 @@ import { ChevronRight, UserRound } from '@lucide/vue';
 const room = useRoom();
 const booting = ref(true);
 const accountOpen = ref(false);
+const wardrobeOpen = ref(false);
 const settingsOpen = ref(false);
 const settingsInfo = ref<RoomInfo | null>(null);
 const leaveDialog = ref<HTMLDialogElement | null>(null);
@@ -40,6 +42,11 @@ function confirmStageExit(): Promise<boolean> {
 function openSettings(info: RoomInfo | null = room.roomInfo) {
   settingsInfo.value = info;
   settingsOpen.value = !!info;
+}
+function openWardrobe() {
+  if (!room.guest) return;
+  room.error = '';
+  wardrobeOpen.value = true;
 }
 const target = ref<Route>({ kind: 'directory' });
 let navigation: ReturnType<typeof createNavigation>;
@@ -187,9 +194,10 @@ onBeforeUnmount(() => {
   <RoomView
     v-else-if="room.roomId"
     :key="room.roomId"
-    :panel-open="accountOpen || settingsOpen"
+    :panel-open="accountOpen || settingsOpen || wardrobeOpen"
     @leave="navigate({ kind: 'directory' })"
     @settings="openSettings()"
+    @appearance="openWardrobe"
   />
   <AdminNetease
     v-else-if="target.kind === 'admin-netease'"
@@ -240,6 +248,12 @@ onBeforeUnmount(() => {
     v-if="accountOpen"
     @close="accountOpen = false"
     @changed="accountChanged"
+    @appearance="openWardrobe"
+  />
+  <CatWardrobe
+    :open="wardrobeOpen"
+    :class="{ 'wardrobe-over-account': accountOpen }"
+    @close="wardrobeOpen = false"
   />
   <RoomSettings
     v-if="settingsOpen && settingsInfo?.ownerId === room.guest?.id"

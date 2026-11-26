@@ -14,25 +14,10 @@ import { playlistView } from './playlist-view';
 import { neteaseCover } from './netease-cover';
 import RoomScene from './RoomScene.vue';
 import RoomMembers from './RoomMembers.vue';
-import CatPreview from './CatPreview.vue';
 import NeteasePlaylistSearch from './NeteasePlaylistSearch.vue';
 import NeteaseUserSearch from './NeteaseUserSearch.vue';
 import EmotePicker from './EmotePicker.vue';
 import PlaylistQueue from './PlaylistQueue.vue';
-import {
-  CAT_APPEARANCE_PRESETS,
-  CAT_COATS,
-  CAT_PATTERNS,
-  DEFAULT_CAT_APPEARANCE,
-  catAppearancePreset,
-  type CatAppearance,
-  type CatPresetPattern,
-} from '../shared/appearance';
-import {
-  COAT_UNLOCK_COST,
-  DAILY_DJ_REWARD,
-  DAILY_DJ_THRESHOLD_MS,
-} from '../shared/points';
 import {
   ArrowDown,
   ArrowDownRight,
@@ -40,10 +25,8 @@ import {
   ArrowRight,
   ArrowUp,
   Check,
-  Coins,
   Disc3,
   Info,
-  LockKeyhole,
   Music2,
   Pin,
   Plus,
@@ -72,7 +55,7 @@ import {
 } from '../shared/contracts';
 
 const props = defineProps<{ panelOpen?: boolean }>();
-const emit = defineEmits<{ leave: []; settings: [] }>();
+const emit = defineEmits<{ leave: []; settings: []; appearance: [] }>();
 const room = useRoom();
 const systemNotice = useTimedMessage();
 watch(
@@ -174,87 +157,8 @@ function focusIntroduction(event: PointerEvent) {
   )
     event.currentTarget.focus({ preventScroll: true });
 }
-type Modal = 'library' | 'members' | 'appearance';
+type Modal = 'library' | 'members';
 const modal = ref<Modal | null>(null);
-const appearanceTab = ref<'basic' | 'special'>('basic');
-const basicAppearance = ref<CatAppearance>({ ...DEFAULT_CAT_APPEARANCE });
-const specialAppearance = ref<
-  (typeof CAT_APPEARANCE_PRESETS)[number]['appearance']
->(CAT_APPEARANCE_PRESETS[0].appearance);
-const appearanceDraft = computed(() =>
-  appearanceTab.value === 'basic'
-    ? basicAppearance.value
-    : specialAppearance.value,
-);
-function hasPreset(pattern: CatPresetPattern) {
-  return (
-    room.points?.freeSpecialCoats ||
-    room.points?.unlockedPresets.includes(pattern) ||
-    (!room.points && room.guest?.appearance?.pattern === pattern)
-  );
-}
-const lockedPreset = computed(() => {
-  const { pattern } = specialAppearance.value;
-  return appearanceTab.value === 'special' && !hasPreset(pattern)
-    ? pattern
-    : undefined;
-});
-const missingPoints = computed(() =>
-  room.points ? Math.max(0, COAT_UNLOCK_COST - room.points.balance) : 0,
-);
-const appearanceAction = ref<'unlock' | 'save' | null>(null);
-const appearanceActionLabel = computed(() => {
-  if (appearanceAction.value === 'unlock') return '正在解锁…';
-  if (appearanceAction.value === 'save') return '正在保存…';
-  return lockedPreset.value ? `解锁 · ${COAT_UNLOCK_COST} 积分` : '保存外观';
-});
-const dailyPlayTime = computed(() =>
-  Math.min(room.points?.daily.playedMs ?? 0, DAILY_DJ_THRESHOLD_MS),
-);
-const pointsLoading = ref(false);
-const pointsLoadFailed = ref(false);
-let pointsRequest: object | null = null;
-let appearanceOpenVersion = 0;
-
-async function refreshPoints() {
-  if (
-    document.hidden ||
-    modal.value !== 'appearance' ||
-    appearanceTab.value !== 'special' ||
-    pointsRequest
-  )
-    return;
-  const pending = {};
-  pointsRequest = pending;
-  pointsLoading.value = true;
-  try {
-    const loaded = await room.loadPoints();
-    if (loaded && pointsRequest === pending) pointsLoadFailed.value = false;
-  } catch {
-    if (pointsRequest === pending) pointsLoadFailed.value = true;
-  } finally {
-    if (pointsRequest === pending) {
-      pointsRequest = null;
-      pointsLoading.value = false;
-    }
-  }
-}
-watch(
-  () => modal.value === 'appearance' && appearanceTab.value === 'special',
-  (open, _, onCleanup) => {
-    if (!open) return;
-    pointsLoadFailed.value = false;
-    void refreshPoints();
-    const interval = window.setInterval(refreshPoints, 30_000);
-    document.addEventListener('visibilitychange', refreshPoints);
-    onCleanup(() => {
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', refreshPoints);
-      pointsRequest = null;
-      pointsLoading.value = false;
-    });
-  },
-);
 const dialog = ref<HTMLDialogElement | null>(null);
 let returnFocus: HTMLElement | null = null;
 const modalTitle = computed(
@@ -262,7 +166,6 @@ const modalTitle = computed(
     ({
       library: '你的音乐角落',
       members: '客厅成员',
-      appearance: '我的小猫',
     })[modal.value || 'library'],
 );
 const interactionDisabled = computed(() =>
@@ -287,65 +190,6 @@ async function openModal(value: Modal) {
 function openLibrary(value: 'playlist' | 'search') {
   tab.value = value;
   void openModal('library');
-}
-function openAppearance() {
-  appearanceOpenVersion++;
-  const saved =
-    room.guest?.appearance ?? room.me?.appearance ?? DEFAULT_CAT_APPEARANCE;
-  const preset = catAppearancePreset(saved.pattern);
-  basicAppearance.value = {
-    coat: saved.coat,
-    pattern: preset ? 'solid' : saved.pattern,
-  };
-  specialAppearance.value =
-    preset?.appearance ?? CAT_APPEARANCE_PRESETS[0].appearance;
-  appearanceTab.value = preset ? 'special' : 'basic';
-  room.error = '';
-  void openModal('appearance');
-}
-watch(
-  [() => room.guest?.id, () => room.roomGeneration],
-  () => {
-    if (modal.value === 'appearance') closeModal();
-    appearanceAction.value = null;
-  },
-  { flush: 'sync' },
-);
-async function applyAppearance() {
-  if (appearanceAction.value) return;
-  const pattern = lockedPreset.value;
-  if (pattern && (!room.points || missingPoints.value)) return;
-  const version = appearanceOpenVersion;
-  const generation = room.roomGeneration;
-  const guestId = room.guest?.id;
-  const currentRoom = () =>
-    generation === room.roomGeneration && guestId === room.guest?.id;
-  const currentPanel = () =>
-    currentRoom() &&
-    version === appearanceOpenVersion &&
-    modal.value === 'appearance';
-  appearanceAction.value = pattern ? 'unlock' : 'save';
-  room.error = '';
-  try {
-    if (pattern) await room.unlockAppearance(pattern);
-    else if (
-      (await room.setAppearance({ ...appearanceDraft.value })) &&
-      currentPanel()
-    )
-      closeModal();
-  } catch (error) {
-    if (currentRoom() && version === appearanceOpenVersion) {
-      room.error =
-        error instanceof Error
-          ? error.message
-          : pattern
-            ? '解锁花色失败，请重试'
-            : '保存外观失败，请重试';
-      if (pattern) void refreshPoints();
-    }
-  } finally {
-    if (currentRoom()) appearanceAction.value = null;
-  }
 }
 async function requestJoin() {
   if (
@@ -638,7 +482,7 @@ onBeforeUnmount(() => {
         :interaction-disabled="interactionDisabled"
         @request-join="requestJoin"
         @request-leave="requestLeave"
-        @request-appearance="openAppearance"
+        @request-appearance="emit('appearance')"
         @self-menu-open="resetMovement"
       />
       <div class="room-notices" aria-live="polite">
@@ -835,186 +679,10 @@ onBeforeUnmount(() => {
           </button>
         </header>
         <div class="dialog-content">
-          <p
-            v-if="room.pointsReward && modal !== 'appearance'"
-            class="system-notice"
-            role="status"
-          >
+          <p v-if="room.pointsReward" class="system-notice" role="status">
             {{ room.pointsReward }}
           </p>
-          <form
-            v-if="modal === 'appearance'"
-            id="cat-wardrobe-form"
-            class="cat-wardrobe"
-            @submit.prevent="applyAppearance"
-          >
-            <div
-              class="segmented-tabs wardrobe-tabs"
-              role="group"
-              aria-label="花色类型"
-            >
-              <button
-                type="button"
-                :class="{ selected: appearanceTab === 'basic' }"
-                :aria-pressed="appearanceTab === 'basic'"
-                :disabled="!!appearanceAction"
-                @click="appearanceTab = 'basic'"
-              >
-                普通花色
-              </button>
-              <button
-                type="button"
-                :class="{ selected: appearanceTab === 'special' }"
-                :aria-pressed="appearanceTab === 'special'"
-                :disabled="!!appearanceAction"
-                @click="appearanceTab = 'special'"
-              >
-                特殊花色
-              </button>
-            </div>
-            <div class="cat-preview-card">
-              <CatPreview :appearance="appearanceDraft" />
-            </div>
-            <p v-if="room.pointsReward" class="wardrobe-reward" role="status">
-              {{ room.pointsReward }}
-            </p>
-            <div
-              v-if="appearanceTab === 'special'"
-              class="wardrobe-points"
-              aria-label="积分"
-            >
-              <template v-if="room.points">
-                <strong
-                  ><Coins aria-hidden="true" />{{
-                    room.points.balance
-                  }}
-                  积分</strong
-                >
-                <p v-if="room.points.daily.awarded">今日放歌积分已领取</p>
-                <template v-else>
-                  <p>
-                    今日放歌 {{ time(dailyPlayTime) }} /
-                    {{ time(DAILY_DJ_THRESHOLD_MS) }}
-                  </p>
-                  <progress
-                    :value="dailyPlayTime"
-                    :max="DAILY_DJ_THRESHOLD_MS"
-                    aria-label="今日台上放歌时长"
-                  />
-                  <p>
-                    每天台上累计放歌超过
-                    {{ DAILY_DJ_THRESHOLD_MS / 60_000 }} 分钟可得
-                    {{ DAILY_DJ_REWARD }} 积分。
-                  </p>
-                </template>
-              </template>
-              <p v-else-if="pointsLoading" role="status">正在加载积分…</p>
-              <p v-if="pointsLoadFailed" role="status">
-                积分加载失败。
-                <button
-                  class="text-button"
-                  type="button"
-                  :disabled="pointsLoading"
-                  @click="refreshPoints"
-                >
-                  重试
-                </button>
-              </p>
-            </div>
-            <fieldset
-              v-if="appearanceTab === 'basic'"
-              :disabled="!!appearanceAction"
-            >
-              <legend>毛色</legend>
-              <div class="cat-options">
-                <label
-                  v-for="coat in CAT_COATS"
-                  :key="coat.id"
-                  class="cat-option"
-                  :class="{ selected: basicAppearance.coat === coat.id }"
-                >
-                  <input
-                    v-model="basicAppearance.coat"
-                    type="radio"
-                    name="cat-coat"
-                    :value="coat.id"
-                  />
-                  <span
-                    class="coat-swatch"
-                    :style="{ backgroundColor: coat.color }"
-                    aria-hidden="true"
-                  />
-                  {{ coat.label }}
-                </label>
-              </div>
-            </fieldset>
-            <fieldset
-              v-else
-              :disabled="!!appearanceAction"
-              aria-label="特殊花色预设"
-            >
-              <div class="cat-options">
-                <label
-                  v-for="preset in CAT_APPEARANCE_PRESETS"
-                  :key="preset.appearance.pattern"
-                  class="cat-option"
-                  :class="{
-                    selected:
-                      specialAppearance.pattern === preset.appearance.pattern,
-                  }"
-                >
-                  <input
-                    type="radio"
-                    name="special-cat-coat"
-                    :value="preset.appearance.pattern"
-                    :checked="
-                      specialAppearance.pattern === preset.appearance.pattern
-                    "
-                    @change="specialAppearance = preset.appearance"
-                  />
-                  <span
-                    class="coat-swatch"
-                    :style="{ background: preset.swatch }"
-                    aria-hidden="true"
-                  />
-                  {{ preset.label }}
-                  <span
-                    v-if="!hasPreset(preset.appearance.pattern)"
-                    class="cat-option-cost"
-                  >
-                    <LockKeyhole aria-hidden="true" />{{ COAT_UNLOCK_COST }}
-                    积分
-                  </span>
-                </label>
-              </div>
-            </fieldset>
-            <fieldset
-              v-if="appearanceTab === 'basic'"
-              :disabled="!!appearanceAction"
-            >
-              <legend>花纹</legend>
-              <div class="cat-options">
-                <label
-                  v-for="pattern in CAT_PATTERNS"
-                  :key="pattern.id"
-                  class="cat-option"
-                  :class="{ selected: basicAppearance.pattern === pattern.id }"
-                >
-                  <input
-                    v-model="basicAppearance.pattern"
-                    type="radio"
-                    name="cat-pattern"
-                    :value="pattern.id"
-                  />
-                  {{ pattern.label }}
-                </label>
-              </div>
-            </fieldset>
-            <p v-if="!lockedPreset" class="library-hint">
-              保存后房间里的大家都能看到，下次回来也会保留。
-            </p>
-          </form>
-          <section v-else-if="modal === 'library'" class="library">
+          <section v-if="modal === 'library'" class="library">
             <div class="library-tabs" aria-label="音乐列表">
               <button
                 :class="{ selected: tab === 'playlist' }"
@@ -1213,25 +881,6 @@ onBeforeUnmount(() => {
           {{ room.error }}
           <button class="text-button" @click="room.error = ''">关闭提示</button>
         </p>
-        <footer v-if="modal === 'appearance'" class="wardrobe-footer">
-          <p v-if="lockedPreset && missingPoints" class="library-hint">
-            解锁还差 {{ missingPoints }} 积分。
-          </p>
-          <div class="confirm-actions">
-            <button type="button" @click="closeModal">取消</button>
-            <button
-              class="primary"
-              type="submit"
-              form="cat-wardrobe-form"
-              :disabled="
-                !!appearanceAction ||
-                !!(lockedPreset && (!room.points || missingPoints))
-              "
-            >
-              {{ appearanceActionLabel }}
-            </button>
-          </div>
-        </footer>
       </dialog>
     </main>
     <div v-if="room.guest && room.error && !modal" class="toast" role="alert">
@@ -1244,23 +893,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.wardrobe-footer {
-  flex: none;
-  padding: 12px 26px 16px;
-  border-top: 1px solid var(--line);
-}
-.wardrobe-footer .confirm-actions {
-  flex-wrap: wrap;
-  margin: 0;
-}
-.wardrobe-footer .library-hint {
-  margin: 0 0 8px;
-}
-@media (max-width: 650px) {
-  .wardrobe-footer {
-    padding-inline: 20px;
-  }
-}
 .playlist-selector {
   margin: 15px 0;
 }

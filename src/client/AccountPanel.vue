@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useTimedMessage } from './timed-message';
 import { ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
-import { ArrowLeft, Coins, ListMusic, Shuffle, X } from '@lucide/vue';
+import { ArrowLeft, Coins, ListMusic, Palette, Shuffle, X } from '@lucide/vue';
 import { randomNickname } from './nicknames';
 import {
   PLAYLIST_LIMIT,
@@ -12,7 +12,11 @@ import {
 } from '../shared/contracts';
 import NeteaseUserSearch from './NeteaseUserSearch.vue';
 import { useRoom } from './room';
-const emit = defineEmits<{ close: []; changed: [createdRoom?: RoomInfo] }>();
+const emit = defineEmits<{
+  close: [];
+  changed: [createdRoom?: RoomInfo];
+  appearance: [];
+}>();
 const room = useRoom();
 const dialog = ref<HTMLDialogElement | null>(null);
 let returnFocus: HTMLElement | null = null;
@@ -90,6 +94,11 @@ function shuffleNickname() {
   if (busy.value) return;
   nickname.value = randomNickname(nickname.value);
   error.value = '';
+}
+function openAppearance(event: MouseEvent) {
+  if (event.currentTarget instanceof HTMLButtonElement)
+    event.currentTarget.focus({ preventScroll: true });
+  emit('appearance');
 }
 async function act(action: () => Promise<void>) {
   if (busy.value) return;
@@ -272,6 +281,15 @@ function logout(all = false) {
             重试
           </button>
         </div>
+        <button
+          type="button"
+          class="account-appearance-button"
+          aria-haspopup="dialog"
+          :disabled="busy"
+          @click="openAppearance"
+        >
+          <Palette aria-hidden="true" />修改花色
+        </button>
         <p class="library-hint">此浏览器会记住当前身份、歌单和房间。</p>
       </template>
       <div
@@ -454,6 +472,9 @@ function logout(all = false) {
 }
 .account-points strong {
   color: var(--ink);
+}
+.account-appearance-button {
+  margin-top: 12px;
 }
 .account-netease {
   margin-top: 20px;
