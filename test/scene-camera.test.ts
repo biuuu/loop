@@ -98,6 +98,7 @@ test('an audience camera stops following after the cat stops inside the safe vie
 
   let current = atStop;
   const positionAtStop = worldToScreen(cat, atStop);
+  const stopped = { catBounds, direction: { x: 0, y: 0 } };
   for (let frame = 0; frame < 90; frame++) {
     const target = audienceCamera(
       width,
@@ -106,7 +107,7 @@ test('an audience camera stops following after the cat stops inside the safe vie
       cat,
       current,
       safe,
-      catBounds,
+      stopped,
     );
     current = easeCamera(current, target, 16);
     assert.deepEqual(worldToScreen(cat, current), positionAtStop);
@@ -119,8 +120,50 @@ test('an audience camera stops following after the cat stops inside the safe vie
     { ...cat, x: cat.x + 25 },
     current,
     safe,
+    { catBounds, direction: { x: 25, y: 0 } },
   );
   assert.ok(resumed.x < current.x);
+});
+
+test('an audience camera holds after reversing or turning across a previously followed axis', () => {
+  const width = 1000;
+  const height = 690;
+  const safe = { left: 18, top: 95, right: 982, bottom: 570 };
+  const start = sceneCamera(width, height, 1);
+
+  for (const side of [-1, 1]) {
+    const cat = { x: centerX + side * 230, y: 440 };
+    const following = audienceCamera(width, height, 1, cat, start, safe, {
+      catBounds,
+      direction: { x: side, y: 0 },
+    });
+    const atStop = easeCamera(start, following, 16);
+    for (const direction of [
+      { x: -side * 25, y: 0 },
+      { x: 0, y: -25 },
+    ]) {
+      const restarted = { x: cat.x + direction.x, y: cat.y + direction.y };
+      // The body is visible even though the cat has yet to re-enter the inner box.
+      catVisible(atStop, restarted, safe);
+      const catchUp = audienceCamera(width, height, 1, restarted, atStop, safe);
+      assert.ok(side * (catchUp.x - atStop.x) < 0);
+      const held = audienceCamera(width, height, 1, restarted, atStop, safe, {
+        catBounds,
+        direction,
+      });
+      assert.equal(held.x, atStop.x);
+    }
+    const crossed = audienceCamera(
+      width,
+      height,
+      1,
+      { x: centerX - side * 230, y: cat.y },
+      atStop,
+      safe,
+      { catBounds, direction: { x: -side, y: 0 } },
+    );
+    assert.ok(side * (crossed.x - atStop.x) > 0);
+  }
 });
 
 test('a stopped audience cat cropped by a narrow view pans only until its bounds are visible', () => {
@@ -130,22 +173,15 @@ test('a stopped audience cat cropped by a narrow view pans only until its bounds
   const cat = { x: 958.4, y: 440 };
   const start = sceneCamera(width, height, 1);
   assert.ok(worldToScreen(cat, start).x > safe.right);
-  const corrected = audienceCamera(
-    width,
-    height,
-    1,
-    cat,
-    start,
-    safe,
-    catBounds,
-  );
+  const stopped = { catBounds, direction: { x: 0, y: 0 } };
+  const corrected = audienceCamera(width, height, 1, cat, start, safe, stopped);
   catVisible(corrected, cat, safe);
   near(
     worldToScreen({ x: cat.x + catBounds.right, y: cat.y }, corrected).x,
     safe.right,
   );
   near(
-    audienceCamera(width, height, 1, cat, corrected, safe, catBounds).x,
+    audienceCamera(width, height, 1, cat, corrected, safe, stopped).x,
     corrected.x,
   );
   assert.ok(

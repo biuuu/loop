@@ -13,6 +13,10 @@ export interface Bounds {
   right: number;
   bottom: number;
 }
+interface AudienceFollow {
+  direction: Point;
+  catBounds: Bounds;
+}
 export const DEFAULT_ZOOM = 1;
 export const MAX_ZOOM = 1.25;
 const clamp = (value: number, min: number, max: number) =>
@@ -60,7 +64,7 @@ export function sceneCamera(
   };
 }
 
-/** Follow from the inner box while walking; a stopped cat only needs to stay visible. */
+/** Follow outward movement at the inner box and keep the full cat in the safe view. */
 export function audienceCamera(
   width: number,
   height: number,
@@ -68,12 +72,10 @@ export function audienceCamera(
   cat: Point,
   current: Camera,
   safe: Bounds,
-  stoppedCatBounds?: Bounds,
+  follow?: AudienceFollow,
 ): Camera {
   const base = sceneCamera(width, height, zoom);
   const previous = current.scale === base.scale ? current : base;
-  if (stoppedCatBounds)
-    return keepCatInView(previous, width, height, cat, stoppedCatBounds, safe);
   const axis = (
     offset: number,
     viewport: number,
@@ -82,18 +84,30 @@ export function audienceCamera(
     safeMin: number,
     safeMax: number,
     insetFraction: number,
+    direction?: number,
   ) => {
     const inset = (safeMax - safeMin) * insetFraction;
     const min = safeMin + inset;
     const max = safeMax - inset;
     const projected = focus * base.scale + offset;
-    if (projected < min) offset += min - projected;
-    else if (projected > max) offset += max - projected;
+    if (projected < min && (direction === undefined || direction < 0))
+      offset += min - projected;
+    else if (projected > max && (direction === undefined || direction > 0))
+      offset += max - projected;
     return boundedOffset(offset, viewport, world, base.scale);
   };
-  return {
+  const target = {
     scale: base.scale,
-    x: axis(previous.x, width, SCENE.width, cat.x, safe.left, safe.right, 0.32),
+    x: axis(
+      previous.x,
+      width,
+      SCENE.width,
+      cat.x,
+      safe.left,
+      safe.right,
+      0.32,
+      follow?.direction.x,
+    ),
     y: axis(
       previous.y,
       height,
@@ -102,8 +116,12 @@ export function audienceCamera(
       safe.top,
       safe.bottom,
       0.3,
+      follow?.direction.y,
     ),
   };
+  return follow
+    ? keepCatInView(target, width, height, cat, follow.catBounds, safe)
+    : target;
 }
 
 /** Keep the stage composition until the entire local cat leaves its safe area. */
