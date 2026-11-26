@@ -1431,7 +1431,7 @@ h3 {
   justify-content: center;
   margin-bottom: 10px;
 }
-.empty-state .lucide {
+.empty-state > span > .lucide {
   width: 32px;
   height: 32px;
 }
