@@ -35,7 +35,7 @@
 - Preserve the existing dark gray and ivory coats, adding pure black and pure white as separate options. Pure black should have a subdued outer outline, with readable eyes.
 - Add a selectable calico preset with a warm ivory base and irregular orange and dark patches that follow each pose.
 - Add cow-pattern, orange-and-white, and tortoiseshell presets with distinct coat markings across the same poses.
-- Offer 暹罗 and 狸花白. Rename 海豹色 to 暹罗. Remove 红重点 and 银渐层 after visual review. Try a 布偶 sample for visual review.
+- Offer 暹罗, 狸花白 and 布偶. Rename 海豹色 to 暹罗. Remove 红重点 and 银渐层 after visual review. Promote the reviewed 布偶 sample to a selectable special coat.
 - Require points to unlock special cat coats. Give every player enough initial points to unlock one special coat. Award points once per day when a player has played music on stage for more than three minutes. Allow more ways to earn points in future iterations.
 - Confirm 5 starting points, a 5-point cost per special coat, and a 1-point daily reward based on Beijing time. Carry over the currently equipped special coat for each existing account and give existing accounts the starting grant.
 - Separate ordinary colors and patterns from point-unlocked presets into two tabs in 我的小猫.
@@ -218,7 +218,7 @@ The user approved the first release and its point values, day boundary and treat
 - Read balance, unlocks and daily progress through authenticated `GET /api/me/points`. Use `POST /api/me/appearance/unlocks` with a preset ID to unlock. Use server-side prices and require a matching account unlock in the current appearance save route. Keep locked previews available in 我的小猫 and show their cost. After an unlock, the selected preview can be saved through the normal flow. Send `points:awarded` privately to the player's current connection. Balances and progress stay outside public room snapshots.
 - Open the wardrobe on the tab of the saved appearance. Keep one preview selection per tab until the wardrobe closes. Load and refresh points in the special coats tab, and deliver the reward notice in either tab.
 - Refresh the account balance on opening 我的账号 and offer a retry if loading fails. Keep the wardrobe cancel and save or unlock buttons outside the scrollable content. Retain insufficient-points feedback in the bottom action area.
-- Keep the stored `seal_point` identifier for the renamed 暹罗 preset. Add a preview-only bicolor ragdoll to the special coats tab. Use warmer gray cheeks, pink inner ears and a fuller white chest on the idle source pose. Tint the original two vertical eye lines blue and leave a continuous strip of pale fur between them and over the muzzle. Keep the sample outside the persistent catalog until the artwork is reviewed.
+- Keep the stored `seal_point` identifier for the renamed 暹罗 preset. Add `ragdoll` as a 5-point special coat in SQLite migration 027. Preserve the reviewed idle frame's warm gray cheeks, pink inner ears, white chest and blue vertical eyes. Apply the markings across the existing idle, walking and sleep sprite frames and keep pale fur between the eyes and across the muzzle. Use the same atlas for preview, portraits and the room.
 
 ## Build sequence
 

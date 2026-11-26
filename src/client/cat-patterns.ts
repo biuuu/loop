@@ -1,9 +1,11 @@
 import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
 import { CAT_COAT_PATCHES, type PresetFramePatterns } from './cat-coat-patches';
+import { CAT_RAGDOLL_PATCHES } from './cat-ragdoll';
 import { CAT_SEAL_POINT_PATCHES } from './cat-seal-point';
 import { CAT_TABBY_WHITE_DETAILS } from './cat-tabby-white';
 
 export const CAT_CALICO_MARKINGS = { orange: 1, dark: 2 } as const;
+export const RAGDOLL_EYE_MARKING = 6;
 
 export type CatPattern = keyof FramePatterns;
 export interface MaskPatch {
@@ -17,11 +19,12 @@ export interface MaskPatch {
     | 'ear'
     | 'temple'
     | 'face'
-    | 'tail';
+    | 'tail'
+    | 'eye';
   readonly x: number;
   readonly y: number;
   readonly rows: readonly string[];
-  readonly marking?: 1 | 2;
+  readonly marking?: 1 | 2 | 3 | 4 | 5 | 6;
 }
 interface BaseFramePatterns extends PresetFramePatterns {
   readonly socks: readonly MaskPatch[];
@@ -31,6 +34,7 @@ interface BaseFramePatterns extends PresetFramePatterns {
 }
 interface FramePatterns extends BaseFramePatterns {
   readonly tabby_white: readonly MaskPatch[];
+  readonly ragdoll: readonly MaskPatch[];
 }
 
 const CALICO_EAR: MaskPatch = {
@@ -369,9 +373,10 @@ const BASE_PATTERN_PATCHES: Readonly<
   ],
 };
 
-function addTabbyWhite(animation: CatAnimation): readonly FramePatterns[] {
+function addCoatPresets(animation: CatAnimation): readonly FramePatterns[] {
   return BASE_PATTERN_PATCHES[animation].map((patches, frame) => ({
     ...patches,
+    ragdoll: CAT_RAGDOLL_PATCHES[animation][frame]!,
     tabby_white: [
       ...(CAT_TABBY_WHITE_DETAILS[animation]?.[frame] ?? []),
       ...patches.tabby.filter((patch) => patch.part === 'back'),
@@ -381,11 +386,11 @@ function addTabbyWhite(animation: CatAnimation): readonly FramePatterns[] {
 }
 
 export const CAT_PATTERN_PATCHES = {
-  idle: addTabbyWhite('idle'),
-  side: addTabbyWhite('side'),
-  up: addTabbyWhite('up'),
-  down: addTabbyWhite('down'),
-  sleep: addTabbyWhite('sleep'),
+  idle: addCoatPresets('idle'),
+  side: addCoatPresets('side'),
+  up: addCoatPresets('up'),
+  down: addCoatPresets('down'),
+  sleep: addCoatPresets('sleep'),
 } as const satisfies Record<CatAnimation, readonly FramePatterns[]>;
 
 const PARTS = new Set<MaskPatch['part']>([
@@ -399,6 +404,7 @@ const PARTS = new Set<MaskPatch['part']>([
   'temple',
   'face',
   'tail',
+  'eye',
 ]);
 const masks = new Map<string, Uint8Array>();
 
@@ -422,6 +428,7 @@ export function getPatternMask(
   if (cached) return cached;
   const mask = new Uint8Array(CAT_CELL_SIZE * CAT_CELL_SIZE);
   const patches = frames[frame]![pattern];
+  const maxMarking = pattern === 'ragdoll' ? RAGDOLL_EYE_MARKING : 2;
   if (!Array.isArray(patches as unknown))
     throw new Error('Missing cat pattern patches');
   for (const patch of patches) {
@@ -433,7 +440,10 @@ export function getPatternMask(
       !Number.isInteger(patch.y) ||
       patch.x < 0 ||
       patch.y < 0 ||
-      (marking !== 1 && marking !== 2) ||
+      !Number.isInteger(marking) ||
+      marking < 1 ||
+      marking > maxMarking ||
+      (patch.part === 'eye') !== (marking === RAGDOLL_EYE_MARKING) ||
       width === 0 ||
       patch.rows.length === 0 ||
       patch.x + width > CAT_CELL_SIZE ||

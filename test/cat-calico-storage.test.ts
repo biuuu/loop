@@ -154,7 +154,7 @@ for (const [
       db = undefined;
 
       db = new Store(dbPath);
-      assert.equal(db.sql.pragma('user_version', { simple: true }), 26);
+      assert.equal(db.sql.pragma('user_version', { simple: true }), 27);
       assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
       assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
       assert.deepEqual(readRows(db), expected);

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {
   CAT_APPEARANCE_HEIGHT,
   CAT_APPEARANCE_WIDTH,
@@ -12,37 +13,42 @@ import {
   CAT_IDLE_UP_COLUMN,
   type CatAnimation,
 } from '../src/client/cat-sprite';
-import { recolorRagdollSample } from '../src/client/cat-ragdoll-sample';
 import {
   CAT_APPEARANCE_PRESETS,
   CAT_COATS,
   CAT_PATTERNS,
   DEFAULT_CAT_APPEARANCE,
+  RAGDOLL_APPEARANCE,
   SEAL_POINT_APPEARANCE,
   catAppearancePreset,
   catAppearanceSchema,
   type CatPresetPattern,
 } from '../src/shared/appearance';
 
-import { getPatternMask } from '../src/client/cat-patterns';
+import {
+  RAGDOLL_EYE_MARKING,
+  getPatternMask,
+} from '../src/client/cat-patterns';
 import { frameIndex, frameRgb, sourcePixels, rgb } from './helpers/cat-source';
 
 const original = sourcePixels();
 const isCoat = (color: number) => color === 0xfb8c00 || color === 0xef6c00;
 
-test('the bicolor ragdoll sample keeps the cat silhouette and the Siamese rename keeps its ID', () => {
+test('the formal ragdoll keeps the reviewed sample pixel for pixel', () => {
+  const result = recolorCatPixels(original, RAGDOLL_APPEARANCE);
   const frame = new Uint8ClampedArray(CAT_CELL_SIZE ** 2 * 4);
   for (let y = 0; y < CAT_CELL_SIZE; y++) {
     const start = frameIndex('idle', CAT_IDLE_UP_COLUMN, 0, y);
     frame.set(
-      original.subarray(start, start + CAT_CELL_SIZE * 4),
+      result.subarray(start, start + CAT_CELL_SIZE * 4),
       y * CAT_CELL_SIZE * 4,
     );
   }
-  const source = frame.slice();
-  recolorRagdollSample(frame);
-  for (let index = 3; index < frame.length; index += 4)
-    assert.equal(frame[index], source[index]);
+  // Hash the original-size RGBA cell from the last approved sample.
+  assert.equal(
+    createHash('sha256').update(frame).digest('hex'),
+    'd1efc3e11e86bb4e196d56f2108258014b3a7ecd73090b5b4ef1c51982eec34f',
+  );
   const colorAt = (x: number, y: number) =>
     rgb(frame, (y * CAT_CELL_SIZE + x) * 4);
   assert.equal(colorAt(26, 32), 0xb7a7a0); // Ear and its pink interior
@@ -69,11 +75,41 @@ test('the bicolor ragdoll sample keeps the cat silhouette and the Siamese rename
       .success,
     false,
   );
+  assert.deepEqual(catAppearanceSchema.parse(RAGDOLL_APPEARANCE), {
+    coat: 'white',
+    pattern: 'ragdoll',
+  });
   assert.equal(catAppearancePreset('seal_point')?.label, '暹罗');
   assert.deepEqual(catAppearanceSchema.parse(SEAL_POINT_APPEARANCE), {
     coat: 'cream',
     pattern: 'seal_point',
   });
+});
+
+test('ragdoll eye lines and pale face stripe follow the head through each awake pose', () => {
+  const result = recolorCatPixels(original, RAGDOLL_APPEARANCE);
+  const headOffsets = {
+    idle: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    side: [0, -1, 0, 0, -1, 0],
+    down: [1, 0, 1],
+  } as const;
+  for (const animation of ['idle', 'side', 'down'] as const) {
+    for (const [frame, offset] of headOffsets[animation].entries()) {
+      for (const y of [37 + offset, 38 + offset]) {
+        for (const x of [28, 32]) {
+          const source = frameRgb(original, animation, frame, x, y);
+          assert.equal(
+            frameRgb(result, animation, frame, x, y),
+            source === 0x482a00 ? 0x3e668d : 0xb7a7a0,
+            `${animation}/${frame}/${x},${y}`,
+          );
+        }
+        for (const x of [29, 30, 31])
+          assert.equal(frameRgb(result, animation, frame, x, y), 0xfaf8f3);
+      }
+    }
+  }
+  assert.equal(frameRgb(result, 'sleep', 2, 28, 42), 0x413a40);
 });
 
 test('packed appearance sheet includes all sixteen sleep frames from the original first row', () => {
@@ -211,12 +247,20 @@ test('each preset keeps its base and shades its spots across all poses while pre
     tortoiseshell: { 1: [0xa97a54, 0x8e6144] },
     seal_point: { 1: [0xad8361, 0x946a50], 2: [0x785644, 0x654637, 0x9b7055] },
     tabby_white: { 1: [0x665142, 0x543e32], 2: [0xfff6e8, 0xe9decf] },
+    ragdoll: {
+      1: [0xb7a7a0, 0x9a8a88],
+      2: [0x948887, 0x7e7377],
+      3: [0xd6c8bf, 0xb7aaa3],
+      4: [0xfaf8f3, 0xeee7e0],
+      5: [0xd7a6aa, 0xc1969c],
+    },
   };
   const presetBodyColors: Partial<
-    Record<CatPresetPattern, readonly [number, number]>
+    Record<CatPresetPattern, readonly [number, number, number?]>
   > = {
     seal_point: [0xf2e2c9, 0xdcc3a6],
     tabby_white: [0xaa9983, 0x907b64],
+    ragdoll: [0xeee6dd, 0xd7c9bf, 0xfaf8f3],
   };
   for (const { appearance } of CAT_APPEARANCE_PRESETS) {
     const base = recolorCatPixels(original, {
@@ -227,6 +271,7 @@ test('each preset keeps its base and shades its spots across all poses while pre
     const palette = palettes[appearance.pattern];
     const bodyColors = presetBodyColors[appearance.pattern];
     const hasFaceMask = appearance.pattern === 'seal_point';
+    const ragdoll = appearance.pattern === 'ragdoll';
     for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
       const expectedMarks = Object.keys(palette)
         .map(Number)
@@ -244,24 +289,32 @@ test('each preset keeps its base and shades its spots across all poses while pre
               !original[index + 3] ||
               (!isCoat(color) && color !== 0xffdeb1)
             ) {
-              assert.equal(rgb(result, index), rgb(base, index));
+              const recoloredInk =
+                ragdoll && original[index + 3] && color === 0x482a00;
+              assert.equal(
+                rgb(result, index),
+                recoloredInk
+                  ? mark === RAGDOLL_EYE_MARKING
+                    ? 0x3e668d
+                    : 0x413a40
+                  : rgb(base, index),
+              );
               continue;
             }
             if (isCoat(color)) painted.add(mark);
             const tones = palette[mark];
             if (mark) assert.ok(tones);
             const shade = color === 0xfb8c00 ? 0 : color === 0xef6c00 ? 1 : 2;
-            const baseColor =
-              (shade === 2 ? undefined : bodyColors?.[shade]) ??
-              rgb(base, index);
+            const baseColor = bodyColors?.[shade] ?? rgb(base, index);
             assert.equal(rgb(result, index), tones?.[shade] ?? baseColor);
           }
         }
-        assert.deepEqual(
-          [...painted].sort(),
-          [0, ...expectedMarks],
-          `${appearance.pattern}/${animation}/${frame}`,
-        );
+        if (!ragdoll)
+          assert.deepEqual(
+            [...painted].sort(),
+            [0, ...expectedMarks],
+            `${appearance.pattern}/${animation}/${frame}`,
+          );
       }
     }
   }

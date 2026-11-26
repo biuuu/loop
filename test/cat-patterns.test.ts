@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   CAT_CALICO_MARKINGS,
   CAT_PATTERN_PATCHES,
+  RAGDOLL_EYE_MARKING,
   getPatternMask,
   type CatPattern,
 } from '../src/client/cat-patterns';
@@ -30,6 +31,7 @@ const patternMarkings = {
   tortoiseshell: [1],
   seal_point: [1, 2],
   tabby_white: [1, 2],
+  ragdoll: [1, 2, 3, 4, 5, RAGDOLL_EYE_MARKING],
 } as const satisfies Record<CatPattern, readonly number[]>;
 const marked = (
   pattern: 'socks' | 'tabby',
@@ -84,7 +86,7 @@ const presetMarkings = (
       getPatternMask(pattern, animation, frame)[y * CAT_CELL_SIZE + x],
   );
 
-test('all 41 source frames have bounded anatomical patches that select only actual coat pixels', () => {
+test('all 41 source frames use bounded anatomical patches on fur or the original eye pixels', () => {
   assert.deepEqual(
     Object.keys(CAT_PATTERN_PATCHES).sort(),
     Object.keys(CAT_ANIMATIONS).sort(),
@@ -100,6 +102,7 @@ test('all 41 source frames have bounded anatomical patches that select only actu
       for (const pattern of Object.keys(patternMarkings) as CatPattern[]) {
         const patches = CAT_PATTERN_PATCHES[animation][frame]![pattern];
         const hasFaceMask = pattern === 'seal_point';
+        const ragdoll = pattern === 'ragdoll';
         assert.ok(patches.length > 0);
         if (pattern === 'tortoiseshell')
           assert.equal(patches.length, animation === 'down' ? 1 : 2);
@@ -121,6 +124,7 @@ test('all 41 source frames have bounded anatomical patches that select only actu
               'temple',
               'face',
               'tail',
+              'eye',
             ].includes(patch.part),
           );
           assert.equal(
@@ -169,19 +173,28 @@ test('all 41 source frames have bounded anatomical patches that select only actu
               `${pattern}/${animation}/${frame}/${x},${y} alpha`,
             );
             assert.ok(
-              isCoat,
-              `${pattern}/${animation}/${frame}/${x},${y} is coat`,
+              ragdoll && value === RAGDOLL_EYE_MARKING ? color === ink : isCoat,
+              `${pattern}/${animation}/${frame}/${x},${y} uses an appropriate source pixel`,
             );
           }
-        assert.deepEqual(
-          [...markings].sort(),
-          hasFaceMask && animation === 'up' ? [2] : patternMarkings[pattern],
-          `${pattern}/${animation}/${frame} marking values`,
-        );
-        assert.ok(selected > 0 && remainingCoat > 0);
+        if (ragdoll) {
+          assert.ok(markings.has(2) && markings.has(4));
+          assert.equal(
+            markings.has(RAGDOLL_EYE_MARKING),
+            animation !== 'up' && animation !== 'sleep',
+          );
+        } else {
+          assert.deepEqual(
+            [...markings].sort(),
+            hasFaceMask && animation === 'up' ? [2] : patternMarkings[pattern],
+            `${pattern}/${animation}/${frame} marking values`,
+          );
+          assert.ok(selected > 0 && remainingCoat > 0);
+        }
         // Front-facing point frames show mostly head, paws, and raised tail.
         if (
           pattern !== 'orange_white' &&
+          !ragdoll &&
           !(hasFaceMask && animation === 'down')
         ) {
           assert.ok(

@@ -21,6 +21,10 @@ export const SEAL_POINT_APPEARANCE = {
   coat: 'cream',
   pattern: 'seal_point',
 } as const;
+export const RAGDOLL_APPEARANCE = {
+  coat: 'white',
+  pattern: 'ragdoll',
+} as const;
 
 export const CAT_APPEARANCE_PRESETS = [
   {
@@ -53,6 +57,11 @@ export const CAT_APPEARANCE_PRESETS = [
     appearance: { coat: 'gray', pattern: 'tabby_white' },
     label: '狸花白',
     swatch: 'linear-gradient(125deg, #665142 24%, #aa9983 52%, #fff6e8 52%)',
+  },
+  {
+    appearance: RAGDOLL_APPEARANCE,
+    label: '布偶',
+    swatch: 'linear-gradient(125deg, #948887 26%, #b7a7a0 46%, #faf8f3 46%)',
   },
 ] as const;
 

@@ -3,7 +3,11 @@ import {
   type CatPresetPattern,
 } from '../shared/appearance';
 import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
-import { CAT_CALICO_MARKINGS, getPatternMask } from './cat-patterns';
+import {
+  CAT_CALICO_MARKINGS,
+  RAGDOLL_EYE_MARKING,
+  getPatternMask,
+} from './cat-patterns';
 
 export const CAT_PACKED_ROWS: Record<CatAnimation, number> = {
   idle: 0,
@@ -14,7 +18,7 @@ export const CAT_PACKED_ROWS: Record<CatAnimation, number> = {
 };
 export const CAT_APPEARANCE_WIDTH = CAT_ANIMATIONS.sleep.frames * CAT_CELL_SIZE;
 export const CAT_APPEARANCE_HEIGHT = 5 * CAT_CELL_SIZE;
-export const ORIGINAL_CAT_PALETTE = {
+const ORIGINAL_CAT_PALETTE = {
   main: 0xfb8c00,
   shadow: 0xef6c00,
   light: 0xffdeb1,
@@ -87,12 +91,20 @@ const SPOT_PALETTES = {
     1: { main: 0x665142, shadow: 0x543e32 },
     2: { main: 0xfff6e8, shadow: 0xe9decf },
   },
+  ragdoll: {
+    1: { main: 0xb7a7a0, shadow: 0x9a8a88 },
+    2: { main: 0x948887, shadow: 0x7e7377 },
+    3: { main: 0xd6c8bf, shadow: 0xb7aaa3 },
+    4: { main: 0xfaf8f3, shadow: 0xeee7e0 },
+    5: { main: 0xd7a6aa, shadow: 0xc1969c },
+  },
 } satisfies Record<CatPresetPattern | 'socks', SpotPalette>;
 const PRESET_BODY_COLORS: Readonly<
-  Partial<Record<CatAppearance['pattern'], FurColors>>
+  Partial<Record<CatAppearance['pattern'], FurColors & { ink?: number }>>
 > = {
   seal_point: { main: 0xf2e2c9, shadow: 0xdcc3a6 },
   tabby_white: { main: 0xaa9983, shadow: 0x907b64 },
+  ragdoll: { main: 0xeee6dd, shadow: 0xd7c9bf, light: 0xfaf8f3, ink: 0x413a40 },
 };
 
 // Separate the connected silhouette from enclosed facial details using the
@@ -196,7 +208,8 @@ export function recolorCatPixels(
             (pixels[offset]! << 16) |
             (pixels[offset + 1]! << 8) |
             pixels[offset + 2]!;
-          const patch = spots?.[mask?.[y * CAT_CELL_SIZE + x] ?? 0];
+          const mark = mask?.[y * CAT_CELL_SIZE + x] ?? 0;
+          const patch = spots?.[mark];
           const replacement =
             color === ORIGINAL_CAT_PALETTE.main
               ? (patch?.main ?? palette.main)
@@ -207,7 +220,9 @@ export function recolorCatPixels(
                   : color === ORIGINAL_CAT_PALETTE.ink
                     ? outerInk?.[y * CAT_CELL_SIZE + x]
                       ? 0x030303
-                      : palette.ink
+                      : mark === RAGDOLL_EYE_MARKING
+                        ? 0x3e668d
+                        : palette.ink
                     : color;
           result[offset] = replacement >>> 16;
           result[offset + 1] = (replacement >>> 8) & 255;

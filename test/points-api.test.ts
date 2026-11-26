@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { io as connect, type Socket } from 'socket.io-client';
 import { createServer } from '../src/server/app.js';
-import { CALICO_APPEARANCE } from '../src/shared/appearance.js';
+import { RAGDOLL_APPEARANCE } from '../src/shared/appearance.js';
 import {
   DAILY_DJ_THRESHOLD_MS,
   type PointsAwarded,
@@ -70,10 +70,10 @@ test('only the authenticated account can spend its points and use its unlocked p
       method: 'PATCH',
       url: '/api/me/appearance',
       headers,
-      payload: CALICO_APPEARANCE,
+      payload: RAGDOLL_APPEARANCE,
     });
   assert.equal((await points({})).statusCode, 401);
-  assert.equal((await unlock({}, 'calico')).statusCode, 401);
+  assert.equal((await unlock({}, 'ragdoll')).statusCode, 401);
   const initial = await points(alice);
   assert.equal(initial.statusCode, 200);
   assert.equal(initial.headers['cache-control'], 'no-store');
@@ -82,24 +82,24 @@ test('only the authenticated account can spend its points and use its unlocked p
   assert.equal((await equip(alice)).statusCode, 403);
   assert.equal((await unlock(alice, 'solid')).statusCode, 400);
   assert.equal(
-    (await unlock({ ...alice, origin: 'https://unrelated.example' }, 'calico'))
+    (await unlock({ ...alice, origin: 'https://unrelated.example' }, 'ragdoll'))
       .statusCode,
     403,
   );
 
   const [paid, repeated] = await Promise.all([
-    unlock(alice, 'calico'),
-    unlock(alice, 'calico'),
+    unlock(alice, 'ragdoll'),
+    unlock(alice, 'ragdoll'),
   ]);
   for (const response of [paid, repeated]) {
     assert.equal(response.statusCode, 200);
     assert.equal(response.json<PointsState>().balance, 0);
-    assert.deepEqual(response.json<PointsState>().unlockedPresets, ['calico']);
+    assert.deepEqual(response.json<PointsState>().unlockedPresets, ['ragdoll']);
   }
   assert.equal((await unlock(alice, 'cow')).statusCode, 409);
   assert.deepEqual(db.guestById(a.guest.id).appearance, a.guest.appearance);
   assert.equal((await equip(alice)).statusCode, 200);
-  assert.deepEqual(db.guestById(a.guest.id).appearance, CALICO_APPEARANCE);
+  assert.deepEqual(db.guestById(a.guest.id).appearance, RAGDOLL_APPEARANCE);
   assert.equal((await equip(bob)).statusCode, 403);
   assert.equal((await points(bob)).json<PointsState>().balance, 5);
   const competing = await Promise.all([

@@ -17,6 +17,7 @@ import {
 import {
   CALICO_APPEARANCE,
   CAT_APPEARANCE_PRESETS,
+  RAGDOLL_APPEARANCE,
   catAppearancePreset,
 } from '../src/shared/appearance.js';
 import {
@@ -31,17 +32,21 @@ const midnight = Date.parse('2026-11-26T00:00:00+08:00');
 const rewardAt = DAILY_DJ_THRESHOLD_MS + 1;
 const freeAppearance = { coat: 'pure_black', pattern: 'tabby' } as const;
 
+function historicalMigrations(root: string, version: number) {
+  const migrations = join(root, 'migrations');
+  mkdirSync(migrations);
+  for (const name of readdirSync('migrations')) {
+    if (Number(name.slice(0, 3)) <= version)
+      copyFileSync(join('migrations', name), join(migrations, name));
+  }
+  return migrations;
+}
+
 test('points migration grants every existing account once and preserves only their equipped special coat', (context) => {
   const root = mkdtempSync(join(tmpdir(), 'loop-points-migration-'));
   context.after(() => rmSync(root, { recursive: true, force: true }));
   const path = join(root, 'database.sqlite');
-  const migrations = join(root, 'migrations');
-  mkdirSync(migrations);
-  for (const name of readdirSync('migrations')) {
-    if (Number(name.slice(0, 3)) <= 25)
-      copyFileSync(join('migrations', name), join(migrations, name));
-  }
-  const before = new Store(path, migrations);
+  const before = new Store(path, historicalMigrations(root, 25));
   const special = before.createUser('Special');
   const basic = before.createGuest('Basic');
   try {
@@ -82,6 +87,78 @@ test('points migration grants every existing account once and preserves only the
     } finally {
       db.close();
     }
+  }
+});
+
+test('migration 27 preserves existing profiles, coat unlocks, points and DJ progress', (context) => {
+  const root = mkdtempSync(join(tmpdir(), 'loop-ragdoll-migration-'));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const path = join(root, 'database.sqlite');
+  const before = new Store(path, historicalMigrations(root, 26));
+  const readRows = (db: Store) =>
+    [
+      ['guests', 'id'],
+      ['coat_unlocks', 'guest_id, pattern'],
+      ['points_ledger', 'id'],
+      ['daily_dj_time', 'guest_id, date'],
+    ].map(([table, order]) =>
+      db.sql.prepare(`SELECT * FROM ${table} ORDER BY ${order}`).all(),
+    );
+  let savedRows: ReturnType<typeof readRows>;
+  let savedProfile: ReturnType<Store['guest']>;
+  let owner: ReturnType<Store['createUser']>;
+  let buyer: ReturnType<Store['createGuest']>;
+  try {
+    assert.equal(before.sql.pragma('user_version', { simple: true }), 26);
+    owner = before.createUser('Owner');
+    buyer = before.createGuest('Buyer');
+    const ownerId = owner.guest.id;
+    before.unlockAppearance(ownerId, 'calico');
+    before.updateAppearance(ownerId, CALICO_APPEARANCE);
+    before.recordDjPlayback(ownerId, firstDay, firstDay + rewardAt);
+    before.recordDjPlayback(ownerId, midnight, midnight + 60_000);
+    savedProfile = before.guest(owner.token);
+    savedRows = readRows(before);
+  } finally {
+    before.close();
+  }
+
+  const db = new Store(path);
+  try {
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 27);
+    assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
+    assert.deepEqual(readRows(db), savedRows);
+    assert.deepEqual(db.guest(owner.token), savedProfile);
+    assert.deepEqual(db.guest(buyer.token), buyer.guest);
+    assert.deepEqual(db.room(owner.createdRoom.id), owner.createdRoom);
+    assert.equal(
+      db.recordDjPlayback(owner.guest.id, midnight, midnight + rewardAt),
+      DAILY_DJ_REWARD,
+    );
+    assert.equal(db.points(owner.guest.id, midnight).daily.playedMs, rewardAt);
+
+    const id = buyer.guest.id;
+    assert.throws(
+      () => db.updateAppearance(id, RAGDOLL_APPEARANCE),
+      AppearanceLockedError,
+    );
+    assert.equal(db.unlockAppearance(id, 'ragdoll').balance, 0);
+    db.updateAppearance(id, RAGDOLL_APPEARANCE);
+  } finally {
+    db.close();
+  }
+
+  const restarted = new Store(path);
+  try {
+    assert.deepEqual(
+      restarted.guest(buyer.token)?.appearance,
+      RAGDOLL_APPEARANCE,
+    );
+    const points = restarted.points(buyer.guest.id);
+    assert.equal(points.balance, 0);
+    assert.deepEqual(points.unlockedPresets, ['ragdoll']);
+  } finally {
+    restarted.close();
   }
 });
 
