@@ -77,8 +77,8 @@ const SPOT_PALETTES = {
     [CAT_CALICO_MARKINGS.orange]: { main: 0xfbb747, shadow: 0xdd9234 },
     [CAT_CALICO_MARKINGS.dark]: { main: 0x79696d, shadow: 0x65545a },
   },
-  cow: { 2: { main: 0x38353b, shadow: 0x29262c } },
-  orange_white: { 1: { main: 0xeda251, shadow: 0xd57836 } },
+  cow: { 2: { main: 0x453d40, shadow: 0x342c30 } },
+  orange_white: { 1: { main: 0xf4ac52, shadow: 0xda8a3c } },
   tortoiseshell: { 1: { main: 0xa97a54, shadow: 0x8e6144 } },
   seal_point: {
     1: { main: 0xad8361, shadow: 0x946a50 },
@@ -96,10 +96,13 @@ const SPOT_PALETTES = {
     5: { main: 0xd7a6aa, shadow: 0xc1969c },
   },
 } satisfies Record<CatPresetPattern | 'socks', SpotPalette>;
+const WARM_WHITE_FUR = { main: 0xfffaf4, shadow: 0xebdccd, light: 0xf5dfcc };
 const PRESET_BODY_COLORS: Readonly<
   Partial<Record<CatAppearance['pattern'], FurColors & { ink?: number }>>
 > = {
-  calico: { main: 0xfffaf4, shadow: 0xebdccd, light: 0xf5dfcc },
+  calico: WARM_WHITE_FUR,
+  cow: WARM_WHITE_FUR,
+  orange_white: WARM_WHITE_FUR,
   seal_point: { main: 0xf2e2c9, shadow: 0xdcc3a6 },
   tabby_white: { main: 0xaa9983, shadow: 0x907b64 },
   ragdoll: { main: 0xeee6dd, shadow: 0xd7c9bf, light: 0xfaf8f3, ink: 0x413a40 },

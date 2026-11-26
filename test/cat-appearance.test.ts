@@ -242,8 +242,8 @@ test('each preset keeps its base and shades its spots across all poses while pre
     Partial<Record<number, readonly [number, number, number?]>>
   > = {
     calico: { 1: [0xfbb747, 0xdd9234], 2: [0x79696d, 0x65545a] },
-    cow: { 2: [0x38353b, 0x29262c] },
-    orange_white: { 1: [0xeda251, 0xd57836] },
+    cow: { 2: [0x453d40, 0x342c30] },
+    orange_white: { 1: [0xf4ac52, 0xda8a3c] },
     tortoiseshell: { 1: [0xa97a54, 0x8e6144] },
     seal_point: { 1: [0xad8361, 0x946a50], 2: [0x785644, 0x654637, 0x9b7055] },
     tabby_white: { 1: [0x665142, 0x543e32], 2: [0xfff6e8, 0xe9decf] },
@@ -259,6 +259,8 @@ test('each preset keeps its base and shades its spots across all poses while pre
     Record<CatPresetPattern, readonly [number, number, number?]>
   > = {
     calico: [0xfffaf4, 0xebdccd, 0xf5dfcc],
+    cow: [0xfffaf4, 0xebdccd, 0xf5dfcc],
+    orange_white: [0xfffaf4, 0xebdccd, 0xf5dfcc],
     seal_point: [0xf2e2c9, 0xdcc3a6],
     tabby_white: [0xaa9983, 0x907b64],
     ragdoll: [0xeee6dd, 0xd7c9bf, 0xfaf8f3],

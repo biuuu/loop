@@ -36,12 +36,12 @@ export const CAT_APPEARANCE_PRESETS = [
   {
     appearance: { coat: 'white', pattern: 'cow' },
     label: '奶牛猫',
-    swatch: 'linear-gradient(125deg, #38353b 44%, #f1eee5 44%)',
+    swatch: 'linear-gradient(125deg, #453d40 44%, #fffaf4 44%)',
   },
   {
     appearance: { coat: 'white', pattern: 'orange_white' },
     label: '橘白',
-    swatch: 'linear-gradient(125deg, #eda251 52%, #f1eee5 52%)',
+    swatch: 'linear-gradient(125deg, #f4ac52 52%, #fffaf4 52%)',
   },
   {
     appearance: { coat: 'black', pattern: 'tortoiseshell' },
