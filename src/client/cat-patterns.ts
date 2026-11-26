@@ -1,7 +1,6 @@
 import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
 import { CAT_COAT_PATCHES, type PresetFramePatterns } from './cat-coat-patches';
 import { CAT_SEAL_POINT_PATCHES } from './cat-seal-point';
-import { CAT_SILVER_SHADED_PATCHES } from './cat-silver-shaded';
 import { CAT_TABBY_WHITE_DETAILS } from './cat-tabby-white';
 
 export const CAT_CALICO_MARKINGS = { orange: 1, dark: 2 } as const;
@@ -32,7 +31,6 @@ interface BaseFramePatterns extends PresetFramePatterns {
 }
 interface FramePatterns extends BaseFramePatterns {
   readonly tabby_white: readonly MaskPatch[];
-  readonly silver_shaded: readonly MaskPatch[];
 }
 
 const CALICO_EAR: MaskPatch = {
@@ -371,10 +369,9 @@ const BASE_PATTERN_PATCHES: Readonly<
   ],
 };
 
-function addCoatPresets(animation: CatAnimation): readonly FramePatterns[] {
+function addTabbyWhite(animation: CatAnimation): readonly FramePatterns[] {
   return BASE_PATTERN_PATCHES[animation].map((patches, frame) => ({
     ...patches,
-    silver_shaded: CAT_SILVER_SHADED_PATCHES[animation][frame]!,
     tabby_white: [
       ...(CAT_TABBY_WHITE_DETAILS[animation]?.[frame] ?? []),
       ...patches.tabby.filter((patch) => patch.part === 'back'),
@@ -384,11 +381,11 @@ function addCoatPresets(animation: CatAnimation): readonly FramePatterns[] {
 }
 
 export const CAT_PATTERN_PATCHES = {
-  idle: addCoatPresets('idle'),
-  side: addCoatPresets('side'),
-  up: addCoatPresets('up'),
-  down: addCoatPresets('down'),
-  sleep: addCoatPresets('sleep'),
+  idle: addTabbyWhite('idle'),
+  side: addTabbyWhite('side'),
+  up: addTabbyWhite('up'),
+  down: addTabbyWhite('down'),
+  sleep: addTabbyWhite('sleep'),
 } as const satisfies Record<CatAnimation, readonly FramePatterns[]>;
 
 const PARTS = new Set<MaskPatch['part']>([

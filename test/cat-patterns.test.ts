@@ -30,7 +30,6 @@ const patternMarkings = {
   tortoiseshell: [1],
   seal_point: [1, 2],
   tabby_white: [1, 2],
-  silver_shaded: [1, 2],
 } as const satisfies Record<CatPattern, readonly number[]>;
 const marked = (
   pattern: 'socks' | 'tabby',
@@ -174,16 +173,9 @@ test('all 41 source frames have bounded anatomical patches that select only actu
               `${pattern}/${animation}/${frame}/${x},${y} is coat`,
             );
           }
-        const rearFaceMarking = hasFaceMask
-          ? 1
-          : pattern === 'silver_shaded'
-            ? 2
-            : undefined;
         assert.deepEqual(
           [...markings].sort(),
-          patternMarkings[pattern].filter(
-            (mark) => animation !== 'up' || mark !== rearFaceMarking,
-          ),
+          hasFaceMask && animation === 'up' ? [2] : patternMarkings[pattern],
           `${pattern}/${animation}/${frame} marking values`,
         );
         assert.ok(selected > 0 && remainingCoat > 0);

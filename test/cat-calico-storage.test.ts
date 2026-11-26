@@ -21,6 +21,18 @@ import {
 import type { Guest } from '../src/shared/contracts.js';
 
 const RED_POINT_APPEARANCE = { coat: 'white', pattern: 'red_point' } as const;
+const SILVER_SHADED_APPEARANCE = {
+  coat: 'white',
+  pattern: 'silver_shaded',
+} as const;
+const REMAINING_PRESETS_SINCE_23 = [
+  'calico',
+  'cow',
+  'orange_white',
+  'tortoiseshell',
+  'seal_point',
+  'tabby_white',
+] as const;
 
 for (const [
   previous,
@@ -43,15 +55,13 @@ for (const [
   [
     23,
     RED_POINT_APPEARANCE,
-    [
-      'calico',
-      'cow',
-      'orange_white',
-      'tortoiseshell',
-      'seal_point',
-      'tabby_white',
-      'silver_shaded',
-    ],
+    REMAINING_PRESETS_SINCE_23,
+    { coat: 'white', pattern: 'solid' },
+  ],
+  [
+    24,
+    SILVER_SHADED_APPEARANCE,
+    REMAINING_PRESETS_SINCE_23,
     { coat: 'white', pattern: 'solid' },
   ],
 ] as const) {
@@ -144,14 +154,13 @@ for (const [
       db = undefined;
 
       db = new Store(dbPath);
-      assert.equal(db.sql.pragma('user_version', { simple: true }), 24);
+      assert.equal(db.sql.pragma('user_version', { simple: true }), 25);
       assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
       assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
       assert.deepEqual(readRows(db), expected);
       assert.deepEqual(db.guest(owner.token)?.appearance, migratedAppearance);
       assert.deepEqual(db.guest(other.token), other.guest);
       for (const [index, appearance] of [
-        { coat: 'white', pattern: 'silver_shaded' },
         { coat: 'gray', pattern: 'tabby_white' },
         SEAL_POINT_APPEARANCE,
       ].entries()) {
@@ -163,15 +172,14 @@ for (const [
       }
       pickFromEnd = 1;
       const updateNew = db.sql.prepare(update);
-      assert.throws(
-        () =>
-          updateNew.run(
-            RED_POINT_APPEARANCE.coat,
-            RED_POINT_APPEARANCE.pattern,
-            owner.guest.id,
-          ),
-        /CHECK/,
-      );
+      for (const { coat, pattern } of [
+        RED_POINT_APPEARANCE,
+        SILVER_SHADED_APPEARANCE,
+      ])
+        assert.throws(
+          () => updateNew.run(coat, pattern, owner.guest.id),
+          /CHECK/,
+        );
       const presetGuests: { token: string; guest: Guest }[] = [];
       for (const { appearance, label } of CAT_APPEARANCE_PRESETS) {
         const { guest, token } = db.createGuest(label);

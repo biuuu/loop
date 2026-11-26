@@ -7,13 +7,6 @@ const forehead: MaskPatch = {
   y: 33,
   rows: ['#.....#', '##.#.##', '.#.#.#.'],
 };
-const chin: MaskPatch = {
-  part: 'bib',
-  x: 29,
-  y: 40,
-  rows: ['###'],
-  marking: 2,
-};
 const idleFlank: MaskPatch = {
   part: 'flank',
   x: 32,
@@ -33,8 +26,8 @@ const sleepFlank: MaskPatch = {
   rows: ['#..#', '#..#'],
 };
 
-const sitting = [forehead, chin, idleFlank];
-const walking = [forehead, chin, sideFlank];
+const sitting = [forehead, idleFlank];
+const walking = [forehead, sideFlank];
 const walkingHigh = walking.map((patch) => ({ ...patch, y: patch.y - 1 }));
 const frontLow = [{ ...forehead, y: 34 }];
 const sleeping = [{ ...forehead, y: 37 }, sleepFlank];

@@ -87,22 +87,12 @@ const SPOT_PALETTES = {
     1: { main: 0x665142, shadow: 0x543e32 },
     2: { main: 0xfff6e8, shadow: 0xe9decf },
   },
-  silver_shaded: {
-    1: { main: 0xa1a8b5, shadow: 0x929baa },
-    2: { main: 0xe2e5eb, shadow: 0xcdd3de },
-  },
 } satisfies Record<CatPresetPattern | 'socks', SpotPalette>;
 const PRESET_BODY_COLORS: Readonly<
-  Partial<Record<CatAppearance['pattern'], FurColors & { ink?: number }>>
+  Partial<Record<CatAppearance['pattern'], FurColors>>
 > = {
   seal_point: { main: 0xf2e2c9, shadow: 0xdcc3a6 },
   tabby_white: { main: 0xaa9983, shadow: 0x907b64 },
-  silver_shaded: {
-    main: 0xcdd1d9,
-    shadow: 0xb5bcc8,
-    light: 0xe2e5eb,
-    ink: 0x3f434d,
-  },
 };
 
 // Separate the connected silhouette from enclosed facial details using the
