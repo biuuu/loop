@@ -174,7 +174,7 @@ test('nickname, appearance, facing and snapshot metadata do not restart correcti
     const metadata = {
       ...report,
       nickname: `Cat ${now}`,
-      appearance: { coat: 'pure_black' as const, pattern: 'tabby' as const },
+      appearance: { coat: 'black' as const, pattern: 'tabby' as const },
       facingRight: false,
       connected: false,
       revision: now,

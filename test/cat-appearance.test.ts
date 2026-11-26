@@ -14,6 +14,7 @@ import {
   type CatAnimation,
 } from '../src/client/cat-sprite';
 import {
+  BLACK_CAT_APPEARANCE,
   CAT_APPEARANCE_PRESETS,
   CAT_COATS,
   CAT_PATTERNS,
@@ -25,10 +26,7 @@ import {
   type CatPresetPattern,
 } from '../src/shared/appearance';
 
-import {
-  RAGDOLL_EYE_MARKING,
-  getPatternMask,
-} from '../src/client/cat-patterns';
+import { CAT_EYE_MARKING, getPatternMask } from '../src/client/cat-patterns';
 import { frameIndex, frameRgb, sourcePixels, rgb } from './helpers/cat-source';
 
 const original = sourcePixels();
@@ -154,13 +152,10 @@ test('coat palettes replace body colors while preserving alpha and eye/outline l
           original.subarray(index, index + 4),
         );
       if (original[index + 3] && color === 0x482a00) {
-        if (coat.id === 'pure_black')
-          assert.ok([0x030303, 0x242424].includes(rgb(result, index)));
-        else
-          assert.equal(
-            rgb(result, index),
-            coat.id === 'pure_white' ? 0x5b5b5b : color,
-          );
+        assert.equal(
+          rgb(result, index),
+          coat.id === 'pure_white' ? 0x5b5b5b : color,
+        );
       }
       if (original[index + 3] && color === 0xfb8c00) {
         assert.equal(
@@ -244,7 +239,6 @@ test('each preset keeps its base and shades its spots across all poses while pre
     calico: { 1: [0xfbb747, 0xdd9234], 2: [0x79696d, 0x65545a] },
     cow: { 2: [0x453d40, 0x342c30] },
     orange_white: { 1: [0xf4ac52, 0xda8a3c], 2: [0xbd752e, 0xa85d26] },
-    tortoiseshell: { 1: [0xa97a54, 0x8e6144] },
     seal_point: { 1: [0xad8361, 0x946a50], 2: [0x785644, 0x654637, 0x9b7055] },
     tabby_white: { 1: [0x675f66, 0x534b51], 2: [0xfffaf4, 0xebdccd, 0xf5dfcc] },
     ragdoll: {
@@ -254,6 +248,7 @@ test('each preset keeps its base and shades its spots across all poses while pre
       4: [0xfaf8f3, 0xeee7e0],
       5: [0xd7a6aa, 0xc1969c],
     },
+    black_cat: {},
   };
   const presetBodyColors: Partial<
     Record<CatPresetPattern, readonly [number, number, number?]>
@@ -264,6 +259,7 @@ test('each preset keeps its base and shades its spots across all poses while pre
     seal_point: [0xf2e2c9, 0xdcc3a6],
     tabby_white: [0xa7a1a4, 0x837b80, 0xf5dfcc],
     ragdoll: [0xeee6dd, 0xd7c9bf, 0xfaf8f3],
+    black_cat: [0x000000, 0x101010, 0x353535],
   };
   for (const { appearance } of CAT_APPEARANCE_PRESETS) {
     const base = recolorCatPixels(original, {
@@ -275,6 +271,7 @@ test('each preset keeps its base and shades its spots across all poses while pre
     const bodyColors = presetBodyColors[appearance.pattern];
     const hasFaceMask = appearance.pattern === 'seal_point';
     const ragdoll = appearance.pattern === 'ragdoll';
+    const blackCat = appearance.pattern === 'black_cat';
     for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
       const expectedMarks = Object.keys(palette)
         .map(Number)
@@ -294,10 +291,17 @@ test('each preset keeps its base and shades its spots across all poses while pre
             ) {
               const recoloredInk =
                 ragdoll && original[index + 3] && color === 0x482a00;
+              if (blackCat && original[index + 3] && color === 0x482a00) {
+                if (mark === CAT_EYE_MARKING)
+                  assert.equal(rgb(result, index), 0xe7b75e);
+                else
+                  assert.ok([0x030303, 0x242424].includes(rgb(result, index)));
+                continue;
+              }
               assert.equal(
                 rgb(result, index),
                 recoloredInk
-                  ? mark === RAGDOLL_EYE_MARKING
+                  ? mark === CAT_EYE_MARKING
                     ? 0x3e668d
                     : 0x413a40
                   : rgb(base, index),
@@ -395,11 +399,8 @@ test('tabby white joins the muzzle to the chest as the head bobs, leaving the ey
   assert.equal(frameRgb(tabbyWhite, 'sleep', 2, 30, 44), white);
 });
 
-test('pure black blends the connected outer contour while retaining open and blinking eyes', () => {
-  const result = recolorCatPixels(original, {
-    coat: 'pure_black',
-    pattern: 'solid',
-  });
+test('black cat blends the outer contour and colors only its open and blinking eyes amber', () => {
+  const result = recolorCatPixels(original, BLACK_CAT_APPEARANCE);
   const pixel = (column: number, x: number, y: number) =>
     ((CAT_PACKED_ROWS.idle * CAT_CELL_SIZE + y) * CAT_APPEARANCE_WIDTH +
       column * CAT_CELL_SIZE +
@@ -419,10 +420,10 @@ test('pure black blends the connected outer contour while retaining open and bli
     for (const x of [28, 32]) {
       const lowerEye = pixel(column, x, 38);
       assert.equal(rgb(original, lowerEye), 0x482a00);
-      assert.equal(rgb(result, lowerEye), 0x242424);
+      assert.equal(rgb(result, lowerEye), 0xe7b75e);
       const upperEye = pixel(column, x, 37);
       assert.equal(rgb(original, upperEye), column === 3 ? 0xfb8c00 : 0x482a00);
-      assert.equal(rgb(result, upperEye), column === 3 ? 0x000000 : 0x242424);
+      assert.equal(rgb(result, upperEye), column === 3 ? 0x000000 : 0xe7b75e);
     }
   }
 });

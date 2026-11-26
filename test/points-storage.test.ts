@@ -30,7 +30,7 @@ import {
 const firstDay = Date.parse('2026-11-25T12:00:00+08:00');
 const midnight = Date.parse('2026-11-26T00:00:00+08:00');
 const rewardAt = DAILY_DJ_THRESHOLD_MS + 1;
-const freeAppearance = { coat: 'pure_black', pattern: 'tabby' } as const;
+const freeAppearance = { coat: 'pure_white', pattern: 'tabby' } as const;
 
 function historicalMigrations(root: string, version: number) {
   const migrations = join(root, 'migrations');
@@ -125,7 +125,7 @@ test('migration 27 preserves existing profiles, coat unlocks, points and DJ prog
 
   const db = new Store(path);
   try {
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 27);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 28);
     assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
     assert.deepEqual(readRows(db), savedRows);
     assert.deepEqual(db.guest(owner.token), savedProfile);

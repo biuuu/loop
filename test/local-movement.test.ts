@@ -243,7 +243,7 @@ test('stale and matching in-flight snapshots do not pull local motion backwards;
   const old = {
     ...user,
     nickname: 'Renamed',
-    appearance: { coat: 'pure_black' as const, pattern: 'tabby' as const },
+    appearance: { coat: 'black' as const, pattern: 'tabby' as const },
   };
   const shown = local.view(old, 1500);
   assert.deepEqual(point(shown, 1500), { x: 590, y: 450 });

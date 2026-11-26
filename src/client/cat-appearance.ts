@@ -4,7 +4,7 @@ import {
 } from '../shared/appearance';
 import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
 import { CAT_CALICO_MARKINGS } from './cat-calico';
-import { RAGDOLL_EYE_MARKING, getPatternMask } from './cat-patterns';
+import { CAT_EYE_MARKING, getPatternMask } from './cat-patterns';
 
 export const CAT_PACKED_ROWS: Record<CatAnimation, number> = {
   idle: 0,
@@ -51,13 +51,6 @@ const PALETTES = {
     stripe: 0xa8a297,
     ink: ORIGINAL_CAT_PALETTE.ink,
   },
-  pure_black: {
-    main: 0x000000,
-    shadow: 0x101010,
-    light: 0x353535,
-    stripe: 0x292929,
-    ink: 0x242424,
-  },
   pure_white: {
     main: 0xffffff,
     shadow: 0xe9e9e9,
@@ -83,7 +76,6 @@ const SPOT_PALETTES = {
     1: { main: 0xf4ac52, shadow: 0xda8a3c },
     2: { main: 0xbd752e, shadow: 0xa85d26 },
   },
-  tortoiseshell: { 1: { main: 0xa97a54, shadow: 0x8e6144 } },
   seal_point: {
     1: { main: 0xad8361, shadow: 0x946a50 },
     2: { main: 0x785644, shadow: 0x654637, light: 0x9b7055 },
@@ -99,6 +91,7 @@ const SPOT_PALETTES = {
     4: { main: 0xfaf8f3, shadow: 0xeee7e0 },
     5: { main: 0xd7a6aa, shadow: 0xc1969c },
   },
+  black_cat: {},
 } satisfies Record<CatPresetPattern | 'socks', SpotPalette>;
 const PRESET_BODY_COLORS: Readonly<
   Partial<Record<CatAppearance['pattern'], FurColors & { ink?: number }>>
@@ -109,6 +102,18 @@ const PRESET_BODY_COLORS: Readonly<
   seal_point: { main: 0xf2e2c9, shadow: 0xdcc3a6 },
   tabby_white: { main: 0xa7a1a4, shadow: 0x837b80, light: 0xf5dfcc },
   ragdoll: { main: 0xeee6dd, shadow: 0xd7c9bf, light: 0xfaf8f3, ink: 0x413a40 },
+  black_cat: {
+    main: 0x000000,
+    shadow: 0x101010,
+    light: 0x353535,
+    ink: 0x242424,
+  },
+};
+const PRESET_EYE_COLORS: Readonly<
+  Partial<Record<CatAppearance['pattern'], number>>
+> = {
+  ragdoll: 0x3e668d,
+  black_cat: 0xe7b75e,
 };
 
 // Separate the connected silhouette from enclosed facial details using the
@@ -182,6 +187,7 @@ export function recolorCatPixels(
     ...PALETTES[appearance.coat],
     ...PRESET_BODY_COLORS[appearance.pattern],
   };
+  const eyeColor = PRESET_EYE_COLORS[appearance.pattern] ?? palette.ink;
   const spots: SpotPalette | undefined =
     appearance.pattern === 'solid'
       ? undefined
@@ -197,7 +203,7 @@ export function recolorCatPixels(
           ? undefined
           : getPatternMask(appearance.pattern, animation, column);
       const outerInk =
-        appearance.coat === 'pure_black'
+        appearance.pattern === 'black_cat'
           ? outerInkPixels(pixels, column, row)
           : undefined;
       for (let y = 0; y < CAT_CELL_SIZE; y++) {
@@ -222,10 +228,10 @@ export function recolorCatPixels(
                 : color === ORIGINAL_CAT_PALETTE.light
                   ? (patch?.light ?? palette.light)
                   : color === ORIGINAL_CAT_PALETTE.ink
-                    ? outerInk?.[y * CAT_CELL_SIZE + x]
-                      ? 0x030303
-                      : mark === RAGDOLL_EYE_MARKING
-                        ? 0x3e668d
+                    ? mark === CAT_EYE_MARKING
+                      ? eyeColor
+                      : outerInk?.[y * CAT_CELL_SIZE + x]
+                        ? 0x030303
                         : palette.ink
                     : color;
           result[offset] = replacement >>> 16;

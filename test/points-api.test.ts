@@ -5,7 +5,10 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { io as connect, type Socket } from 'socket.io-client';
 import { createServer } from '../src/server/app.js';
-import { RAGDOLL_APPEARANCE } from '../src/shared/appearance.js';
+import {
+  BLACK_CAT_APPEARANCE,
+  RAGDOLL_APPEARANCE,
+} from '../src/shared/appearance.js';
 import {
   DAILY_DJ_THRESHOLD_MS,
   type PointsAwarded,
@@ -73,10 +76,10 @@ test('only the authenticated account can spend its points and use its unlocked p
       method: 'PATCH',
       url: '/api/me/appearance',
       headers,
-      payload: RAGDOLL_APPEARANCE,
+      payload: BLACK_CAT_APPEARANCE,
     });
   assert.equal((await points({})).statusCode, 401);
-  assert.equal((await unlock({}, 'ragdoll')).statusCode, 401);
+  assert.equal((await unlock({}, 'black_cat')).statusCode, 401);
   const initial = await points(alice);
   assert.equal(initial.statusCode, 200);
   assert.equal(initial.headers['cache-control'], 'no-store');
@@ -84,25 +87,32 @@ test('only the authenticated account can spend its points and use its unlocked p
   assert.deepEqual(initial.json<PointsState>().unlockedPresets, []);
   assert.equal((await equip(alice)).statusCode, 403);
   assert.equal((await unlock(alice, 'solid')).statusCode, 400);
+  assert.equal((await unlock(alice, 'tortoiseshell')).statusCode, 400);
   assert.equal(
-    (await unlock({ ...alice, origin: 'https://unrelated.example' }, 'ragdoll'))
-      .statusCode,
+    (
+      await unlock(
+        { ...alice, origin: 'https://unrelated.example' },
+        'black_cat',
+      )
+    ).statusCode,
     403,
   );
 
   const [paid, repeated] = await Promise.all([
-    unlock(alice, 'ragdoll'),
-    unlock(alice, 'ragdoll'),
+    unlock(alice, 'black_cat'),
+    unlock(alice, 'black_cat'),
   ]);
   for (const response of [paid, repeated]) {
     assert.equal(response.statusCode, 200);
     assert.equal(response.json<PointsState>().balance, 0);
-    assert.deepEqual(response.json<PointsState>().unlockedPresets, ['ragdoll']);
+    assert.deepEqual(response.json<PointsState>().unlockedPresets, [
+      'black_cat',
+    ]);
   }
   assert.equal((await unlock(alice, 'cow')).statusCode, 409);
   assert.deepEqual(db.guestById(a.guest.id).appearance, a.guest.appearance);
   assert.equal((await equip(alice)).statusCode, 200);
-  assert.deepEqual(db.guestById(a.guest.id).appearance, RAGDOLL_APPEARANCE);
+  assert.deepEqual(db.guestById(a.guest.id).appearance, BLACK_CAT_APPEARANCE);
   assert.equal((await equip(bob)).statusCode, 403);
   assert.equal((await points(bob)).json<PointsState>().balance, 5);
   const competing = await Promise.all([

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { CAT_CALICO_MARKINGS } from '../src/client/cat-calico';
 import {
   CAT_PATTERN_PATCHES,
-  RAGDOLL_EYE_MARKING,
+  CAT_EYE_MARKING,
   getPatternMask,
   type CatPattern,
 } from '../src/client/cat-patterns';
@@ -28,10 +28,10 @@ const patternMarkings = {
   calico: [1, 2],
   cow: [2],
   orange_white: [1, 2],
-  tortoiseshell: [1],
   seal_point: [1, 2],
   tabby_white: [1, 2],
-  ragdoll: [1, 2, 3, 4, 5, RAGDOLL_EYE_MARKING],
+  ragdoll: [1, 2, 3, 4, 5, CAT_EYE_MARKING],
+  black_cat: [CAT_EYE_MARKING],
 } as const satisfies Record<CatPattern, readonly number[]>;
 const marked = (
   pattern: 'socks' | 'tabby',
@@ -81,7 +81,7 @@ const presetMarkings = (
   x: number,
   y: number,
 ) =>
-  (['cow', 'orange_white', 'tortoiseshell'] as const).map(
+  (['cow', 'orange_white'] as const).map(
     (pattern) =>
       getPatternMask(pattern, animation, frame)[y * CAT_CELL_SIZE + x],
   );
@@ -103,9 +103,9 @@ test('all 41 source frames use bounded anatomical patches on fur or the original
         const patches = CAT_PATTERN_PATCHES[animation][frame]![pattern];
         const hasFaceMask = pattern === 'seal_point';
         const ragdoll = pattern === 'ragdoll';
-        assert.ok(patches.length > 0);
-        if (pattern === 'tortoiseshell')
-          assert.equal(patches.length, animation === 'down' ? 1 : 2);
+        const eyeOnly = pattern === 'black_cat';
+        const hasVisibleEyes = animation !== 'up' && animation !== 'sleep';
+        assert.equal(patches.length > 0, !eyeOnly || hasVisibleEyes);
         const mask = getPatternMask(pattern, animation, frame);
         assert.equal(mask.length, 4096);
         let selected = 0;
@@ -177,15 +177,17 @@ test('all 41 source frames use bounded anatomical patches on fur or the original
               `${pattern}/${animation}/${frame}/${x},${y} alpha`,
             );
             assert.ok(
-              ragdoll && value === RAGDOLL_EYE_MARKING ? color === ink : isCoat,
+              value === CAT_EYE_MARKING ? color === ink : isCoat,
               `${pattern}/${animation}/${frame}/${x},${y} uses an appropriate source pixel`,
             );
           }
         if (ragdoll) {
           assert.ok(markings.has(2) && markings.has(4));
-          assert.equal(
-            markings.has(RAGDOLL_EYE_MARKING),
-            animation !== 'up' && animation !== 'sleep',
+          assert.equal(markings.has(CAT_EYE_MARKING), hasVisibleEyes);
+        } else if (eyeOnly) {
+          assert.deepEqual(
+            [...markings],
+            hasVisibleEyes ? [CAT_EYE_MARKING] : [],
           );
         } else {
           assert.deepEqual(
@@ -214,13 +216,13 @@ test('all 41 source frames use bounded anatomical patches on fur or the original
   assert.equal(frames, 41);
 });
 
-test('coat preset portraits show a cow cap, an orange blaze, and a tortoiseshell ear patch', () => {
+test('coat preset portraits show a cow cap and an orange blaze', () => {
   const frame = CAT_IDLE_UP_COLUMN;
-  assert.deepEqual(presetMarkings('idle', frame, 26, 32), [0, 1, 1]);
-  assert.deepEqual(presetMarkings('idle', frame, 33, 32), [2, 1, 0]);
-  assert.deepEqual(presetMarkings('idle', frame, 30, 36), [2, 0, 0]);
-  assert.deepEqual(presetMarkings('idle', frame, 29, 36), [0, 0, 0]);
-  assert.deepEqual(presetMarkings('idle', frame, 34, 36), [2, 1, 0]);
+  assert.deepEqual(presetMarkings('idle', frame, 26, 32), [0, 1]);
+  assert.deepEqual(presetMarkings('idle', frame, 33, 32), [2, 1]);
+  assert.deepEqual(presetMarkings('idle', frame, 30, 36), [2, 0]);
+  assert.deepEqual(presetMarkings('idle', frame, 29, 36), [0, 0]);
+  assert.deepEqual(presetMarkings('idle', frame, 34, 36), [2, 1]);
   assert.equal(
     getPatternMask('orange_white', 'idle', frame)[38 * CAT_CELL_SIZE + 26],
     2,
@@ -229,14 +231,14 @@ test('coat preset portraits show a cow cap, an orange blaze, and a tortoiseshell
     getPatternMask('orange_white', 'idle', frame)[38 * CAT_CELL_SIZE + 30],
     0,
   );
-  assert.deepEqual(presetMarkings('idle', frame, 26, 39), [0, 0, 0]);
+  assert.deepEqual(presetMarkings('idle', frame, 26, 39), [0, 0]);
   for (const x of [28, 32]) {
     assert.equal(frameRgb(source, 'idle', frame, x, 37), ink);
-    assert.deepEqual(presetMarkings('idle', frame, x, 37), [0, 0, 0]);
+    assert.deepEqual(presetMarkings('idle', frame, x, 37), [0, 0]);
   }
-  assert.deepEqual(presetMarkings('idle', frame, 35, 44), [2, 2, 1]);
-  assert.deepEqual(presetMarkings('idle', frame, 29, 43), [0, 0, 0]);
-  assert.deepEqual(presetMarkings('idle', frame, 27, 46), [0, 0, 0]);
+  assert.deepEqual(presetMarkings('idle', frame, 35, 44), [2, 2]);
+  assert.deepEqual(presetMarkings('idle', frame, 29, 43), [0, 0]);
+  assert.deepEqual(presetMarkings('idle', frame, 27, 46), [0, 0]);
 });
 
 test('new preset caps follow pose height while back markings follow the visible torso', () => {
@@ -251,31 +253,25 @@ test('new preset caps follow pose height while back markings follow the visible 
   for (const { animation, ears } of poses) {
     for (const [frame, ear] of ears.entries()) {
       assert.equal(frameRgb(source, animation, frame, 33, ear), ink);
-      assert.deepEqual(
-        presetMarkings(animation, frame, 33, ear + 1),
-        [2, 1, 0],
-      );
-      assert.deepEqual(
-        presetMarkings(animation, frame, 30, ear + 4),
-        [2, 2, 1],
-      );
+      assert.deepEqual(presetMarkings(animation, frame, 33, ear + 1), [2, 1]);
+      assert.deepEqual(presetMarkings(animation, frame, 30, ear + 4), [2, 2]);
     }
   }
   for (const [frame, ear] of poses[0].ears.entries()) {
-    assert.deepEqual(presetMarkings('side', frame, 32, ear + 10), [0, 1, 0]);
-    assert.deepEqual(presetMarkings('side', frame, 35, ear + 13), [2, 1, 1]);
+    assert.deepEqual(presetMarkings('side', frame, 32, ear + 10), [0, 1]);
+    assert.deepEqual(presetMarkings('side', frame, 35, ear + 13), [2, 1]);
   }
   for (const [frame, ear] of [32, 31, 32, 31].entries()) {
-    assert.deepEqual(presetMarkings('up', frame, 26, ear + 1), [2, 1, 0]);
-    assert.deepEqual(presetMarkings('up', frame, 34, ear + 1), [0, 1, 1]);
-    assert.deepEqual(presetMarkings('up', frame, 27, 43), [2, 1, 0]);
-    assert.deepEqual(presetMarkings('up', frame, 33, 42), [0, 1, 1]);
-    assert.deepEqual(presetMarkings('up', frame, 30, 43), [0, 2, 0]);
+    assert.deepEqual(presetMarkings('up', frame, 26, ear + 1), [2, 1]);
+    assert.deepEqual(presetMarkings('up', frame, 34, ear + 1), [0, 1]);
+    assert.deepEqual(presetMarkings('up', frame, 27, 43), [2, 1]);
+    assert.deepEqual(presetMarkings('up', frame, 33, 42), [0, 1]);
+    assert.deepEqual(presetMarkings('up', frame, 30, 43), [0, 2]);
   }
   for (const frame of poses[2].ears.keys()) {
-    assert.deepEqual(presetMarkings('sleep', frame, 35, 44), [2, 1, 1]);
-    assert.deepEqual(presetMarkings('sleep', frame, 37, 44), [2, 1, 1]);
-    assert.deepEqual(presetMarkings('sleep', frame, 27, 46), [0, 0, 0]);
+    assert.deepEqual(presetMarkings('sleep', frame, 35, 44), [2, 1]);
+    assert.deepEqual(presetMarkings('sleep', frame, 37, 44), [2, 1]);
+    assert.deepEqual(presetMarkings('sleep', frame, 27, 46), [0, 0]);
   }
 });
 

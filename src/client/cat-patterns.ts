@@ -6,7 +6,7 @@ import { CAT_SEAL_POINT_PATCHES } from './cat-seal-point';
 import { CAT_STRIPED_TAIL_PATCHES, CAT_TAIL_BANDS } from './cat-striped-tail';
 import { CAT_TABBY_STRIPES, CAT_TABBY_WHITE_BIBS } from './cat-tabby-markings';
 
-export const RAGDOLL_EYE_MARKING = 6;
+export const CAT_EYE_MARKING = 6;
 
 export type CatPattern = keyof FramePatterns;
 export interface MaskPatch {
@@ -36,6 +36,7 @@ interface FramePatterns extends BaseFramePatterns {
   readonly calico: readonly MaskPatch[];
   readonly tabby_white: readonly MaskPatch[];
   readonly ragdoll: readonly MaskPatch[];
+  readonly black_cat: readonly MaskPatch[];
 }
 
 // Coordinates are frame-local source pixels. Only the regions named here were
@@ -295,6 +296,7 @@ function addCoatPresets(animation: CatAnimation): readonly FramePatterns[] {
             )
         : CAT_TABBY_STRIPES[animation][frame]!;
     const tail = CAT_STRIPED_TAIL_PATCHES[animation][frame]!;
+    const ragdoll = CAT_RAGDOLL_PATCHES[animation][frame]!;
     return {
       ...patches,
       calico: CAT_CALICO_PATCHES[animation][frame]!,
@@ -303,7 +305,8 @@ function addCoatPresets(animation: CatAnimation): readonly FramePatterns[] {
         ...stripes.map((patch) => ({ ...patch, marking: 2 as const })),
         ...tail,
       ],
-      ragdoll: CAT_RAGDOLL_PATCHES[animation][frame]!,
+      ragdoll,
+      black_cat: ragdoll.filter(({ part }) => part === 'eye'),
       tabby_white: [
         ...stripes,
         ...tail
@@ -359,7 +362,8 @@ export function getPatternMask(
   if (cached) return cached;
   const mask = new Uint8Array(CAT_CELL_SIZE * CAT_CELL_SIZE);
   const patches = frames[frame]![pattern];
-  const maxMarking = pattern === 'ragdoll' ? RAGDOLL_EYE_MARKING : 2;
+  const maxMarking =
+    pattern === 'ragdoll' || pattern === 'black_cat' ? CAT_EYE_MARKING : 2;
   if (!Array.isArray(patches as unknown))
     throw new Error('Missing cat pattern patches');
   for (const patch of patches) {
@@ -374,7 +378,7 @@ export function getPatternMask(
       !Number.isInteger(marking) ||
       marking < 1 ||
       marking > maxMarking ||
-      (patch.part === 'eye') !== (marking === RAGDOLL_EYE_MARKING) ||
+      (patch.part === 'eye') !== (marking === CAT_EYE_MARKING) ||
       width === 0 ||
       patch.rows.length === 0 ||
       patch.x + width > CAT_CELL_SIZE ||

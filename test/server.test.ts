@@ -28,6 +28,7 @@ import type {
 } from '../src/shared/contracts.js';
 import { NICKNAME_CHANGE_COOLDOWN_MS, SCENE } from '../src/shared/contracts.js';
 import {
+  BLACK_CAT_APPEARANCE,
   CALICO_APPEARANCE,
   CAT_APPEARANCE_PRESETS,
   DEFAULT_CAT_APPEARANCE,
@@ -75,7 +76,7 @@ test('guest appearance has schema defaults, checks enums and persists edits thro
       .run('legacy', 'initial', 'account', INITIAL_POINTS);
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 27);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 28);
     assert.deepEqual(
       db.guest('legacy-token')!.appearance,
       DEFAULT_CAT_APPEARANCE,
@@ -148,7 +149,7 @@ test('all black and white coat variants preserve identities and playlists across
       .all();
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 27);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 28);
     assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
     assert.deepEqual(
       db.sql.prepare('SELECT * FROM guests ORDER BY id').all(),
@@ -187,11 +188,12 @@ test('all black and white coat variants preserve identities and playlists across
           ),
       /UNIQUE/,
     );
-    db.updateAppearance(a.guest.id, { coat: 'pure_black', pattern: 'solid' });
+    db.unlockAppearance(a.guest.id, BLACK_CAT_APPEARANCE.pattern);
+    db.updateAppearance(a.guest.id, BLACK_CAT_APPEARANCE);
     db.updateAppearance(b.guest.id, { coat: 'pure_white', pattern: 'socks' });
     db.close();
     db = new Store(path);
-    assert.equal(db.guest(a.token)!.appearance!.coat, 'pure_black');
+    assert.deepEqual(db.guest(a.token)!.appearance, BLACK_CAT_APPEARANCE);
     assert.equal(db.guest(b.token)!.appearance!.coat, 'pure_white');
     assert.deepEqual(
       db.sql.prepare('SELECT * FROM playlist ORDER BY guest_id,position').all(),
@@ -262,6 +264,8 @@ test('appearance API authenticates, rejects unknown fields and only edits the co
       { coat: 'gray', pattern: 'spots' },
       { coat: 'white', pattern: 'red_point' },
       { coat: 'white', pattern: 'silver_shaded' },
+      { coat: 'pure_black', pattern: 'solid' },
+      { coat: 'black', pattern: 'tortoiseshell' },
       ...CAT_APPEARANCE_PRESETS.map(({ appearance }) => ({
         ...appearance,
         coat: 'pure_white',
@@ -326,7 +330,6 @@ test('appearance API authenticates, rejects unknown fields and only edits the co
       nicknameChangeAvailableAt: now + NICKNAME_CHANGE_COOLDOWN_MS,
     });
     for (const appearance of [
-      { coat: 'pure_black', pattern: 'solid' },
       { coat: 'pure_white', pattern: 'solid' },
       ...CAT_APPEARANCE_PRESETS.slice(1).map(({ appearance }) => appearance),
     ]) {
@@ -378,7 +381,7 @@ test('tokens are hashed and identities and playlists survive reopening', () => {
     );
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 27);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 28);
     assert.deepEqual(db.guest(a.token), a.guest);
     assert.equal(db.firstTrack(a.guest.id)!.id, '1');
     assert.equal(db.playlist(a.guest.id).revision, 4);
@@ -453,7 +456,7 @@ test('startup rejects unversioned data and unsupported schema versions without m
       [0, /Unversioned database is not empty/i],
       [1, /Unsupported database version 1; first supported version is 11/i],
       [10, /Unsupported database version 10; first supported version is 11/i],
-      [28, /Database version 28 is newer than supported version 27/i],
+      [29, /Database version 29 is newer than supported version 28/i],
     ] as const) {
       const path = join(root, `version-${version}.sqlite`);
       const fixture = new Database(path);

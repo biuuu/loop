@@ -6,7 +6,6 @@ export const CAT_COATS = [
   { id: 'cream', label: '奶油猫', color: '#e6c99c' },
   { id: 'black', label: '深灰猫', color: '#50515a' },
   { id: 'white', label: '米白猫', color: '#f1eee5' },
-  { id: 'pure_black', label: '纯黑猫', color: '#000000' },
   { id: 'pure_white', label: '纯白猫', color: '#ffffff' },
 ] as const;
 
@@ -24,6 +23,10 @@ export const SEAL_POINT_APPEARANCE = {
 export const RAGDOLL_APPEARANCE = {
   coat: 'white',
   pattern: 'ragdoll',
+} as const;
+export const BLACK_CAT_APPEARANCE = {
+  coat: 'black',
+  pattern: 'black_cat',
 } as const;
 
 export const CAT_APPEARANCE_PRESETS = [
@@ -44,11 +47,6 @@ export const CAT_APPEARANCE_PRESETS = [
     swatch: 'linear-gradient(125deg, #bd752e 24%, #f4ac52 52%, #fffaf4 52%)',
   },
   {
-    appearance: { coat: 'black', pattern: 'tortoiseshell' },
-    label: '玳瑁',
-    swatch: 'linear-gradient(125deg, #a97a54 37%, #50515a 37%)',
-  },
-  {
     appearance: SEAL_POINT_APPEARANCE,
     label: '暹罗',
     swatch: 'linear-gradient(125deg, #785644 24%, #ad8361 44%, #f2e2c9 44%)',
@@ -62,6 +60,11 @@ export const CAT_APPEARANCE_PRESETS = [
     appearance: RAGDOLL_APPEARANCE,
     label: '布偶',
     swatch: 'linear-gradient(125deg, #948887 26%, #b7a7a0 46%, #faf8f3 46%)',
+  },
+  {
+    appearance: BLACK_CAT_APPEARANCE,
+    label: '黑猫',
+    swatch: 'radial-gradient(circle, #e7b75e 0 14%, #171517 16%)',
   },
 ] as const;
 

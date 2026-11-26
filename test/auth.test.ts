@@ -137,7 +137,7 @@ test('binding preserves profile and queue, rotates sessions and retires legacy c
       .prepare('UPDATE guests SET token_hash=? WHERE id=?')
       .run(hashToken('legacy-token'), before.guest.id);
     f.db.updateAppearance(before.guest.id, {
-      coat: 'pure_black',
+      coat: 'black',
       pattern: 'tabby',
     });
     f.db.add(before.guest.id, {
@@ -174,7 +174,7 @@ test('binding preserves profile and queue, rotates sessions and retires legacy c
     assert.equal(verified.json().guest.registered, true);
     assert.equal(verified.json().guest.email, message.to);
     assert.deepEqual(verified.json().guest.appearance, {
-      coat: 'pure_black',
+      coat: 'black',
       pattern: 'tabby',
     });
     assert.equal(f.db.firstTrack(before.guest.id)!.title, 'Keep');
