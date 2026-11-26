@@ -201,6 +201,19 @@ export function worldToScreen(point: Point, camera: Camera): Point {
     y: point.y * camera.scale + camera.y,
   };
 }
+/** Move only a sprite's drawn origin onto the renderer's pixel grid. */
+export function spritePixelOffset(
+  point: Point,
+  camera: Camera,
+  resolution: number,
+): Point {
+  const pixelsPerUnit = camera.scale * resolution;
+  const offset = (world: number, pan: number) => {
+    const pixel = (world * camera.scale + pan) * resolution;
+    return (Math.round(pixel) - pixel) / pixelsPerUnit;
+  };
+  return { x: offset(point.x, camera.x), y: offset(point.y, camera.y) };
+}
 export function screenToWorld(point: Point, camera: Camera): Point {
   return {
     x: (point.x - camera.x) / camera.scale,

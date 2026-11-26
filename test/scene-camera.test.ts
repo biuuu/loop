@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SCENE, stageSeatXs } from '../src/shared/contracts';
+import { CAT_SCALE } from '../src/client/cat-sprite';
 import {
   sceneCamera,
   audienceCamera,
@@ -9,6 +10,7 @@ import {
   reframeCamera,
   screenToWorld,
   worldToScreen,
+  spritePixelOffset,
   clampZoom,
   minZoom,
   DEFAULT_ZOOM,
@@ -81,6 +83,44 @@ test('audience dead zone adapts to portrait view and preserves picking after pan
   near(restored.x, point.x);
   near(restored.y, point.y);
   assert.deepEqual(floorTarget(restored), point);
+});
+
+test('the stopped cat keeps a stable texel pattern while a fractional camera settles', () => {
+  const width = 1000;
+  const height = 690;
+  const cat = { x: 946.37, y: 447.63 };
+  const safe = { left: 18, top: 95, right: 982, bottom: 570 };
+  const start = sceneCamera(width, height, 1);
+  const target = audienceCamera(width, height, 1, cat, start, safe);
+  assert.ok(target.x < start.x);
+
+  for (const resolution of [1, 1.25, 2]) {
+    const pixelScale = start.scale * resolution;
+    const texelWidths = (origin: number) => {
+      const edge = (column: number) =>
+        Math.floor(origin + column * CAT_SCALE * pixelScale - 0.5 + 1e-9);
+      return Array.from(
+        { length: 12 },
+        (_, index) => edge(index + 1) - edge(index),
+      );
+    };
+    const expected = texelWidths(0);
+    let view = start;
+    for (let frame = 0; frame < 80; frame++) {
+      const offset = spritePixelOffset(cat, view, resolution);
+      assert.ok(Math.abs(offset.x * pixelScale) <= 0.5 + 1e-9);
+      assert.ok(Math.abs(offset.y * pixelScale) <= 0.5 + 1e-9);
+      const screen = worldToScreen(
+        { x: cat.x + offset.x, y: cat.y + offset.y },
+        view,
+      );
+      near(screen.x * resolution, Math.round(screen.x * resolution));
+      near(screen.y * resolution, Math.round(screen.y * resolution));
+      assert.deepEqual(texelWidths(screen.x * resolution), expected);
+      view = easeCamera(view, target, 16);
+    }
+    assert.deepEqual(view, target);
+  }
 });
 function catVisible(
   camera: ReturnType<typeof stageCamera>,

@@ -76,6 +76,7 @@ import {
   easeCamera,
   reframeCamera,
   stageSeatAt,
+  spritePixelOffset,
   worldToScreen,
   type Bounds,
 } from './scene-camera';
@@ -596,6 +597,13 @@ onMounted(async () => {
         Math.ceil(next.scale * instance.renderer.resolution),
       );
       for (const cat of cats.values()) {
+        // Subpixel panning otherwise changes how nearest sampling distributes texels.
+        const pixelOffset = spritePixelOffset(
+          cat.root.position,
+          next,
+          instance.renderer.resolution,
+        );
+        cat.body.position.set(pixelOffset.x, pixelOffset.y);
         if (cat.label.resolution !== textResolution)
           cat.label.resolution = textResolution;
       }
