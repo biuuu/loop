@@ -843,6 +843,7 @@ onBeforeUnmount(() => {
           </p>
           <form
             v-if="modal === 'appearance'"
+            id="cat-wardrobe-form"
             class="cat-wardrobe"
             @submit.prevent="applyAppearance"
           >
@@ -1008,25 +1009,9 @@ onBeforeUnmount(() => {
                 </label>
               </div>
             </fieldset>
-            <p v-if="lockedPreset && missingPoints" class="library-hint">
-              解锁还差 {{ missingPoints }} 积分。
-            </p>
-            <p v-else-if="!lockedPreset" class="library-hint">
+            <p v-if="!lockedPreset" class="library-hint">
               保存后房间里的大家都能看到，下次回来也会保留。
             </p>
-            <div class="confirm-actions">
-              <button type="button" @click="closeModal">取消</button>
-              <button
-                class="primary"
-                type="submit"
-                :disabled="
-                  !!appearanceAction ||
-                  !!(lockedPreset && (!room.points || missingPoints))
-                "
-              >
-                {{ appearanceActionLabel }}
-              </button>
-            </div>
           </form>
           <section v-else-if="modal === 'library'" class="library">
             <div class="library-tabs" aria-label="音乐列表">
@@ -1227,6 +1212,25 @@ onBeforeUnmount(() => {
           {{ room.error }}
           <button class="text-button" @click="room.error = ''">关闭提示</button>
         </p>
+        <footer v-if="modal === 'appearance'" class="wardrobe-footer">
+          <p v-if="lockedPreset && missingPoints" class="library-hint">
+            解锁还差 {{ missingPoints }} 积分。
+          </p>
+          <div class="confirm-actions">
+            <button type="button" @click="closeModal">取消</button>
+            <button
+              class="primary"
+              type="submit"
+              form="cat-wardrobe-form"
+              :disabled="
+                !!appearanceAction ||
+                !!(lockedPreset && (!room.points || missingPoints))
+              "
+            >
+              {{ appearanceActionLabel }}
+            </button>
+          </div>
+        </footer>
       </dialog>
     </main>
     <div v-if="room.guest && room.error && !modal" class="toast" role="alert">
@@ -1239,6 +1243,23 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.wardrobe-footer {
+  flex: none;
+  padding: 12px 26px 16px;
+  border-top: 1px solid var(--line);
+}
+.wardrobe-footer .confirm-actions {
+  flex-wrap: wrap;
+  margin: 0;
+}
+.wardrobe-footer .library-hint {
+  margin: 0 0 8px;
+}
+@media (max-width: 650px) {
+  .wardrobe-footer {
+    padding-inline: 20px;
+  }
+}
 .playlist-selector {
   margin: 15px 0;
 }

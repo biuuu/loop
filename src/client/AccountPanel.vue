@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useTimedMessage } from './timed-message';
 import { ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
-import { ArrowLeft, ListMusic, Shuffle, X } from '@lucide/vue';
+import { ArrowLeft, Coins, ListMusic, Shuffle, X } from '@lucide/vue';
 import { randomNickname } from './nicknames';
 import {
   PLAYLIST_LIMIT,
@@ -25,6 +25,7 @@ onMounted(() => {
   dialog.value?.querySelector<HTMLElement>('input, button')?.focus();
 });
 onBeforeUnmount(() => {
+  pointsRequest++;
   dialog.value?.close();
   if (returnFocus?.isConnected) returnFocus.focus();
 });
@@ -53,6 +54,25 @@ const importedNicknameInput = ref<HTMLInputElement | null>(null);
 const busy = ref(false);
 const error = useTimedMessage();
 const notice = useTimedMessage();
+const pointsStatus = ref<'loading' | 'ready' | 'failed'>('loading');
+let pointsRequest = 0;
+async function loadAccountPoints() {
+  const request = ++pointsRequest;
+  if (!room.guest) return;
+  pointsStatus.value = 'loading';
+  try {
+    const loaded = await room.loadPoints();
+    if (request === pointsRequest)
+      pointsStatus.value = loaded ? 'ready' : 'failed';
+  } catch {
+    if (request === pointsRequest) pointsStatus.value = 'failed';
+  }
+}
+watch(
+  () => room.guest?.id,
+  () => void loadAccountPoints(),
+  { immediate: true },
+);
 watch(
   () => room.guest?.nicknameChangeAvailableAt,
   (availableAt, _previous, onCleanup) => {
@@ -233,6 +253,25 @@ function logout(all = false) {
         <p v-if="nicknameWaitUntil !== undefined" class="library-hint">
           下次可在 {{ nicknameTimeFormat.format(nicknameWaitUntil) }} 修改昵称。
         </p>
+        <div class="account-points">
+          <Coins aria-hidden="true" />
+          <span>积分</span>
+          <strong v-if="room.points">{{ room.points.balance }}</strong>
+          <span v-else-if="pointsStatus === 'loading'" role="status"
+            >加载中…</span
+          >
+          <span v-if="pointsStatus === 'failed'" role="status"
+            >暂时无法刷新</span
+          >
+          <button
+            v-if="pointsStatus === 'failed'"
+            type="button"
+            class="text-button"
+            @click="loadAccountPoints"
+          >
+            重试
+          </button>
+        </div>
         <p class="library-hint">此浏览器会记住当前身份、歌单和房间。</p>
       </template>
       <div
@@ -394,6 +433,27 @@ function logout(all = false) {
 }
 .account-nickname button {
   flex: 0 0 auto;
+}
+.account-points {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7f4ea;
+  color: var(--muted);
+  font-size: 13px;
+}
+.account-points svg {
+  width: 16px;
+  height: 16px;
+  color: var(--sage);
+}
+.account-points strong {
+  color: var(--ink);
 }
 .account-netease {
   margin-top: 20px;
