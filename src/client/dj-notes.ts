@@ -8,6 +8,7 @@ type NotePlayback = Pick<
 export const DJ_NOTE_COUNT = 4;
 export const DJ_NOTE_LIFETIME_MS = 2400;
 export const DJ_NOTE_STAGGER_MS = DJ_NOTE_LIFETIME_MS / DJ_NOTE_COUNT;
+export const MUSIC_NOTE_COLORS = [0xb29458, 0x72938a, 0xb7806b] as const;
 
 // Follow the shared song timeline, independent of local audio/autoplay state.
 export function activeDjPlayback<T extends NotePlayback>(
@@ -34,6 +35,23 @@ export interface DjNotePose {
   scale: number;
   rotation: number;
   alpha: number;
+}
+
+export function likeNoteFrame(
+  seed: number,
+  elapsedMs: number,
+  reducedMotion = false,
+) {
+  const cycle =
+    !reducedMotion && Number.isFinite(elapsedMs) && elapsedMs >= 0
+      ? Math.floor(elapsedMs / DJ_NOTE_LIFETIME_MS)
+      : 0;
+  const index = (seed + cycle) % MUSIC_NOTE_COLORS.length;
+  // Offset the stagger so every selected glyph fills one complete cycle.
+  const pose = reducedMotion
+    ? djNotePose(0, elapsedMs, true)
+    : djNotePose(index, elapsedMs + index * DJ_NOTE_STAGGER_MS);
+  return { index, pose };
 }
 
 export function djNotePose(

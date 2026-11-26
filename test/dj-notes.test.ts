@@ -5,7 +5,9 @@ import {
   DJ_NOTE_COUNT,
   DJ_NOTE_LIFETIME_MS,
   DJ_NOTE_STAGGER_MS,
+  MUSIC_NOTE_COLORS,
   djNotePose,
+  likeNoteFrame,
 } from '../src/client/dj-notes';
 
 const playback = {
@@ -110,4 +112,28 @@ test('invalid pool indices or time cannot expose stray notes', () => {
     assert.equal(djNotePose(index, 1000).alpha, 0);
   for (const time of [-1, NaN, Infinity])
     assert.equal(djNotePose(0, time).alpha, 0);
+});
+
+test('likes rotate through the playback glyph styles one per animation cycle', () => {
+  const seed = 4;
+  const styles = Array.from(
+    { length: MUSIC_NOTE_COLORS.length + 1 },
+    (_, cycle) => {
+      const elapsed = cycle * DJ_NOTE_LIFETIME_MS;
+      const { index } = likeNoteFrame(seed, elapsed);
+      assert.equal(likeNoteFrame(seed, elapsed).pose.alpha, 0);
+      const mid = elapsed + DJ_NOTE_LIFETIME_MS / 2;
+      assert.deepEqual(likeNoteFrame(seed, mid), {
+        index,
+        pose: djNotePose(index, mid + index * DJ_NOTE_STAGGER_MS),
+      });
+      return index;
+    },
+  );
+  assert.deepEqual(styles, [1, 2, 0, 1]);
+  assert.equal(likeNoteFrame(5, 0).index, 2);
+  assert.deepEqual(likeNoteFrame(seed, 20_000, true), {
+    index: 1,
+    pose: djNotePose(0, 0, true),
+  });
 });

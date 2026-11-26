@@ -49,9 +49,12 @@ import { createRemoteMovement, remoteFrameUser } from './remote-movement';
 import {
   activeDjPlayback,
   DJ_NOTE_COUNT,
+  MUSIC_NOTE_COLORS,
   djNotePose,
+  likeNoteFrame,
   type DjNotePose,
 } from './dj-notes';
+import { identityHash } from '../shared/cat-activity';
 import {
   DEFAULT_STAGE_CAPACITY,
   SCENE,
@@ -371,7 +374,7 @@ const cats = new Map<
     body: Sprite;
     label: Text;
     notes: { layer: Container; glyphs: Graphics[] };
-    likeCycle?: { roundId: string; startedAt: number };
+    likeCycle?: { roundId: string; startedAt: number; seed: number };
     fullLabel: string;
     facingRight: boolean;
     remoteMovement: ReturnType<typeof createRemoteMovement>;
@@ -460,11 +463,11 @@ function makeCat(user: Participant) {
   };
 }
 function makeMusicNote(index: number) {
-  const colors = [0xb29458, 0x72938a, 0xb7806b];
+  const style = index % MUSIC_NOTE_COLORS.length;
   const glyph = new Graphics();
-  const color = colors[index % colors.length]!;
+  const color = MUSIC_NOTE_COLORS[style]!;
   glyph.ellipse(0, 0, 3.5, 2.3).fill(color);
-  if (index % 3 === 1) {
+  if (style === 1) {
     glyph.ellipse(9, -2, 3.5, 2.3).fill(color);
     glyph
       .moveTo(2.5, 0)
@@ -743,28 +746,39 @@ onMounted(async () => {
           user.connected && likers.has(user.id) ? likeRoundId : undefined;
         if (!likedRound) cat.likeCycle = undefined;
         else if (cat.likeCycle?.roundId !== likedRound)
-          cat.likeCycle = { roundId: likedRound, startedAt: localNow };
+          cat.likeCycle = {
+            roundId: likedRound,
+            startedAt: localNow,
+            seed: identityHash(user.id, likedRound),
+          };
+        const like = cat.likeCycle;
         const noteElapsed = playing
           ? now - playing.startedAt
-          : cat.likeCycle
-            ? localNow - cat.likeCycle.startedAt
+          : like
+            ? localNow - like.startedAt
             : null;
         cat.notes.layer.visible = noteElapsed !== null;
         if (noteElapsed !== null) {
-          const noteCount = playing ? DJ_NOTE_COUNT : 1;
+          const singleNote =
+            !playing && like
+              ? likeNoteFrame(like.seed, noteElapsed, reducedMotion)
+              : undefined;
+          const neededGlyphs = singleNote
+            ? singleNote.index + 1
+            : DJ_NOTE_COUNT;
           const { glyphs, layer } = cat.notes;
-          while (glyphs.length < noteCount) {
+          while (glyphs.length < neededGlyphs) {
             const glyph = makeMusicNote(glyphs.length);
             glyphs.push(glyph);
             layer.addChild(glyph);
           }
           for (let index = 0; index < glyphs.length; index++) {
-            applyNotePose(
-              glyphs[index]!,
-              index < noteCount
-                ? djNotePose(index, noteElapsed, reducedMotion)
-                : undefined,
-            );
+            const pose = singleNote
+              ? index === singleNote.index
+                ? singleNote.pose
+                : undefined
+              : djNotePose(index, noteElapsed, reducedMotion);
+            applyNotePose(glyphs[index]!, pose);
           }
         }
         const suffix = user.id === room.guest?.id ? ' · 你' : '';
