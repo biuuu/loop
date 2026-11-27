@@ -109,10 +109,10 @@ const chestSamples = {
     sleep: { x: 26, rows: ['.DL', 'DMD'] },
   },
   bow: {
-    colors: { D: '#445668', L: '#c4dfea', M: '#7798b4' },
-    upright: { x: 26, rows: ['DLD.DLD', 'DMMLMMD', '.DMDMD.'] },
-    down: { x: 28, rows: ['DLDLD', 'DMLMD'] },
-    sleep: { x: 26, rows: ['.DMD', 'DLDD'] },
+    colors: { D: '#304a63', M: '#517f9f', L: '#a7d4e8', K: '#ffe0a4' },
+    upright: { x: 25, rows: ['DMM...MMD', 'DLLDKDLLD', '.DD...DD.'] },
+    down: { x: 27, rows: ['DL...LD', 'DLDKDLD'] },
+    sleep: { x: 26, rows: ['.DMMD', 'DLDKD'] },
   },
 };
 const ribbonColors = { D: '#8b4c60', L: '#ffd0c2', M: '#d88291' };

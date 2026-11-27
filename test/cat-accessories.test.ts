@@ -131,6 +131,15 @@ for (const sample of ['bell', 'bow'] as const) {
         );
         const ys = overlay.map(({ y }) => y);
         const height = Math.max(...ys) - Math.min(...ys) + 1;
+        if (sample === 'bow') {
+          const xs = overlay.map(({ x }) => x);
+          const width = Math.max(...xs) - Math.min(...xs) + 1;
+          assert.equal(
+            width,
+            animation === 'sleep' ? 5 : animation === 'down' ? 7 : 9,
+            frame,
+          );
+        }
         if (animation === 'sleep' || animation === 'down') {
           assert.equal(height, 2, frame);
           assert.ok(overlay.length < fullSize, frame);
