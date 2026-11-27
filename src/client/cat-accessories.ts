@@ -109,8 +109,14 @@ const chestSamples = {
     sleep: { x: 26, rows: ['.DL', 'DMD'] },
   },
   bow: {
-    colors: { D: '#304a63', M: '#517f9f', L: '#a7d4e8', K: '#ffe0a4' },
-    upright: { x: 25, rows: ['DMM...MMD', 'DLLDKDLLD', '.DD...DD.'] },
+    colors: {
+      D: '#304a63',
+      M: '#517f9f',
+      L: '#a7d4e8',
+      K: '#ffe0a4',
+      J: '#d9af72',
+    },
+    upright: { x: 25, rows: ['DMM..MMD', 'DLLKJLLD', '.DD..DD.'] },
     down: { x: 27, rows: ['DL...LD', 'DLDKDLD'] },
     sleep: { x: 26, rows: ['.DMMD', 'DLDKD'] },
   },

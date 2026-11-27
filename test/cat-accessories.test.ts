@@ -136,7 +136,7 @@ for (const sample of ['bell', 'bow'] as const) {
           const width = Math.max(...xs) - Math.min(...xs) + 1;
           assert.equal(
             width,
-            animation === 'sleep' ? 5 : animation === 'down' ? 7 : 9,
+            animation === 'sleep' ? 5 : animation === 'down' ? 7 : 8,
             frame,
           );
         }
