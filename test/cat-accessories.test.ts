@@ -35,36 +35,51 @@ function pixelsFor(
   return pixels;
 }
 
-test('beret pixels follow the head and preserve eyes and sleep Zs across the source frames', () => {
-  const source = sourcePixels();
-  for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
-    for (let column = 0; column < CAT_ANIMATIONS[animation].frames; column++) {
-      const frame = `${animation}:${column}`;
-      const isOpaque = (x: number, y: number) =>
-        source[frameIndex(animation, column, x, y) + 3] !== 0;
-      // The tips of the right ear appear together, clear of the tail and Zs.
-      let earY = 0;
-      while (
-        earY < CAT_CELL_SIZE &&
-        !(isOpaque(33, earY) && isOpaque(34, earY))
-      )
-        earY++;
-      assert.ok(earY < CAT_CELL_SIZE, frame);
-      const eyes = getPatternMask('ragdoll', animation, column);
-      const overlay = pixelsFor('beret', animation, column);
-      for (const { x, y } of overlay) {
-        assert.notEqual(eyes[y * CAT_CELL_SIZE + x], CAT_EYE_MARKING, frame);
-        if (animation === 'sleep' && y < earY)
-          assert.equal(isOpaque(x, y), false, frame);
+for (const hat of ['beret', 'wizard-hat'] as const) {
+  test(`${hat} follows the head and preserves eyes and sleep Zs across the source frames`, () => {
+    const source = sourcePixels();
+    for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
+      for (
+        let column = 0;
+        column < CAT_ANIMATIONS[animation].frames;
+        column++
+      ) {
+        const frame = `${animation}:${column}`;
+        const isOpaque = (x: number, y: number) =>
+          source[frameIndex(animation, column, x, y) + 3] !== 0;
+        // The tips of the right ear appear together, clear of the tail and Zs.
+        let earY = 0;
+        while (
+          earY < CAT_CELL_SIZE &&
+          !(isOpaque(33, earY) && isOpaque(34, earY))
+        )
+          earY++;
+        assert.ok(earY < CAT_CELL_SIZE, frame);
+        const eyes = getPatternMask('ragdoll', animation, column);
+        const overlay = pixelsFor(hat, animation, column);
+        for (const { x, y } of overlay) {
+          assert.notEqual(eyes[y * CAT_CELL_SIZE + x], CAT_EYE_MARKING, frame);
+          if (animation === 'sleep' && y < earY)
+            assert.equal(isOpaque(x, y), false, frame);
+        }
+        const top = hat === 'beret' ? 4 : animation === 'sleep' ? 5 : 7;
+        assert.equal(Math.min(...overlay.map(({ y }) => y)), earY - top, frame);
+        assert.ok(
+          overlay.some(({ x, y }) => y === earY + 2 && isOpaque(x, y)),
+          frame,
+        );
+        if (hat === 'wizard-hat') {
+          const otherEar = animation === 'up' ? 26 : 34;
+          assert.ok(isOpaque(otherEar, earY), frame);
+          assert.ok(
+            overlay.every(({ x, y }) => x !== otherEar || y !== earY),
+            frame,
+          );
+        }
       }
-      assert.equal(Math.min(...overlay.map(({ y }) => y)), earY - 4, frame);
-      assert.ok(
-        overlay.some(({ x, y }) => y === earY + 2 && isOpaque(x, y)),
-        frame,
-      );
     }
-  }
-});
+  });
+}
 
 test('the bell stays on the chest, peeks out while sleeping, and is hidden from behind', () => {
   const source = sourcePixels();
@@ -118,6 +133,7 @@ test('the ribbon knot touches tail fur in every frame without overlapping the ot
       const others = new Set(
         [
           ...pixelsFor('beret', animation, column),
+          ...pixelsFor('wizard-hat', animation, column),
           ...pixelsFor('bell', animation, column),
         ].map(({ x, y }) => y * CAT_CELL_SIZE + x),
       );

@@ -1,9 +1,10 @@
 import { CAT_ANIMATIONS, type CatAnimation } from './cat-sprite';
 
 export const CAT_ACCESSORY_SAMPLES = [
-  { id: 'beret', label: '小贝雷帽' },
-  { id: 'bell', label: '胸前铃铛' },
-  { id: 'ribbon', label: '尾巴丝带' },
+  { id: 'beret', label: '小贝雷帽', slot: 'head' },
+  { id: 'wizard-hat', label: '巫师帽', slot: 'head' },
+  { id: 'bell', label: '胸前铃铛', slot: 'chest' },
+  { id: 'ribbon', label: '尾巴丝带', slot: 'tail' },
 ] as const;
 export type CatAccessorySample = (typeof CAT_ACCESSORY_SAMPLES)[number]['id'];
 type Paint = Pick<CanvasRenderingContext2D, 'fillStyle' | 'fillRect'>;
@@ -33,6 +34,50 @@ const beretBack = [
   'DSMMMMMLMD',
   '.DDSSSSSD.',
   '...DDDDD..',
+];
+
+// G = gold band, A = light on the band.
+const wizardHatColors = {
+  D: '#43334c',
+  L: '#a391ab',
+  M: '#7c6686',
+  S: '#5d496c',
+  G: '#bd8e54',
+  A: '#f1ca83',
+};
+const wizardHatFront = [
+  '.DDDD.......',
+  '...LDD......',
+  '...DLD......',
+  '....DLMD....',
+  '....DLMMD...',
+  '...DLMMSD...',
+  '...DGGAGD...',
+  '..DDGAGMDDD.',
+  '.DSMMMMMMMMD',
+  '..DDDDDDDDD.',
+];
+const wizardHatBack = [
+  '.......DDDD.',
+  '......DMSD..',
+  '......DLMD..',
+  '....DLMMD...',
+  '...DLMMMD...',
+  '...DSMMMSD..',
+  '...DAAGGD...',
+  '.DDDMMGGDDD.',
+  'DSMMMMMMMMMD',
+  '.DDDDDDDDDD.',
+];
+const wizardHatLying = [
+  'DDDD.......',
+  '.LMMDD.....',
+  '..DLMMD....',
+  '..DLMMSD...',
+  '...DGGAGD..',
+  '..DDGGMDDD.',
+  '.DSMMMMMMMD',
+  '..DDDDDDDD.',
 ];
 
 // Y is the height of the head in each original 64px cell, above the eyes.
@@ -112,6 +157,14 @@ export function drawCatAccessory(
       behind ? 27 : 24,
       head - 4,
     );
+    return;
+  }
+  if (sample === 'wizard-hat') {
+    if (animation === 'up')
+      drawPixels(context, wizardHatBack, wizardHatColors, 27, head - 7);
+    else if (animation === 'sleep')
+      drawPixels(context, wizardHatLying, wizardHatColors, 23, head - 5);
+    else drawPixels(context, wizardHatFront, wizardHatColors, 22, head - 7);
     return;
   }
   if (sample === 'bell') {

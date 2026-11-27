@@ -51,10 +51,18 @@ const accessoryPreview = computed(() =>
     ? { ...previewPose.value, samples: accessorySamples.value }
     : undefined,
 );
-function toggleAccessory(sample: CatAccessorySample) {
-  accessorySamples.value = accessorySamples.value.includes(sample)
-    ? accessorySamples.value.filter((selected) => selected !== sample)
-    : [...accessorySamples.value, sample];
+function toggleAccessory(sample: (typeof CAT_ACCESSORY_SAMPLES)[number]) {
+  if (accessorySamples.value.includes(sample.id)) {
+    accessorySamples.value = accessorySamples.value.filter(
+      (selected) => selected !== sample.id,
+    );
+    return;
+  }
+  const otherSlots = CAT_ACCESSORY_SAMPLES.filter(
+    ({ id, slot }) =>
+      slot !== sample.slot && accessorySamples.value.includes(id),
+  );
+  accessorySamples.value = [...otherSlots.map(({ id }) => id), sample.id];
 }
 
 function hasPreset(pattern: CatPresetPattern) {
@@ -297,7 +305,7 @@ function time(ms: number) {
               type="button"
               :class="{ selected: accessorySamples.includes(sample.id) }"
               :aria-pressed="accessorySamples.includes(sample.id)"
-              @click="toggleAccessory(sample.id)"
+              @click="toggleAccessory(sample)"
             >
               {{ sample.label }}
             </button>
@@ -494,6 +502,10 @@ function time(ms: number) {
   gap: 8px;
   margin-top: 12px;
 }
+.accessory-options {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .accessory-options button {
   padding-inline: 4px;
 }
@@ -507,6 +519,9 @@ function time(ms: number) {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 @media (min-width: 520px) {
+  .accessory-options {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
   .accessory-poses {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
