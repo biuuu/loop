@@ -8,7 +8,7 @@ export const CAT_FRAME_MS = 200;
 export const CAT_SCALE = 3;
 export const CAT_IDLE_UP_COLUMN = 0;
 // Loop the quiet frames and the growing Zs, skipping the source fade-out.
-const SLEEP_LOOP_FRAMES = 12;
+export const SLEEP_LOOP_FRAMES = 12;
 // Rows and timing come from the supplied Cat.aseprite animation tags.
 export const CAT_ANIMATIONS = {
   idle: { row: 6, frames: 12, footY: 48 },

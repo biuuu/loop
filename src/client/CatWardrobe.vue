@@ -32,6 +32,15 @@ const appearanceDraft = computed(() =>
     ? basicAppearance.value
     : specialAppearance.value,
 );
+const beretPoses = [
+  { animation: 'idle', flipX: false, label: '待机' },
+  { animation: 'side', flipX: false, label: '向左走' },
+  { animation: 'side', flipX: true, label: '向右走' },
+  { animation: 'up', flipX: false, label: '向上走' },
+  { animation: 'down', flipX: false, label: '向下走' },
+  { animation: 'sleep', flipX: false, label: '睡觉' },
+] as const;
+const beretPose = shallowRef<(typeof beretPoses)[number]>();
 
 function hasPreset(pattern: CatPresetPattern) {
   return (
@@ -103,6 +112,7 @@ watch(
 function hideDialog() {
   const focus = opening.value?.returnFocus;
   opening.value = null;
+  beretPose.value = undefined;
   error.value = '';
   if (dialog.value?.open) dialog.value.close();
   if (focus?.isConnected) focus.focus({ preventScroll: true });
@@ -254,7 +264,36 @@ function time(ms: number) {
           </button>
         </div>
         <div class="cat-preview-card">
-          <CatPreview :appearance="appearanceDraft" />
+          <CatPreview :appearance="appearanceDraft" :beret-pose="beretPose" />
+        </div>
+        <div class="beret-preview">
+          <button
+            class="outline"
+            type="button"
+            :aria-pressed="!!beretPose"
+            @click="beretPose = beretPose ? undefined : beretPoses[0]"
+          >
+            试戴小贝雷帽
+          </button>
+          <template v-if="beretPose">
+            <span class="beret-preview-hint">样品仅供预览</span>
+            <div
+              class="segmented-tabs beret-poses"
+              role="group"
+              aria-label="试戴姿势"
+            >
+              <button
+                v-for="pose in beretPoses"
+                :key="pose.label"
+                type="button"
+                :class="{ selected: beretPose === pose }"
+                :aria-pressed="beretPose === pose"
+                @click="beretPose = pose"
+              >
+                {{ pose.label }}
+              </button>
+            </div>
+          </template>
         </div>
         <p v-if="room.pointsReward" class="wardrobe-reward" role="status">
           {{ room.pointsReward }}
@@ -422,6 +461,34 @@ function time(ms: number) {
 <style scoped>
 .wardrobe-over-account::backdrop {
   backdrop-filter: none;
+}
+.beret-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+.beret-preview > button {
+  font-size: 13px;
+}
+.beret-preview > button[aria-pressed='true'] {
+  background: #e9eddf;
+  border-color: #bbc4ad;
+}
+.beret-preview-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+.beret-poses {
+  width: 100%;
+  grid-auto-flow: row;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (min-width: 520px) {
+  .beret-poses {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
 }
 .wardrobe-points-heading {
   position: relative;
