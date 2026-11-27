@@ -46,9 +46,9 @@ const headY = {
 } satisfies Record<CatAnimation, readonly number[]>;
 
 const bellColors = { D: '#684833', L: '#ffe5a3', M: '#e3ab59', S: '#b47542' };
-const bell = ['..D..', '.DLD.', '.DMD.', 'DMMMD', '.DSD.'];
-const bellFront = ['.D.', 'DLD', '.SD'];
-const bellLying = ['.DD', 'DLD', '.DS'];
+const bell = ['.DLD.', 'DMMMD', '.DSD.'];
+const bellFront = ['DLD', '.S.'];
+const bellLying = ['.DL', 'DMD'];
 const ribbonColors = { D: '#8b4c60', L: '#ffd0c2', M: '#d88291' };
 const ribbon = ['D...D', 'DMLMD', '.DLD.', '.D.D.'];
 const ribbonFlat = ['..DD', '.DM.', '..LL', '.DM.', '..DD'];
@@ -119,10 +119,10 @@ export function drawCatAccessory(
     // beside the forepaws. The front walk has less room under the chin.
     if (animation === 'up') return;
     if (animation === 'sleep')
-      drawPixels(context, bellLying, bellColors, 26, head + 9);
+      drawPixels(context, bellLying, bellColors, 26, head + 10);
     else if (animation === 'down')
-      drawPixels(context, bellFront, bellColors, 29, head + 9);
-    else drawPixels(context, bell, bellColors, 27, head + 10);
+      drawPixels(context, bellFront, bellColors, 29, head + 10);
+    else drawPixels(context, bell, bellColors, 27, head + 11);
     return;
   }
   const [x, y, sideways] = tailKnots[animation][column]!;

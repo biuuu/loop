@@ -83,9 +83,15 @@ test('the bell stays on the chest, peeks out while sleeping, and is hidden from 
         ),
         frame,
       );
-      if (animation === 'sleep' || animation === 'down')
+      const ys = bell.map(({ y }) => y);
+      const height = Math.max(...ys) - Math.min(...ys) + 1;
+      if (animation === 'sleep' || animation === 'down') {
+        assert.equal(height, 2, frame);
         assert.ok(bell.length < fullSize, frame);
-      else assert.equal(bell.length, fullSize, frame);
+      } else {
+        assert.equal(height, 3, frame);
+        assert.equal(bell.length, fullSize, frame);
+      }
       const eyes = getPatternMask('ragdoll', animation, column);
       for (const { x, y } of bell)
         assert.notEqual(eyes[y * CAT_CELL_SIZE + x], CAT_EYE_MARKING, frame);
