@@ -64,13 +64,7 @@ test('the wardrobe offers the expected samples in each slot', () => {
     CAT_ACCESSORY_SAMPLES.filter((sample) => sample.slot === slot)
       .map(({ id }) => id)
       .sort();
-  assert.deepEqual(ids('head'), [
-    'beret',
-    'daisy',
-    'headphones',
-    'knit-cap',
-    'sprout',
-  ]);
+  assert.deepEqual(ids('head'), ['beret', 'daisy', 'headphones', 'sprout']);
   assert.deepEqual(ids('chest'), ['bell', 'bow', 'scarf', 'star-pin']);
   assert.deepEqual(ids('tail'), [
     'ribbon',
@@ -104,6 +98,14 @@ for (const { id, slot } of CAT_ACCESSORY_SAMPLES) {
 
       const top = Math.min(...overlay.map(({ y }) => y));
       if (id === 'beret') assert.equal(top, earY - 4, label);
+      if (id === 'headphones') {
+        const cupY = earY + 1;
+        assert.ok(
+          overlay.some(({ x, y }) => x === 37 && y === cupY),
+          label,
+        );
+        assert.equal(isOpaque(37, cupY), false, label);
+      }
       if (id === 'daisy') {
         assert.equal(top, earY - 2, label);
         const nearEar = animation === 'up' ? 34 : 26;
@@ -164,6 +166,14 @@ for (const { id, slot } of CAT_ACCESSORY_SAMPLES) {
           animation === 'sleep' ? 5 : animation === 'down' ? 7 : 8,
           label,
         );
+      }
+      if (id === 'star-pin' && !compact) {
+        const top = Math.min(...overlay.map(({ y }) => y));
+        const pointsInRow = (row: number) =>
+          overlay.filter(({ y }) => y === top + row).map(({ x }) => x);
+        assert.deepEqual(pointsInRow(0), [29], label);
+        assert.equal(pointsInRow(1).length, 7, label);
+        assert.deepEqual(pointsInRow(3), [28, 30], label);
       }
       const eyes = getPatternMask('ragdoll', animation, column);
       for (const { x, y } of overlay)

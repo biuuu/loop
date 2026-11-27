@@ -4,7 +4,6 @@ export const CAT_ACCESSORY_SAMPLES = [
   { id: 'beret', label: '小贝雷帽', slot: 'head' },
   { id: 'daisy', label: '小雏菊', slot: 'head' },
   { id: 'sprout', label: '双叶芽', slot: 'head' },
-  { id: 'knit-cap', label: '针织帽', slot: 'head' },
   { id: 'headphones', label: '迷你耳机', slot: 'head' },
   { id: 'bell', label: '胸前铃铛', slot: 'chest' },
   { id: 'bow', label: '短蝴蝶结', slot: 'chest' },
@@ -56,22 +55,6 @@ const sproutLying = [
   '.DDMD...',
   '...DD...',
 ];
-const knitColors = { D: '#714b40', S: '#aa6a58', M: '#ca8870', L: '#efb395' };
-const knit = [
-  '....DDDD.....',
-  '...DMLMMD....',
-  '..DMLMLMMD...',
-  '.DMMMMMMMMD..',
-  'DLMLMLMLMLMDD',
-  '.DDDDDDDDDDD.',
-];
-const knitLying = [
-  '...DDDDD.....',
-  '..DMSMMMDD...',
-  '.DMMMMMMMMDD.',
-  'DLMLMLMLMMMDD',
-  '.DDDDDDDDDDD.',
-];
 const headphoneColors = {
   D: '#3f4659',
   S: '#665e74',
@@ -79,31 +62,31 @@ const headphoneColors = {
   L: '#d4b4d7',
 };
 const headphones = [
-  '....DDDDD....',
-  '...DMMMMMD...',
-  '..DD.....DD..',
-  '.DD.......DD.',
-  'DLD.......DLD',
-  'DMDD.....DDMD',
-  'DMD.......DMD',
-  '.DD.......DD.',
+  '....DDDDDDD....',
+  '...DMMMMMMMD...',
+  '..DD.......DD..',
+  '.DD.........DD.',
+  'DLD.........DLD',
+  'DMDD.......DDMD',
+  'DMD.........DMD',
+  '.DD.........DD.',
 ];
 const headphonesBack = [
-  '....DDDDD....',
-  '...DMMMMMD...',
-  '..DD.....DD..',
-  '.DS.......SD.',
-  'DMD.......DMD',
-  'DSDD.....DDSD',
-  '.DD.......DD.',
+  '....DDDDDDD....',
+  '...DMMMMMMMD...',
+  '..DD.......DD..',
+  '.DS.........SD.',
+  'DMD.........DMD',
+  'DSDD.......DDSD',
+  '.DD.........DD.',
 ];
 const headphonesLying = [
-  '...DDDDD.....',
-  '..DMMMMMD....',
-  '.DD.....DD...',
-  'DLD......DLDD',
-  'DMDD.....DMD.',
-  '.DD.......DD.',
+  '...DDDDDD......',
+  '..DMMMMMMDD....',
+  '.DD.......DD...',
+  'DLD.........DLD',
+  'DMDD.......DDMD',
+  '.DD.........DD.',
 ];
 
 // Y is the height of the head in each original 64px cell, above the eyes.
@@ -142,10 +125,10 @@ const chestSamples = {
     sleep: { x: 26, rows: ['.DLMD', 'DMD..'] },
   },
   'star-pin': {
-    colors: { D: '#936248', M: '#e3ae60', L: '#fff0ad' },
-    upright: { x: 27, rows: ['..L..', 'DMLMD', '.DLD.', '.D.D.'] },
-    down: { x: 29, rows: ['.L.', 'DMD', '.D.'] },
-    sleep: { x: 26, rows: ['.DL', 'DMD'] },
+    colors: { D: '#4d3e61', M: '#b894c7', L: '#ffe098' },
+    upright: { x: 26, rows: ['...D...', 'DMLLLMD', '.DMLMD.', '..D.D..'] },
+    down: { x: 28, rows: ['..D..', 'DMLMD', '.D.D.'] },
+    sleep: { x: 26, rows: ['.LD', 'DMD'] },
   },
 };
 const ribbonColors = { D: '#8b4c60', L: '#ffd0c2', M: '#d88291' };
@@ -281,11 +264,6 @@ export function drawCatAccessory(
       26,
       head - 2,
     );
-    return;
-  }
-  if (sample === 'knit-cap') {
-    const rows = animation === 'sleep' ? knitLying : knit;
-    drawPixels(context, rows, knitColors, 23, head + 3 - rows.length);
     return;
   }
   if (sample === 'headphones') {
