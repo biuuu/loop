@@ -46,39 +46,44 @@ const wizardHatColors = {
   A: '#f1ca83',
 };
 const wizardHatFront = [
-  '.DDDD.......',
-  '...LDD......',
-  '...DLD......',
-  '....DLMD....',
-  '....DLMMD...',
-  '...DLMMSD...',
-  '...DGGAGD...',
-  '..DDGAGMDDD.',
-  '.DSMMMMMMMMD',
-  '..DDDDDDDDD.',
+  '......DDD.........',
+  '.....DLMDD........',
+  '.....DLMMDD.......',
+  '....DLMMMMSD......',
+  '...DLMMMMMMSD.....',
+  '...DGGGGAGGSD.....',
+  '.DDMMMMMMMMMMDDD..',
+  'DSSMMMMMMMMMMMMSSD',
+  '.DDDDDDDDDDDDDDDD.',
 ];
 const wizardHatBack = [
-  '.......DDDD.',
-  '......DMSD..',
-  '......DLMD..',
-  '....DLMMD...',
-  '...DLMMMD...',
-  '...DSMMMSD..',
-  '...DAAGGD...',
-  '.DDDMMGGDDD.',
-  'DSMMMMMMMMMD',
-  '.DDDDDDDDDD.',
+  '.........DDD......',
+  '........DDMLD.....',
+  '.......DDMMLD.....',
+  '......DSMMMMLD....',
+  '.....DSMMMMMMLD...',
+  '.....DSGGAGGGGD...',
+  '..DDDMMMMMMMMMMDD.',
+  'DSSMMMMMMMMMMMMSSD',
+  '.DDDDDDDDDDDDDDDD.',
 ];
 const wizardHatLying = [
-  'DDDD.......',
-  '.LMMDD.....',
-  '..DLMMD....',
-  '..DLMMSD...',
-  '...DGGAGD..',
-  '..DDGGMDDD.',
-  '.DSMMMMMMMD',
-  '..DDDDDDDD.',
+  '..DDDD............',
+  '...LMMDD..........',
+  '....DLMMMDD.......',
+  '....DGGGAGGDD.....',
+  '.DDMMMMMMMMMDDDD..',
+  'DSSMMMMMMMMMMMMSSD',
+  '.DDDDDDDDDDDDDDDD.',
 ];
+const wizardHatPoses = {
+  idle: wizardHatFront,
+  side: wizardHatFront,
+  up: wizardHatBack,
+  // Keep the raised tail visible above the crown in the front-facing walk.
+  down: wizardHatFront.slice(2),
+  sleep: wizardHatLying,
+} satisfies Record<CatAnimation, readonly string[]>;
 
 // Y is the height of the head in each original 64px cell, above the eyes.
 // Downward walking has a raised tail behind this layer. Sleep Zs start farther right.
@@ -160,11 +165,8 @@ export function drawCatAccessory(
     return;
   }
   if (sample === 'wizard-hat') {
-    if (animation === 'up')
-      drawPixels(context, wizardHatBack, wizardHatColors, 27, head - 7);
-    else if (animation === 'sleep')
-      drawPixels(context, wizardHatLying, wizardHatColors, 23, head - 5);
-    else drawPixels(context, wizardHatFront, wizardHatColors, 22, head - 7);
+    const rows = wizardHatPoses[animation];
+    drawPixels(context, rows, wizardHatColors, 22, head + 3 - rows.length);
     return;
   }
   if (sample === 'bell') {

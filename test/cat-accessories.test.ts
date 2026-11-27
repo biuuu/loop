@@ -62,17 +62,28 @@ for (const hat of ['beret', 'wizard-hat'] as const) {
           if (animation === 'sleep' && y < earY)
             assert.equal(isOpaque(x, y), false, frame);
         }
-        const top = hat === 'beret' ? 4 : animation === 'sleep' ? 5 : 7;
-        assert.equal(Math.min(...overlay.map(({ y }) => y)), earY - top, frame);
+        const top = Math.min(...overlay.map(({ y }) => y));
+        if (hat === 'beret') assert.equal(top, earY - 4, frame);
         assert.ok(
           overlay.some(({ x, y }) => y === earY + 2 && isOpaque(x, y)),
           frame,
         );
         if (hat === 'wizard-hat') {
-          const otherEar = animation === 'up' ? 26 : 34;
-          assert.ok(isOpaque(otherEar, earY), frame);
+          assert.ok(top <= earY - 4, frame);
+          for (const earX of [26, 27, 33, 34]) {
+            assert.ok(isOpaque(earX, earY), frame);
+            assert.ok(
+              overlay.some(({ x, y }) => x === earX && y === earY),
+              frame,
+            );
+          }
+          const brim = overlay.filter(({ y }) => y === earY + 1);
           assert.ok(
-            overlay.every(({ x, y }) => x !== otherEar || y !== earY),
+            brim.some(({ x }) => x < 24),
+            frame,
+          );
+          assert.ok(
+            brim.some(({ x }) => x > 36),
             frame,
           );
         }
