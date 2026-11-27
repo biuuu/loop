@@ -45,6 +45,17 @@ const previewPoses = [
   { animation: 'sleep', flipX: false, label: '睡觉' },
 ] as const;
 const previewPose = shallowRef<(typeof previewPoses)[number]>(previewPoses[0]);
+const accessoryGroups = (
+  [
+    { slot: 'head', label: '头顶' },
+    { slot: 'chest', label: '胸前' },
+    { slot: 'tail', label: '尾巴' },
+  ] as const
+).map(({ slot, label }) => ({
+  slot,
+  label,
+  samples: CAT_ACCESSORY_SAMPLES.filter((sample) => sample.slot === slot),
+}));
 const accessorySamples = ref<CatAccessorySample[]>([]);
 const accessoryPreview = computed(() =>
   accessorySamples.value.length
@@ -295,20 +306,25 @@ function time(ms: number) {
         </div>
         <div class="accessory-preview">
           <div
-            class="segmented-tabs accessory-options"
+            v-for="group in accessoryGroups"
+            :key="group.slot"
+            class="accessory-row"
             role="group"
-            aria-label="试戴饰品"
+            :aria-label="`试戴${group.label}饰品`"
           >
-            <button
-              v-for="sample in CAT_ACCESSORY_SAMPLES"
-              :key="sample.id"
-              type="button"
-              :class="{ selected: accessorySamples.includes(sample.id) }"
-              :aria-pressed="accessorySamples.includes(sample.id)"
-              @click="toggleAccessory(sample)"
-            >
-              {{ sample.label }}
-            </button>
+            <span aria-hidden="true">{{ group.label }}</span>
+            <div class="segmented-tabs accessory-options">
+              <button
+                v-for="sample in group.samples"
+                :key="sample.id"
+                type="button"
+                :class="{ selected: accessorySamples.includes(sample.id) }"
+                :aria-pressed="accessorySamples.includes(sample.id)"
+                @click="toggleAccessory(sample)"
+              >
+                {{ sample.label }}
+              </button>
+            </div>
           </div>
           <template v-if="accessoryPreview">
             <span class="accessory-preview-hint">样品仅供预览</span>
@@ -502,9 +518,15 @@ function time(ms: number) {
   gap: 8px;
   margin-top: 12px;
 }
-.accessory-options {
-  grid-auto-flow: row;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.accessory-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.accessory-row > span {
+  color: var(--muted);
+  font-size: 12px;
 }
 .accessory-options button {
   padding-inline: 4px;
@@ -519,9 +541,6 @@ function time(ms: number) {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 @media (min-width: 520px) {
-  .accessory-options {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
   .accessory-poses {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }

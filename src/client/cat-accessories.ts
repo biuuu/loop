@@ -3,8 +3,11 @@ import { CAT_ANIMATIONS, type CatAnimation } from './cat-sprite';
 export const CAT_ACCESSORY_SAMPLES = [
   { id: 'beret', label: '小贝雷帽', slot: 'head' },
   { id: 'wizard-hat', label: '巫师帽', slot: 'head' },
+  { id: 'daisy', label: '小雏菊', slot: 'head' },
   { id: 'bell', label: '胸前铃铛', slot: 'chest' },
+  { id: 'bow', label: '短蝴蝶结', slot: 'chest' },
   { id: 'ribbon', label: '尾巴丝带', slot: 'tail' },
+  { id: 'streamer', label: '短飘带', slot: 'tail' },
 ] as const;
 export type CatAccessorySample = (typeof CAT_ACCESSORY_SAMPLES)[number]['id'];
 type Paint = Pick<CanvasRenderingContext2D, 'fillStyle' | 'fillRect'>;
@@ -85,6 +88,9 @@ const wizardHatPoses = {
   sleep: wizardHatLying,
 } satisfies Record<CatAnimation, readonly string[]>;
 
+const daisyColors = { D: '#a4876d', W: '#fff2d7', G: '#dc9f45' };
+const daisy = ['..D..', '.DWD.', 'DWGWD', '.DWD.', '..D..'];
+
 // Y is the height of the head in each original 64px cell, above the eyes.
 // Downward walking has a raised tail behind this layer. Sleep Zs start farther right.
 const headY = {
@@ -95,13 +101,26 @@ const headY = {
   sleep: [35, 35, 36, 36, 35, 35, 36, 36, 35, 35, 36, 36, 35, 35, 36, 36],
 } satisfies Record<CatAnimation, readonly number[]>;
 
-const bellColors = { D: '#684833', L: '#ffe5a3', M: '#e3ab59', S: '#b47542' };
-const bell = ['.DLD.', 'DMMMD', '.DSD.'];
-const bellFront = ['DLD', '.S.'];
-const bellLying = ['.DL', 'DMD'];
+const chestSamples = {
+  bell: {
+    colors: { D: '#684833', L: '#ffe5a3', M: '#e3ab59', S: '#b47542' },
+    upright: { x: 27, rows: ['.DLD.', 'DMMMD', '.DSD.'] },
+    down: { x: 29, rows: ['DLD', '.S.'] },
+    sleep: { x: 26, rows: ['.DL', 'DMD'] },
+  },
+  bow: {
+    colors: { D: '#445668', L: '#c4dfea', M: '#7798b4' },
+    upright: { x: 26, rows: ['DLD.DLD', 'DMMLMMD', '.DMDMD.'] },
+    down: { x: 28, rows: ['DLDLD', 'DMLMD'] },
+    sleep: { x: 26, rows: ['.DMD', 'DLDD'] },
+  },
+};
 const ribbonColors = { D: '#8b4c60', L: '#ffd0c2', M: '#d88291' };
 const ribbon = ['D...D', 'DMLMD', '.DLD.', '.D.D.'];
 const ribbonFlat = ['..DD', '.DM.', '..LL', '.DM.', '..DD'];
+const streamerColors = { D: '#48736e', L: '#b5e2cf', M: '#77b6ab' };
+const streamer = ['LD...', '.LMD.', '..DMD'];
+const streamerFlat = ['..LD.', '.DMD.', 'DMD..'];
 // Pixel coordinates locate the knot on the tail rather than relative to the
 // body. The sitting tail flicks between four shapes; the sleeping curl is fixed.
 const raised = [42, 40] as const;
@@ -169,18 +188,43 @@ export function drawCatAccessory(
     drawPixels(context, rows, wizardHatColors, 22, head + 3 - rows.length);
     return;
   }
-  if (sample === 'bell') {
-    // Viewed from behind the neck hides the bell; on the floor it peeks out
-    // beside the forepaws. The front walk has less room under the chin.
+  if (sample === 'daisy') {
+    drawPixels(
+      context,
+      daisy,
+      daisyColors,
+      animation === 'up' ? 32 : 24,
+      head - 2,
+    );
+    return;
+  }
+  if (sample === 'bell' || sample === 'bow') {
+    // The back hides chest accessories. The lowered head partly covers them in
+    // sleep, and there's less room under the chin in the front-facing walk.
     if (animation === 'up') return;
-    if (animation === 'sleep')
-      drawPixels(context, bellLying, bellColors, 26, head + 10);
-    else if (animation === 'down')
-      drawPixels(context, bellFront, bellColors, 29, head + 10);
-    else drawPixels(context, bell, bellColors, 27, head + 11);
+    const { colors, upright, down, sleep } = chestSamples[sample];
+    const pose =
+      animation === 'sleep' ? sleep : animation === 'down' ? down : upright;
+    drawPixels(
+      context,
+      pose.rows,
+      colors,
+      pose.x,
+      head + (pose === upright ? 11 : 10),
+    );
     return;
   }
   const [x, y, sideways] = tailKnots[animation][column]!;
+  if (sample === 'streamer') {
+    drawPixels(
+      context,
+      sideways ? streamerFlat : streamer,
+      streamerColors,
+      x - (sideways ? 2 : 0),
+      y,
+    );
+    return;
+  }
   drawPixels(
     context,
     sideways ? ribbonFlat : ribbon,
