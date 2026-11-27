@@ -521,12 +521,17 @@ function time(ms: number) {
 .accessory-row {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  align-items: center;
+  align-items: start;
   gap: 8px;
 }
 .accessory-row > span {
+  padding-top: 14px;
   color: var(--muted);
   font-size: 12px;
+}
+.accessory-options {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 64px), 1fr));
 }
 .accessory-options button {
   padding-inline: 4px;

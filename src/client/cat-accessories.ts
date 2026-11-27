@@ -2,12 +2,18 @@ import { CAT_ANIMATIONS, type CatAnimation } from './cat-sprite';
 
 export const CAT_ACCESSORY_SAMPLES = [
   { id: 'beret', label: '小贝雷帽', slot: 'head' },
-  { id: 'wizard-hat', label: '巫师帽', slot: 'head' },
   { id: 'daisy', label: '小雏菊', slot: 'head' },
+  { id: 'sprout', label: '双叶芽', slot: 'head' },
+  { id: 'knit-cap', label: '针织帽', slot: 'head' },
+  { id: 'headphones', label: '迷你耳机', slot: 'head' },
   { id: 'bell', label: '胸前铃铛', slot: 'chest' },
   { id: 'bow', label: '短蝴蝶结', slot: 'chest' },
+  { id: 'scarf', label: '小领巾', slot: 'chest' },
+  { id: 'star-pin', label: '星形胸针', slot: 'chest' },
   { id: 'ribbon', label: '尾巴丝带', slot: 'tail' },
   { id: 'streamer', label: '短飘带', slot: 'tail' },
+  { id: 'tail-ring', label: '珠扣尾环', slot: 'tail' },
+  { id: 'tail-flower', label: '尾尖花结', slot: 'tail' },
 ] as const;
 export type CatAccessorySample = (typeof CAT_ACCESSORY_SAMPLES)[number]['id'];
 type Paint = Pick<CanvasRenderingContext2D, 'fillStyle' | 'fillRect'>;
@@ -39,57 +45,66 @@ const beretBack = [
   '...DDDDD..',
 ];
 
-// G = gold band, A = light on the band.
-const wizardHatColors = {
-  D: '#43334c',
-  L: '#a391ab',
-  M: '#7c6686',
-  S: '#5d496c',
-  G: '#bd8e54',
-  A: '#f1ca83',
-};
-const wizardHatFront = [
-  '......DDD.........',
-  '.....DLMDD........',
-  '.....DLMMDD.......',
-  '....DLMMMMSD......',
-  '...DLMMMMMMSD.....',
-  '...DGGGGAGGSD.....',
-  '.DDMMMMMMMMMMDDD..',
-  'DSSMMMMMMMMMMMMSSD',
-  '.DDDDDDDDDDDDDDDD.',
-];
-const wizardHatBack = [
-  '.........DDD......',
-  '........DDMLD.....',
-  '.......DDMMLD.....',
-  '......DSMMMMLD....',
-  '.....DSMMMMMMLD...',
-  '.....DSGGAGGGGD...',
-  '..DDDMMMMMMMMMMDD.',
-  'DSSMMMMMMMMMMMMSSD',
-  '.DDDDDDDDDDDDDDDD.',
-];
-const wizardHatLying = [
-  '..DDDD............',
-  '...LMMDD..........',
-  '....DLMMMDD.......',
-  '....DGGGAGGDD.....',
-  '.DDMMMMMMMMMDDDD..',
-  'DSSMMMMMMMMMMMMSSD',
-  '.DDDDDDDDDDDDDDDD.',
-];
-const wizardHatPoses = {
-  idle: wizardHatFront,
-  side: wizardHatFront,
-  up: wizardHatBack,
-  // Keep the raised tail visible above the crown in the front-facing walk.
-  down: wizardHatFront.slice(2),
-  sleep: wizardHatLying,
-} satisfies Record<CatAnimation, readonly string[]>;
-
 const daisyColors = { D: '#a4876d', W: '#fff2d7', G: '#dc9f45' };
 const daisy = ['..D..', '.DWD.', 'DWGWD', '.DWD.', '..D..'];
+const sproutColors = { D: '#4c6846', M: '#84ad60', L: '#c1d98c' };
+const sprout = ['DL...LD.', 'DML.LMMD', '.DMLMDD.', '...MD...', '...DD...'];
+const sproutLying = [
+  '......D.',
+  '.LD..LMD',
+  'DMLDMMDD',
+  '.DDMD...',
+  '...DD...',
+];
+const knitColors = { D: '#714b40', S: '#aa6a58', M: '#ca8870', L: '#efb395' };
+const knit = [
+  '....DDDD.....',
+  '...DMLMMD....',
+  '..DMLMLMMD...',
+  '.DMMMMMMMMD..',
+  'DLMLMLMLMLMDD',
+  '.DDDDDDDDDDD.',
+];
+const knitLying = [
+  '...DDDDD.....',
+  '..DMSMMMDD...',
+  '.DMMMMMMMMDD.',
+  'DLMLMLMLMMMDD',
+  '.DDDDDDDDDDD.',
+];
+const headphoneColors = {
+  D: '#3f4659',
+  S: '#665e74',
+  M: '#7b7693',
+  L: '#d4b4d7',
+};
+const headphones = [
+  '....DDDDD....',
+  '...DMMMMMD...',
+  '..DD.....DD..',
+  '.DD.......DD.',
+  'DLD.......DLD',
+  'DMDD.....DDMD',
+  'DMD.......DMD',
+  '.DD.......DD.',
+];
+const headphonesBack = [
+  '....DDDDD....',
+  '...DMMMMMD...',
+  '..DD.....DD..',
+  '.DS.......SD.',
+  'DMD.......DMD',
+  'DSDD.....DDSD',
+  '.DD.......DD.',
+];
+const headphonesLying = [
+  '...DDDDD.....',
+  '..DMMMMMD....',
+  '.DD.....DD...',
+  'DLD......DLDD',
+  'DMDD.....DMD.',
+  '.DD.......DD.',
+];
 
 // Y is the height of the head in each original 64px cell, above the eyes.
 // Downward walking has a raised tail behind this layer. Sleep Zs start farther right.
@@ -120,6 +135,18 @@ const chestSamples = {
     down: { x: 27, rows: ['DL...LD', 'DLDKDLD'] },
     sleep: { x: 26, rows: ['.DMMD', 'DLDKD'] },
   },
+  scarf: {
+    colors: { D: '#794d42', M: '#ba7560', L: '#f2ad8d' },
+    upright: { x: 26, rows: ['DDLLMDD', '.DLMD.', '..DMD.', '...D..'] },
+    down: { x: 28, rows: ['DLMLD', '.DMD.', '..D..'] },
+    sleep: { x: 26, rows: ['.DLMD', 'DMD..'] },
+  },
+  'star-pin': {
+    colors: { D: '#936248', M: '#e3ae60', L: '#fff0ad' },
+    upright: { x: 27, rows: ['..L..', 'DMLMD', '.DLD.', '.D.D.'] },
+    down: { x: 29, rows: ['.L.', 'DMD', '.D.'] },
+    sleep: { x: 26, rows: ['.DL', 'DMD'] },
+  },
 };
 const ribbonColors = { D: '#8b4c60', L: '#ffd0c2', M: '#d88291' };
 const ribbon = ['D...D', 'DMLMD', '.DLD.', '.D.D.'];
@@ -127,6 +154,16 @@ const ribbonFlat = ['..DD', '.DM.', '..LL', '.DM.', '..DD'];
 const streamerColors = { D: '#48736e', L: '#b5e2cf', M: '#77b6ab' };
 const streamer = ['LD...', '.LMD.', '..DMD'];
 const streamerFlat = ['..LD.', '.DMD.', 'DMD..'];
+const tailRingColors = {
+  D: '#64504f',
+  M: '#b18469',
+  L: '#e3be93',
+  K: '#bda4dc',
+};
+const tailRing = ['.DLD.', 'DMMKD', '.DDD.'];
+const tailRingFlat = ['.DD..', '.DL..', '.DMD.', '.DKD.', '..D..'];
+const tailFlowerColors = { D: '#885d78', L: '#e7aaca', M: '#ffe0a4' };
+const tailFlower = ['..L..', '.DLD.', 'DLMLD', '.DLD.'];
 // Pixel coordinates locate the knot on the tail rather than relative to the
 // body. The sitting tail flicks between four shapes; the sleeping curl is fixed.
 const raised = [42, 40] as const;
@@ -170,6 +207,43 @@ const tailKnots = {
   ],
   sleep: Array<TailKnot>(CAT_ANIMATIONS.sleep.frames).fill(sleepTail),
 } satisfies Record<CatAnimation, readonly TailKnot[]>;
+// The flower sits one small step farther along the tip than a tied ribbon.
+const raisedTip = [41, 38] as const;
+const angledTip = [44, 39] as const;
+const lowTip = [47, 42] as const;
+const flatTip = [48, 45] as const;
+const tailTips = {
+  idle: [
+    raisedTip,
+    angledTip,
+    lowTip,
+    flatTip,
+    lowTip,
+    angledTip,
+    raisedTip,
+    angledTip,
+    lowTip,
+    flatTip,
+    lowTip,
+    angledTip,
+  ],
+  side: [
+    [46, 40],
+    [46, 39],
+    [46, 40],
+    [46, 40],
+    [46, 39],
+    [46, 40],
+  ],
+  up: [
+    [28, 38],
+    [28, 38],
+    [32, 38],
+    [32, 37],
+  ],
+  down: tailKnots.down,
+  sleep: Array<TailKnot>(CAT_ANIMATIONS.sleep.frames).fill([44, 49]),
+} satisfies Record<CatAnimation, readonly TailKnot[]>;
 
 export function drawCatAccessory(
   context: Paint,
@@ -189,11 +263,6 @@ export function drawCatAccessory(
     );
     return;
   }
-  if (sample === 'wizard-hat') {
-    const rows = wizardHatPoses[animation];
-    drawPixels(context, rows, wizardHatColors, 22, head + 3 - rows.length);
-    return;
-  }
   if (sample === 'daisy') {
     drawPixels(
       context,
@@ -204,7 +273,37 @@ export function drawCatAccessory(
     );
     return;
   }
-  if (sample === 'bell' || sample === 'bow') {
+  if (sample === 'sprout') {
+    drawPixels(
+      context,
+      animation === 'sleep' ? sproutLying : sprout,
+      sproutColors,
+      26,
+      head - 2,
+    );
+    return;
+  }
+  if (sample === 'knit-cap') {
+    const rows = animation === 'sleep' ? knitLying : knit;
+    drawPixels(context, rows, knitColors, 23, head + 3 - rows.length);
+    return;
+  }
+  if (sample === 'headphones') {
+    const rows =
+      animation === 'sleep'
+        ? headphonesLying
+        : animation === 'up'
+          ? headphonesBack
+          : headphones;
+    drawPixels(context, rows, headphoneColors, 23, head - 3);
+    return;
+  }
+  if (
+    sample === 'bell' ||
+    sample === 'bow' ||
+    sample === 'scarf' ||
+    sample === 'star-pin'
+  ) {
     // The back hides chest accessories. The lowered head partly covers them in
     // sleep, and there's less room under the chin in the front-facing walk.
     if (animation === 'up') return;
@@ -220,7 +319,22 @@ export function drawCatAccessory(
     );
     return;
   }
+  if (sample === 'tail-flower') {
+    const [x, y] = tailTips[animation][column]!;
+    drawPixels(context, tailFlower, tailFlowerColors, x - 2, y - 2);
+    return;
+  }
   const [x, y, sideways] = tailKnots[animation][column]!;
+  if (sample === 'tail-ring') {
+    drawPixels(
+      context,
+      sideways ? tailRingFlat : tailRing,
+      tailRingColors,
+      x - 2,
+      y - (sideways ? 2 : 1),
+    );
+    return;
+  }
   if (sample === 'streamer') {
     drawPixels(
       context,
