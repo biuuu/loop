@@ -95,15 +95,20 @@ test('migration 27 preserves existing profiles, coat unlocks, points and DJ prog
   context.after(() => rmSync(root, { recursive: true, force: true }));
   const path = join(root, 'database.sqlite');
   const before = new Store(path, historicalMigrations(root, 26));
-  const readRows = (db: Store) =>
+  const readRows = (db: Store, beforeAccessories = false) =>
     [
       ['guests', 'id'],
       ['coat_unlocks', 'guest_id, pattern'],
       ['points_ledger', 'id'],
       ['daily_dj_time', 'guest_id, date'],
-    ].map(([table, order]) =>
-      db.sql.prepare(`SELECT * FROM ${table} ORDER BY ${order}`).all(),
-    );
+    ].map(([table, order]) => {
+      const rows = db.sql
+        .prepare(`SELECT * FROM ${table} ORDER BY ${order}`)
+        .all() as Record<string, unknown>[];
+      return beforeAccessories && table === 'guests'
+        ? rows.map((row) => ({ ...row, accessories_json: null }))
+        : rows;
+    });
   let savedRows: ReturnType<typeof readRows>;
   let savedProfile: ReturnType<Store['guest']>;
   let owner: ReturnType<Store['createUser']>;
@@ -118,14 +123,14 @@ test('migration 27 preserves existing profiles, coat unlocks, points and DJ prog
     before.recordDjPlayback(ownerId, firstDay, firstDay + rewardAt);
     before.recordDjPlayback(ownerId, midnight, midnight + 60_000);
     savedProfile = before.guest(owner.token);
-    savedRows = readRows(before);
+    savedRows = readRows(before, true);
   } finally {
     before.close();
   }
 
   const db = new Store(path);
   try {
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 28);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 29);
     assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
     assert.deepEqual(readRows(db), savedRows);
     assert.deepEqual(db.guest(owner.token), savedProfile);

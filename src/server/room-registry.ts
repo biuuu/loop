@@ -1,4 +1,5 @@
 import type { Server, Socket } from 'socket.io';
+import type { CatAccessories } from '../shared/accessories.js';
 import type { CatAppearance } from '../shared/appearance.js';
 import type { PointsAwarded } from '../shared/points.js';
 import {
@@ -325,6 +326,10 @@ export class RoomRegistry {
     const current = this.active.get(userId);
     if (current)
       this.live.get(current.roomId)?.updateAppearance(userId, appearance);
+  }
+  updateAccessories(userId: string, accessories: CatAccessories) {
+    const roomId = this.active.get(userId)?.roomId ?? this.memberRoom(userId);
+    if (roomId) this.live.get(roomId)?.updateAccessories(userId, accessories);
   }
   publishPlaylist(userId: string, state: PlaylistState) {
     const current = this.active.get(userId);

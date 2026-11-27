@@ -151,6 +151,7 @@ for (const [
           ]),
         );
       const expected = readRows(db);
+      for (const guest of expected.guests!) guest.accessories_json = null;
       const storedOwner = expected.guests?.find(
         (row) => row.id === owner.guest.id,
       );
@@ -160,7 +161,7 @@ for (const [
       db = undefined;
 
       db = new Store(dbPath);
-      assert.equal(db.sql.pragma('user_version', { simple: true }), 28);
+      assert.equal(db.sql.pragma('user_version', { simple: true }), 29);
       assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
       assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
       assert.deepEqual(readRows(db), expected);
@@ -308,7 +309,7 @@ test('migration 28 preserves points and sessions while transferring old black an
   for (let attempt = 0; attempt < 2; attempt++) {
     const db = new Store(path);
     try {
-      assert.equal(db.sql.pragma('user_version', { simple: true }), 28);
+      assert.equal(db.sql.pragma('user_version', { simple: true }), 29);
       assert.deepEqual(db.sql.pragma('foreign_key_check'), []);
       assert.deepEqual(db.room(owner.createdRoom.id), owner.createdRoom);
       assert.deepEqual(readLedger(db), ledger);

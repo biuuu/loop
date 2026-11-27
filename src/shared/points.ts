@@ -1,4 +1,5 @@
 import type { CatPresetPattern } from './appearance';
+import type { CatAccessoryId } from './accessories';
 
 export const INITIAL_POINTS = 5;
 export const COAT_UNLOCK_COST = 5;
@@ -9,6 +10,7 @@ export const DAILY_DJ_THRESHOLD_MS = 180_000;
 export interface PointsState {
   balance: number;
   unlockedPresets: CatPresetPattern[];
+  unlockedAccessories?: CatAccessoryId[];
   freeSpecialCoats?: true;
   daily: { date: string; playedMs: number; awarded: boolean };
   revision: number;

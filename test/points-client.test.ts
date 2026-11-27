@@ -3,7 +3,12 @@ import test, { type TestContext } from 'node:test';
 import { createPinia, setActivePinia } from 'pinia';
 import { Socket } from 'socket.io-client';
 import { useRoom } from '../src/client/room';
+import {
+  ACCESSORY_UNLOCK_COST,
+  type CatAccessories,
+} from '../src/shared/accessories';
 import { CALICO_APPEARANCE } from '../src/shared/appearance';
+import type { RoomSnapshot } from '../src/shared/contracts';
 import {
   COAT_UNLOCK_COST,
   DAILY_DJ_THRESHOLD_MS,
@@ -54,6 +59,24 @@ function fixture(context: TestContext) {
       guest = { id, nickname: id.toUpperCase() };
     },
   };
+}
+
+function mockRoomTransport(context: TestContext) {
+  let transport!: Socket;
+  context.mock.method(Socket.prototype, 'connect', function (this: Socket) {
+    transport = this;
+    this.connected = true;
+    for (const listener of this.listeners('connect')) listener();
+    return this;
+  });
+  context.mock.method(Socket.prototype, 'emit', function (this: Socket) {
+    return this;
+  });
+  context.mock.method(Socket.prototype, 'disconnect', function (this: Socket) {
+    this.connected = false;
+    return this;
+  });
+  return () => transport;
 }
 
 test('wardrobe reads cannot undo a newer unlock, newer same-day progress, or the next day', async (context) => {
@@ -156,23 +179,10 @@ test('late wardrobe responses are ignored after leaving a room or changing ident
 
 test('a delayed private award after midnight shows once while newer points stay intact', async (context) => {
   const { room, requests, setGuest } = fixture(context);
-  let transport!: Socket;
-  context.mock.method(Socket.prototype, 'connect', function (this: Socket) {
-    transport = this;
-    this.connected = true;
-    for (const listener of this.listeners('connect')) listener();
-    return this;
-  });
-  context.mock.method(Socket.prototype, 'emit', function (this: Socket) {
-    return this;
-  });
-  context.mock.method(Socket.prototype, 'disconnect', function (this: Socket) {
-    this.connected = false;
-    return this;
-  });
+  const transport = mockRoomTransport(context);
   await room.initialize();
   await room.connect('first');
-  const receiveAward = transport.listeners('points:awarded')[0]!;
+  const receiveAward = transport().listeners('points:awarded')[0]!;
   const awarded: PointsState = {
     ...points(),
     balance: INITIAL_POINTS + 1,
@@ -202,7 +212,127 @@ test('a delayed private award after midnight shows once while newer points stay 
   assert.equal(room.pointsReward, '');
   assert.equal(room.points, null);
   await room.connect('second');
-  transport.listeners('points:awarded')[0]!({ points: awarded, awarded: 1 });
+  transport().listeners('points:awarded')[0]!({ points: awarded, awarded: 1 });
   assert.equal(room.pointsReward, '累计听歌或放歌，获得 1 积分');
   assert.deepEqual(room.points, awarded);
+});
+
+test('an accessory unlock fences delayed points and saves the chosen color separately', async (context) => {
+  const { room, requests } = fixture(context);
+  await room.initialize();
+  const stale = room.loadPoints();
+  const unlock = room.unlockAccessory('bow');
+  const unlockRequest = requests.at(-1)!;
+  assert.equal(unlockRequest.path, '/api/me/accessories/unlocks');
+  assert.equal(unlockRequest.init?.method, 'POST');
+  assert.deepEqual(JSON.parse(String(unlockRequest.init?.body)), { id: 'bow' });
+  const before = points();
+  const after: PointsState = {
+    ...before,
+    balance: before.balance - ACCESSORY_UNLOCK_COST,
+    unlockedAccessories: ['bow'],
+    revision: before.revision + 1,
+  };
+  unlockRequest.reply(Response.json(after));
+  assert.equal(await unlock, true);
+  assert.equal(room.guest?.accessories, undefined);
+  requests[0]!.reply(Response.json(before));
+  await stale;
+  assert.deepEqual(room.points, after);
+
+  const accessories: CatAccessories = { chest: { id: 'bow', color: 'rose' } };
+  const accessorySave = room.setAccessories(accessories);
+  const accessoryRequest = requests.at(-1)!;
+  assert.equal(accessoryRequest.path, '/api/me/accessories');
+  assert.equal(accessoryRequest.init?.method, 'PATCH');
+  assert.deepEqual(
+    JSON.parse(String(accessoryRequest.init?.body)),
+    accessories,
+  );
+
+  const coatSave = room.setAppearance(CALICO_APPEARANCE);
+  requests.at(-1)!.reply(
+    Response.json({
+      guest: { id: 'a', nickname: 'A', appearance: CALICO_APPEARANCE },
+    }),
+  );
+  assert.equal(await coatSave, true);
+  accessoryRequest.reply(
+    Response.json({ guest: { id: 'a', nickname: 'A', accessories } }),
+  );
+  assert.equal(await accessorySave, true);
+  assert.deepEqual(room.guest?.appearance, CALICO_APPEARANCE);
+  assert.deepEqual(room.guest?.accessories, accessories);
+  assert.deepEqual(room.points, after);
+
+  const clear = room.setAccessories({});
+  const clearRequest = requests.at(-1)!;
+  assert.deepEqual(JSON.parse(String(clearRequest.init?.body)), {});
+  clearRequest.reply(Response.json({ guest: { id: 'a', nickname: 'A' } }));
+  assert.equal(await clear, true);
+  assert.deepEqual(room.guest?.accessories, {});
+});
+
+test('room accessory clearing reaches the guest profile and old identity writes cannot restore equipment', async (context) => {
+  const { room, requests, setGuest } = fixture(context);
+  const transport = mockRoomTransport(context);
+  await room.initialize();
+  await room.connect('room');
+  const receive = transport().listeners('room:snapshot')[0]!;
+  function snapshot(
+    revision: number,
+    accessories?: CatAccessories,
+  ): RoomSnapshot {
+    return {
+      roomId: 'room',
+      revision,
+      serverTime: Date.now(),
+      resolving: false,
+      notice: null,
+      capacity: 30,
+      stageCapacity: 5,
+      stage: [],
+      users: [
+        {
+          id: 'a',
+          nickname: 'A',
+          connected: true,
+          seat: null,
+          x: 0,
+          y: 0,
+          targetX: 0,
+          targetY: 0,
+          movingSince: 0,
+          durationMs: 0,
+          accessories,
+        },
+      ],
+      playback: null,
+    };
+  }
+  const accessories: CatAccessories = { head: { id: 'beret' } };
+  receive(snapshot(1, accessories));
+  assert.deepEqual(room.guest?.accessories, accessories);
+  receive(snapshot(2));
+  assert.deepEqual(room.guest?.accessories, accessories);
+  receive(snapshot(3, {}));
+  receive(snapshot(1, accessories));
+  assert.deepEqual(room.me?.accessories, {});
+  assert.deepEqual(room.guest?.accessories, {});
+
+  const oldUnlock = room.unlockAccessory('beret');
+  const oldSave = room.setAccessories(accessories);
+  setGuest('b');
+  await room.initialize();
+  requests[0]!.reply(
+    Response.json({ ...points(), unlockedAccessories: ['beret'] }),
+  );
+  requests[1]!.reply(
+    Response.json({ guest: { id: 'a', nickname: 'A', accessories } }),
+  );
+  assert.equal(await oldUnlock, false);
+  assert.equal(await oldSave, false);
+  assert.equal(room.points, null);
+  assert.equal(room.guest?.id, 'b');
+  assert.equal(room.guest?.accessories, undefined);
 });

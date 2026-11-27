@@ -2,6 +2,15 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { Coins, LockKeyhole, X } from '@lucide/vue';
 import {
+  ACCESSORY_UNLOCK_COST,
+  CAT_ACCESSORY_COLORS,
+  CAT_ACCESSORY_SAMPLES,
+  type CatAccessories,
+  type CatAccessoryColor,
+  type CatAccessoryId,
+  type CatAccessorySlot,
+} from '../shared/accessories';
+import {
   CAT_APPEARANCE_PRESETS,
   CAT_COATS,
   CAT_PATTERNS,
@@ -11,10 +20,6 @@ import {
   type CatPresetPattern,
 } from '../shared/appearance';
 import { COAT_UNLOCK_COST, DAILY_DJ_THRESHOLD_MS } from '../shared/points';
-import {
-  CAT_ACCESSORY_SAMPLES,
-  type CatAccessorySample,
-} from './cat-accessories';
 import CatPreview from './CatPreview.vue';
 import PointsRules from './PointsRules.vue';
 import { useRoom } from './room';
@@ -26,16 +31,26 @@ const room = useRoom();
 const dialog = ref<HTMLDialogElement | null>(null);
 const opening = shallowRef<{ returnFocus: HTMLElement | null } | null>(null);
 const error = useTimedMessage();
-const appearanceTab = ref<'basic' | 'special'>('basic');
+const wardrobeTab = ref<'basic' | 'special' | 'accessories'>('basic');
 const basicAppearance = ref<CatAppearance>({ ...DEFAULT_CAT_APPEARANCE });
 const specialAppearance = ref<
   (typeof CAT_APPEARANCE_PRESETS)[number]['appearance']
 >(CAT_APPEARANCE_PRESETS[0].appearance);
-const appearanceDraft = computed(() =>
-  appearanceTab.value === 'basic'
-    ? basicAppearance.value
-    : specialAppearance.value,
+const savedAppearance = computed(
+  () => room.guest?.appearance ?? room.me?.appearance ?? DEFAULT_CAT_APPEARANCE,
 );
+const savedAccessories = computed(
+  () => room.guest?.accessories ?? room.me?.accessories ?? {},
+);
+const accessoryDraft = shallowRef<CatAccessories>({});
+const wardrobeAction = shallowRef<{ kind: 'unlock' | 'save' } | null>(null);
+const showingAccessories = computed(() => wardrobeTab.value === 'accessories');
+const previewAppearance = computed(() => {
+  if (showingAccessories.value) return savedAppearance.value;
+  return wardrobeTab.value === 'basic'
+    ? basicAppearance.value
+    : specialAppearance.value;
+});
 const previewPoses = [
   { animation: 'idle', flipX: false, label: '待机' },
   { animation: 'side', flipX: false, label: '向左走' },
@@ -56,25 +71,49 @@ const accessoryGroups = (
   label,
   samples: CAT_ACCESSORY_SAMPLES.filter((sample) => sample.slot === slot),
 }));
-const accessorySamples = ref<CatAccessorySample[]>([]);
-const accessoryPreview = computed(() =>
-  accessorySamples.value.length
-    ? { ...previewPose.value, samples: accessorySamples.value }
-    : undefined,
-);
-function toggleAccessory(sample: (typeof CAT_ACCESSORY_SAMPLES)[number]) {
-  if (accessorySamples.value.includes(sample.id)) {
-    accessorySamples.value = accessorySamples.value.filter(
-      (selected) => selected !== sample.id,
-    );
-    return;
+const preferredAccessory = ref<CatAccessoryId>();
+const accessoryColors = computed(() => {
+  const id = accessoryDraft.value.chest?.id;
+  if (id === 'bow' || id === 'scarf') return CAT_ACCESSORY_COLORS[id];
+  return [];
+});
+function selectAccessory(slot: CatAccessorySlot, id?: CatAccessoryId) {
+  if (wardrobeAction.value) return;
+  preferredAccessory.value = id;
+  if (accessoryDraft.value[slot]?.id === id) return;
+  const next = { ...accessoryDraft.value };
+  if (!id) {
+    delete next[slot];
+  } else {
+    const saved = savedAccessories.value[slot];
+    next[slot] = saved?.id === id ? { ...saved } : { id };
   }
-  const otherSlots = CAT_ACCESSORY_SAMPLES.filter(
-    ({ id, slot }) =>
-      slot !== sample.slot && accessorySamples.value.includes(id),
-  );
-  accessorySamples.value = [...otherSlots.map(({ id }) => id), sample.id];
+  accessoryDraft.value = next;
 }
+function selectAccessoryColor(color: CatAccessoryColor) {
+  const choice = accessoryDraft.value.chest;
+  if (!wardrobeAction.value && choice)
+    accessoryDraft.value = {
+      ...accessoryDraft.value,
+      chest: { ...choice, color },
+    };
+}
+function hasAccessory(id: CatAccessoryId) {
+  return (
+    room.points?.unlockedAccessories?.includes(id) ||
+    Object.values(savedAccessories.value).some((item) => item?.id === id)
+  );
+}
+const lockedAccessory = computed(() => {
+  const locked = CAT_ACCESSORY_SAMPLES.filter(
+    ({ id, slot }) =>
+      accessoryDraft.value[slot]?.id === id && !hasAccessory(id),
+  );
+  return locked.find(({ id }) => id === preferredAccessory.value) ?? locked[0];
+});
+const accessoryPreview = computed(() =>
+  showingAccessories.value ? previewPose.value : undefined,
+);
 
 function hasPreset(pattern: CatPresetPattern) {
   return (
@@ -83,33 +122,41 @@ function hasPreset(pattern: CatPresetPattern) {
     (!room.points && room.guest?.appearance?.pattern === pattern)
   );
 }
-const lockedPreset = computed(() => {
+const wardrobeLock = computed(() => {
+  if (showingAccessories.value) {
+    const accessory = lockedAccessory.value;
+    return accessory ? { accessory, cost: ACCESSORY_UNLOCK_COST } : undefined;
+  }
   const { pattern } = specialAppearance.value;
-  return appearanceTab.value === 'special' && !hasPreset(pattern)
-    ? pattern
+  return wardrobeTab.value === 'special' && !hasPreset(pattern)
+    ? { pattern, cost: COAT_UNLOCK_COST }
     : undefined;
 });
 const missingPoints = computed(() =>
-  room.points ? Math.max(0, COAT_UNLOCK_COST - room.points.balance) : 0,
+  room.points && wardrobeLock.value
+    ? Math.max(0, wardrobeLock.value.cost - room.points.balance)
+    : 0,
 );
-const appearanceAction = shallowRef<{ kind: 'unlock' | 'save' } | null>(null);
-const appearanceActionLabel = computed(() => {
-  if (appearanceAction.value?.kind === 'unlock') return '正在解锁…';
-  if (appearanceAction.value?.kind === 'save') return '正在保存…';
-  return lockedPreset.value ? `解锁 · ${COAT_UNLOCK_COST} 积分` : '保存外观';
+const wardrobeActionLabel = computed(() => {
+  if (wardrobeAction.value?.kind === 'unlock') return '正在解锁…';
+  if (wardrobeAction.value?.kind === 'save') return '正在保存…';
+  const lock = wardrobeLock.value;
+  if (lock?.accessory) return `解锁${lock.accessory.label} · ${lock.cost} 积分`;
+  if (lock) return `解锁 · ${lock.cost} 积分`;
+  return showingAccessories.value ? '保存饰品' : '保存外观';
 });
 const dailyListeningTime = computed(() =>
   Math.min(room.points?.daily.playedMs ?? 0, DAILY_DJ_THRESHOLD_MS),
 );
 const pointsLoading = ref(false);
 const pointsLoadFailed = ref(false);
-const showingSpecial = computed(
-  () => !!opening.value && appearanceTab.value === 'special',
+const showingPoints = computed(
+  () => !!opening.value && wardrobeTab.value !== 'basic',
 );
 let pointsRequest: object | null = null;
 
 async function refreshPoints() {
-  if (document.hidden || !showingSpecial.value || pointsRequest) return;
+  if (document.hidden || !showingPoints.value || pointsRequest) return;
   const pending = {};
   pointsRequest = pending;
   pointsLoading.value = true;
@@ -126,7 +173,7 @@ async function refreshPoints() {
   }
 }
 watch(
-  showingSpecial,
+  showingPoints,
   (showing, _, onCleanup) => {
     if (!showing) return;
     pointsLoadFailed.value = false;
@@ -146,7 +193,6 @@ watch(
 function hideDialog() {
   const focus = opening.value?.returnFocus;
   opening.value = null;
-  accessorySamples.value = [];
   previewPose.value = previewPoses[0];
   error.value = '';
   if (dialog.value?.open) dialog.value.close();
@@ -180,8 +226,7 @@ watch(
       return;
     }
     if (!element || element.open || !room.guest) return;
-    const saved =
-      room.guest.appearance ?? room.me?.appearance ?? DEFAULT_CAT_APPEARANCE;
+    const saved = savedAppearance.value;
     const preset = catAppearancePreset(saved.pattern);
     basicAppearance.value = {
       coat: saved.coat,
@@ -189,7 +234,9 @@ watch(
     };
     specialAppearance.value =
       preset?.appearance ?? CAT_APPEARANCE_PRESETS[0].appearance;
-    appearanceTab.value = preset ? 'special' : 'basic';
+    accessoryDraft.value = { ...savedAccessories.value };
+    preferredAccessory.value = undefined;
+    wardrobeTab.value = preset ? 'special' : 'basic';
     const returnFocus =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -202,41 +249,52 @@ watch(
 watch(
   [() => room.guest?.id, () => room.roomGeneration],
   () => {
-    appearanceAction.value = null;
+    wardrobeAction.value = null;
     if (props.open) closeWardrobe();
   },
   { flush: 'sync' },
 );
 onBeforeUnmount(hideDialog);
 
-async function applyAppearance() {
+async function applyWardrobe() {
   const panel = opening.value;
-  if (!panel || !props.open || appearanceAction.value) return;
-  const pattern = lockedPreset.value;
-  if (pattern && (!room.points || missingPoints.value)) return;
+  if (!panel || !props.open || wardrobeAction.value) return;
+  const lock = wardrobeLock.value;
+  if (lock && (!room.points || missingPoints.value)) return;
   const currentPanel = () => opening.value === panel && props.open;
-  const action = { kind: pattern ? 'unlock' : 'save' } as const;
-  appearanceAction.value = action;
+  const action = { kind: lock ? 'unlock' : 'save' } as const;
+  const isAccessory = showingAccessories.value;
+  wardrobeAction.value = action;
   error.value = '';
   try {
-    if (pattern) await room.unlockAppearance(pattern);
-    else if (
-      (await room.setAppearance({ ...appearanceDraft.value })) &&
-      currentPanel()
-    )
-      closeWardrobe();
+    if (lock?.accessory) {
+      await room.unlockAccessory(lock.accessory.id);
+    } else if (lock?.pattern) {
+      await room.unlockAppearance(lock.pattern);
+    } else {
+      const saved = isAccessory
+        ? await room.setAccessories({ ...accessoryDraft.value })
+        : await room.setAppearance({ ...previewAppearance.value });
+      if (saved) {
+        if (currentPanel()) closeWardrobe();
+        else if (isAccessory && opening.value)
+          accessoryDraft.value = { ...savedAccessories.value };
+      }
+    }
   } catch (cause) {
     if (currentPanel()) {
       error.value =
         cause instanceof Error
           ? cause.message
-          : pattern
-            ? '解锁花色失败，请重试'
-            : '保存外观失败，请重试';
-      if (pattern) void refreshPoints();
+          : lock
+            ? '解锁失败，请重试'
+            : isAccessory
+              ? '保存饰品失败，请重试'
+              : '保存外观失败，请重试';
+      if (lock) void refreshPoints();
     }
   } finally {
-    if (appearanceAction.value === action) appearanceAction.value = null;
+    if (wardrobeAction.value === action) wardrobeAction.value = null;
   }
 }
 function time(ms: number) {
@@ -272,85 +330,72 @@ function time(ms: number) {
       <form
         id="cat-wardrobe-form"
         class="cat-wardrobe"
-        @submit.prevent="applyAppearance"
+        @submit.prevent="applyWardrobe"
       >
         <div
           class="segmented-tabs wardrobe-tabs"
           role="group"
-          aria-label="花色类型"
+          aria-label="小猫衣柜"
         >
           <button
             type="button"
-            :class="{ selected: appearanceTab === 'basic' }"
-            :aria-pressed="appearanceTab === 'basic'"
-            :disabled="!!appearanceAction"
-            @click="appearanceTab = 'basic'"
+            :class="{ selected: wardrobeTab === 'basic' }"
+            :aria-pressed="wardrobeTab === 'basic'"
+            :disabled="!!wardrobeAction"
+            @click="wardrobeTab = 'basic'"
           >
             普通花色
           </button>
           <button
             type="button"
-            :class="{ selected: appearanceTab === 'special' }"
-            :aria-pressed="appearanceTab === 'special'"
-            :disabled="!!appearanceAction"
-            @click="appearanceTab = 'special'"
+            :class="{ selected: wardrobeTab === 'special' }"
+            :aria-pressed="wardrobeTab === 'special'"
+            :disabled="!!wardrobeAction"
+            @click="wardrobeTab = 'special'"
           >
             特殊花色
+          </button>
+          <button
+            type="button"
+            :class="{ selected: showingAccessories }"
+            :aria-pressed="showingAccessories"
+            :disabled="!!wardrobeAction"
+            @click="wardrobeTab = 'accessories'"
+          >
+            饰品
           </button>
         </div>
         <div class="cat-preview-card">
           <CatPreview
-            :appearance="appearanceDraft"
+            :appearance="previewAppearance"
+            :accessories="
+              showingAccessories ? accessoryDraft : savedAccessories
+            "
             :accessory-preview="accessoryPreview"
           />
         </div>
-        <div class="accessory-preview">
-          <div
-            v-for="group in accessoryGroups"
-            :key="group.slot"
-            class="accessory-row"
-            role="group"
-            :aria-label="`试戴${group.label}饰品`"
+        <div
+          v-if="showingAccessories"
+          class="segmented-tabs accessory-poses"
+          role="group"
+          aria-label="试戴姿势"
+        >
+          <button
+            v-for="pose in previewPoses"
+            :key="pose.label"
+            type="button"
+            :class="{ selected: previewPose === pose }"
+            :aria-pressed="previewPose === pose"
+            @click="previewPose = pose"
           >
-            <span aria-hidden="true">{{ group.label }}</span>
-            <div class="segmented-tabs accessory-options">
-              <button
-                v-for="sample in group.samples"
-                :key="sample.id"
-                type="button"
-                :class="{ selected: accessorySamples.includes(sample.id) }"
-                :aria-pressed="accessorySamples.includes(sample.id)"
-                @click="toggleAccessory(sample)"
-              >
-                {{ sample.label }}
-              </button>
-            </div>
-          </div>
-          <template v-if="accessoryPreview">
-            <span class="accessory-preview-hint">样品仅供预览</span>
-            <div
-              class="segmented-tabs accessory-poses"
-              role="group"
-              aria-label="试戴姿势"
-            >
-              <button
-                v-for="pose in previewPoses"
-                :key="pose.label"
-                type="button"
-                :class="{ selected: previewPose === pose }"
-                :aria-pressed="previewPose === pose"
-                @click="previewPose = pose"
-              >
-                {{ pose.label }}
-              </button>
-            </div>
-          </template>
+            {{ pose.label }}
+          </button>
         </div>
         <p v-if="room.pointsReward" class="wardrobe-reward" role="status">
           {{ room.pointsReward }}
         </p>
         <div
-          v-if="appearanceTab === 'special'"
+          v-if="wardrobeTab !== 'basic'"
           class="wardrobe-points"
           aria-label="积分"
         >
@@ -387,10 +432,87 @@ function time(ms: number) {
             </button>
           </p>
         </div>
-        <fieldset
-          v-if="appearanceTab === 'basic'"
-          :disabled="!!appearanceAction"
-        >
+        <template v-if="showingAccessories">
+          <template v-for="group in accessoryGroups" :key="group.slot">
+            <fieldset class="accessory-options" :disabled="!!wardrobeAction">
+              <legend>{{ group.label }}</legend>
+              <div class="cat-options">
+                <label
+                  class="cat-option"
+                  :class="{ selected: !accessoryDraft[group.slot] }"
+                >
+                  <input
+                    type="radio"
+                    :name="`cat-accessory-${group.slot}`"
+                    value=""
+                    :checked="!accessoryDraft[group.slot]"
+                    @change="selectAccessory(group.slot)"
+                  />
+                  不佩戴
+                </label>
+                <label
+                  v-for="sample in group.samples"
+                  :key="sample.id"
+                  class="cat-option"
+                  :class="{
+                    selected: accessoryDraft[group.slot]?.id === sample.id,
+                  }"
+                >
+                  <input
+                    type="radio"
+                    :name="`cat-accessory-${group.slot}`"
+                    :value="sample.id"
+                    :checked="accessoryDraft[group.slot]?.id === sample.id"
+                    @click="selectAccessory(group.slot, sample.id)"
+                    @change="selectAccessory(group.slot, sample.id)"
+                  />
+                  {{ sample.label }}
+                  <span v-if="!hasAccessory(sample.id)" class="cat-option-cost">
+                    <LockKeyhole aria-hidden="true" />{{
+                      ACCESSORY_UNLOCK_COST
+                    }}
+                    积分
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+            <fieldset
+              v-if="group.slot === 'chest' && accessoryColors.length"
+              class="accessory-options accessory-colors"
+              :disabled="!!wardrobeAction"
+            >
+              <legend>配色</legend>
+              <div class="cat-options">
+                <label
+                  v-for="color in accessoryColors"
+                  :key="color.id"
+                  class="cat-option"
+                  :class="{
+                    selected:
+                      (accessoryDraft.chest?.color ?? 'default') === color.id,
+                  }"
+                >
+                  <input
+                    type="radio"
+                    name="cat-accessory-color"
+                    :value="color.id"
+                    :checked="
+                      (accessoryDraft.chest?.color ?? 'default') === color.id
+                    "
+                    @change="selectAccessoryColor(color.id)"
+                  />
+                  <span
+                    class="coat-swatch"
+                    :style="{ backgroundColor: color.swatch }"
+                    aria-hidden="true"
+                  />
+                  {{ color.label }}
+                </label>
+              </div>
+            </fieldset>
+          </template>
+        </template>
+        <fieldset v-if="wardrobeTab === 'basic'" :disabled="!!wardrobeAction">
           <legend>毛色</legend>
           <div class="cat-options">
             <label
@@ -415,8 +537,8 @@ function time(ms: number) {
           </div>
         </fieldset>
         <fieldset
-          v-else
-          :disabled="!!appearanceAction"
+          v-if="wardrobeTab === 'special'"
+          :disabled="!!wardrobeAction"
           aria-label="特殊花色预设"
         >
           <div class="cat-options">
@@ -454,10 +576,7 @@ function time(ms: number) {
             </label>
           </div>
         </fieldset>
-        <fieldset
-          v-if="appearanceTab === 'basic'"
-          :disabled="!!appearanceAction"
-        >
+        <fieldset v-if="wardrobeTab === 'basic'" :disabled="!!wardrobeAction">
           <legend>花纹</legend>
           <div class="cat-options">
             <label
@@ -476,7 +595,7 @@ function time(ms: number) {
             </label>
           </div>
         </fieldset>
-        <p v-if="!lockedPreset" class="library-hint">
+        <p v-if="!wardrobeLock" class="library-hint">
           保存后房间里的大家都能看到，下次回来也会保留。
         </p>
       </form>
@@ -488,7 +607,7 @@ function time(ms: number) {
       </button>
     </p>
     <footer class="wardrobe-footer">
-      <p v-if="lockedPreset && missingPoints" class="library-hint">
+      <p v-if="wardrobeLock && missingPoints" class="library-hint">
         解锁还差 {{ missingPoints }} 积分。
       </p>
       <div class="confirm-actions">
@@ -498,11 +617,11 @@ function time(ms: number) {
           type="submit"
           form="cat-wardrobe-form"
           :disabled="
-            !!appearanceAction ||
-            !!(lockedPreset && (!room.points || missingPoints))
+            !!wardrobeAction ||
+            !!(wardrobeLock && (!room.points || missingPoints))
           "
         >
-          {{ appearanceActionLabel }}
+          {{ wardrobeActionLabel }}
         </button>
       </div>
     </footer>
@@ -513,35 +632,23 @@ function time(ms: number) {
 .wardrobe-over-account::backdrop {
   backdrop-filter: none;
 }
-.accessory-preview {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
+.cat-wardrobe .accessory-options {
+  margin-block: 16px;
 }
-.accessory-row {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: start;
-  gap: 8px;
+.accessory-options .cat-option {
+  padding: 7px 9px;
 }
-.accessory-row > span {
-  padding-top: 14px;
+.accessory-colors legend {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
-.accessory-options {
-  grid-auto-flow: row;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 64px), 1fr));
-}
-.accessory-options button {
-  padding-inline: 4px;
-}
-.accessory-preview-hint {
-  color: var(--muted);
-  font-size: 12px;
+.accessory-colors .coat-swatch {
+  width: 16px;
+  height: 16px;
 }
 .accessory-poses {
   width: 100%;
+  margin-top: 12px;
   grid-auto-flow: row;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

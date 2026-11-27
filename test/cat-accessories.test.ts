@@ -1,10 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  CAT_ACCESSORY_SAMPLES,
+  createAccessorySheet,
   drawCatAccessory,
-  type CatAccessorySample,
 } from '../src/client/cat-accessories';
+import {
+  CAT_APPEARANCE_HEIGHT,
+  CAT_APPEARANCE_WIDTH,
+  CAT_PACKED_ROWS,
+} from '../src/client/cat-appearance';
+import {
+  CAT_ACCESSORY_COLORS,
+  CAT_ACCESSORY_SAMPLES,
+  catAccessoriesSchema,
+  type CatAccessoryColor,
+  type CatAccessoryId,
+} from '../src/shared/accessories';
 import {
   CAT_ANIMATIONS,
   CAT_CELL_SIZE,
@@ -25,24 +36,30 @@ const frames = (Object.keys(CAT_ANIMATIONS) as CatAnimation[]).flatMap(
 );
 
 function pixelsFor(
-  sample: CatAccessorySample,
+  sample: CatAccessoryId,
   animation: CatAnimation,
   column: number,
+  color?: CatAccessoryColor,
 ) {
-  const pixels: { x: number; y: number }[] = [];
+  const pixels: { x: number; y: number; color: string }[] = [];
+  let paintedColor = '';
   drawCatAccessory(
     {
-      fillStyle: '',
+      set fillStyle(value: CanvasRenderingContext2D['fillStyle']) {
+        assert.ok(typeof value === 'string');
+        paintedColor = value;
+      },
       fillRect(x, y, width, height) {
         assert.equal(width, 1);
         assert.equal(height, 1);
         assert.ok(x >= 0 && x < CAT_CELL_SIZE && y >= 0 && y < CAT_CELL_SIZE);
-        pixels.push({ x, y });
+        pixels.push({ x, y, color: paintedColor });
       },
     },
     sample,
     animation,
     column,
+    color,
   );
   return pixels;
 }
@@ -72,6 +89,92 @@ test('the wardrobe offers the expected samples in each slot', () => {
     'tail-flower',
     'tail-ring',
   ]);
+});
+
+test('only catalogued accessories and their compatible colors fit a slot', () => {
+  const worn = {
+    head: { id: 'daisy' },
+    chest: { id: 'bow', color: 'rose' },
+    tail: { id: 'tail-ring' },
+  };
+  assert.deepEqual(catAccessoriesSchema.parse(worn), worn);
+  for (const invalid of [
+    { head: { id: 'bow' } },
+    { chest: { id: 'bow', color: 'blue' } },
+    { chest: { id: 'scarf', color: 'rose' } },
+    { head: { id: 'beret', color: 'sage' } },
+    { tail: { id: 'ribbon', color: 'default', price: 0 } },
+    { feet: { id: 'ribbon' } },
+  ])
+    assert.equal(catAccessoriesSchema.safeParse(invalid).success, false);
+});
+
+for (const id of ['bow', 'scarf'] as const) {
+  test(`${id} colorways change the palette and retain the pose-specific pixels`, () => {
+    for (const { animation, column, label } of frames) {
+      const base = pixelsFor(id, animation, column);
+      const coordinates = base.map(({ x, y }) => [x, y]);
+      for (const { id: color, swatch } of CAT_ACCESSORY_COLORS[id]) {
+        const variant = pixelsFor(id, animation, column, color);
+        assert.deepEqual(
+          variant.map(({ x, y }) => [x, y]),
+          coordinates,
+          label,
+        );
+        if (color !== 'default' && base.length)
+          assert.notDeepEqual(variant, base, label);
+        if (animation === 'idle')
+          assert.ok(
+            variant.some((pixel) => pixel.color === swatch),
+            label,
+          );
+      }
+    }
+  });
+}
+
+test('room accessory atlases use the same colored frames as the wardrobe', (context) => {
+  const pixels: { x: number; y: number; color: string }[] = [];
+  let originX = 0;
+  let originY = 0;
+  const paint = {
+    fillStyle: '',
+    setTransform(
+      _a: number,
+      _b: number,
+      _c: number,
+      _d: number,
+      x: number,
+      y: number,
+    ) {
+      originX = x;
+      originY = y;
+    },
+    fillRect(x: number, y: number) {
+      pixels.push({ x: x + originX, y: y + originY, color: this.fillStyle });
+    },
+  };
+  const canvas = { width: 0, height: 0, getContext: () => paint };
+  const existing = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: { createElement: () => canvas },
+  });
+  context.after(() => {
+    if (existing) Object.defineProperty(globalThis, 'document', existing);
+    else Reflect.deleteProperty(globalThis, 'document');
+  });
+  assert.equal(createAccessorySheet({ id: 'scarf', color: 'blue' }), canvas);
+  assert.equal(canvas.width, CAT_APPEARANCE_WIDTH);
+  assert.equal(canvas.height, CAT_APPEARANCE_HEIGHT);
+  const expected = frames.flatMap(({ animation, column }) =>
+    pixelsFor('scarf', animation, column, 'blue').map(({ x, y, color }) => ({
+      x: x + column * CAT_CELL_SIZE,
+      y: y + CAT_PACKED_ROWS[animation] * CAT_CELL_SIZE,
+      color,
+    })),
+  );
+  assert.deepEqual(pixels, expected);
 });
 
 for (const { id, slot } of CAT_ACCESSORY_SAMPLES) {

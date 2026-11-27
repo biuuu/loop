@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { CatAppearance } from './appearance';
+import type { CatAccessories } from './accessories';
 import type { PointsAwarded } from './points';
 
 export type EmoteId = string;
@@ -105,6 +106,7 @@ export interface Guest {
   nickname: string;
   // Older snapshots without an appearance render with the default orange coat.
   appearance?: CatAppearance;
+  accessories?: CatAccessories;
 }
 export interface AccountProfile extends Guest {
   nicknameChangeAvailableAt?: number;

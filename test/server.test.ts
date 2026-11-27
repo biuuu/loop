@@ -76,7 +76,7 @@ test('guest appearance has schema defaults, checks enums and persists edits thro
       .run('legacy', 'initial', 'account', INITIAL_POINTS);
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 28);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 29);
     assert.deepEqual(
       db.guest('legacy-token')!.appearance,
       DEFAULT_CAT_APPEARANCE,
@@ -149,7 +149,7 @@ test('all black and white coat variants preserve identities and playlists across
       .all();
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 28);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 29);
     assert.equal(db.sql.pragma('foreign_keys', { simple: true }), 1);
     assert.deepEqual(
       db.sql.prepare('SELECT * FROM guests ORDER BY id').all(),
@@ -381,7 +381,7 @@ test('tokens are hashed and identities and playlists survive reopening', () => {
     );
     db.close();
     db = new Store(path);
-    assert.equal(db.sql.pragma('user_version', { simple: true }), 28);
+    assert.equal(db.sql.pragma('user_version', { simple: true }), 29);
     assert.deepEqual(db.guest(a.token), a.guest);
     assert.equal(db.firstTrack(a.guest.id)!.id, '1');
     assert.equal(db.playlist(a.guest.id).revision, 4);
@@ -456,7 +456,7 @@ test('startup rejects unversioned data and unsupported schema versions without m
       [0, /Unversioned database is not empty/i],
       [1, /Unsupported database version 1; first supported version is 11/i],
       [10, /Unsupported database version 10; first supported version is 11/i],
-      [29, /Database version 29 is newer than supported version 28/i],
+      [30, /Database version 30 is newer than supported version 29/i],
     ] as const) {
       const path = join(root, `version-${version}.sqlite`);
       const fixture = new Database(path);

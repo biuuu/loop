@@ -36,6 +36,7 @@ export function publicGuest(guest: Guest): Guest {
     id: guest.id,
     nickname: guest.nickname,
     ...(guest.appearance ? { appearance: guest.appearance } : {}),
+    ...(guest.accessories ? { accessories: guest.accessories } : {}),
   };
 }
 export class Auth {

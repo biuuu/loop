@@ -25,6 +25,13 @@ import {
   type CatAppearance,
   type CatPresetPattern,
 } from '../shared/appearance.js';
+import {
+  ACCESSORY_UNLOCK_COST,
+  catAccessoriesSchema,
+  catAccessoryIdSchema,
+  type CatAccessories,
+  type CatAccessoryId,
+} from '../shared/accessories.js';
 import { ENVIRONMENTS } from '../shared/environments.js';
 import {
   COAT_UNLOCK_COST,
@@ -42,6 +49,7 @@ import {
 
 const BASELINE_VERSION = 11;
 const POINTS_SCHEMA_VERSION = 26;
+const ACCESSORY_SCHEMA_VERSION = 29;
 const DAY_MS = 24 * 60 * 60_000;
 const BEIJING_UTC_OFFSET_MS = 8 * 60 * 60_000;
 const DAILY_DJ_REWARD_AT_MS = DAILY_DJ_THRESHOLD_MS + 1;
@@ -71,15 +79,29 @@ type GuestRow = {
   nickname: string;
   coat: CatAppearance['coat'];
   pattern: CatAppearance['pattern'];
+  accessories_json: string | null;
 };
 type PlaylistSettings = Pick<PlaylistState, 'slot' | 'revision'>;
 type DailyDjRow = { playedMs: number; creditedThroughMs: number };
 type PlaybackInterval = { from: number; to: number };
-const readGuest = ({ id, nickname, coat, pattern }: GuestRow): Guest => ({
+function readGuest({
   id,
   nickname,
-  appearance: { coat, pattern },
-});
+  coat,
+  pattern,
+  accessories_json,
+}: GuestRow): Guest {
+  return {
+    id,
+    nickname,
+    appearance: { coat, pattern },
+    ...(accessories_json === null
+      ? {}
+      : {
+          accessories: catAccessoriesSchema.parse(JSON.parse(accessories_json)),
+        }),
+  };
+}
 
 function beijingDay(now: number) {
   const localMidnight =
@@ -107,6 +129,11 @@ export class AppearanceLockedError extends Error {
     super('请先解锁这款花色');
   }
 }
+export class AccessoryLockedError extends Error {
+  constructor() {
+    super('请先解锁这件饰品');
+  }
+}
 export class InsufficientPointsError extends Error {
   constructor() {
     super('积分不足');
@@ -116,6 +143,8 @@ export class Store {
   readonly sql: Database.Database;
   private readonly guestAppearances: readonly CatAppearance[];
   private readonly pointsEnabled: boolean;
+  private readonly accessoriesEnabled: boolean;
+  private readonly guestColumns: string;
   private readonly pendingPlayback = new Map<string, PlaybackInterval[]>();
   constructor(
     path = process.env.DATABASE_PATH || 'data/loop.sqlite',
@@ -141,6 +170,12 @@ export class Store {
       }
       const latest = migrations.at(-1)!.version;
       this.pointsEnabled = latest >= POINTS_SCHEMA_VERSION;
+      this.accessoriesEnabled = latest >= ACCESSORY_SCHEMA_VERSION;
+      this.guestColumns = `g.id,g.nickname,g.coat,g.pattern,${
+        this.accessoriesEnabled
+          ? 'g.accessories_json'
+          : 'NULL AS accessories_json'
+      }`;
       this.guestAppearances = this.pointsEnabled
         ? MIXABLE_CAT_APPEARANCES
         : [
@@ -275,14 +310,14 @@ export class Store {
     const hashed = hashToken(token);
     const row = this.sql
       .prepare(
-        `SELECT g.id,g.nickname,g.coat,g.pattern FROM guests g
+        `SELECT ${this.guestColumns} FROM guests g
       JOIN sessions s ON s.user_id=g.id WHERE s.token_hash=? AND s.expires_at>?`,
       )
       .get(hashed, Date.now()) as GuestRow | undefined;
     if (row) return readGuest(row);
     // Migrated, pre-session cookies remain usable until logout or first binding.
     const legacy = this.sql
-      .prepare('SELECT id,nickname,coat,pattern FROM guests WHERE token_hash=?')
+      .prepare(`SELECT ${this.guestColumns} FROM guests g WHERE g.token_hash=?`)
       .get(hashed) as GuestRow | undefined;
     return legacy ? readGuest(legacy) : null;
   }
@@ -318,7 +353,7 @@ export class Store {
   }
   guestById(id: string): Guest {
     const row = this.sql
-      .prepare('SELECT id,nickname,coat,pattern FROM guests WHERE id=?')
+      .prepare(`SELECT ${this.guestColumns} FROM guests g WHERE g.id=?`)
       .get(id) as GuestRow | undefined;
     if (!row) throw new Error('游客不存在');
     return readGuest(row);
@@ -361,6 +396,46 @@ export class Store {
         this.sql
           .prepare('INSERT INTO coat_unlocks (guest_id,pattern) VALUES (?,?)')
           .run(id, pattern);
+        return this.readPoints(id, date);
+      })
+      .immediate();
+  }
+  updateAccessories(id: string, input: CatAccessories): Guest {
+    const accessories = catAccessoriesSchema.parse(input);
+    return this.sql
+      .transaction(() => {
+        const owned = this.unlockedAccessories(id);
+        for (const accessory of Object.values(accessories)) {
+          if (accessory && !owned.includes(accessory.id))
+            throw new AccessoryLockedError();
+        }
+        this.sql
+          .prepare('UPDATE guests SET accessories_json=? WHERE id=?')
+          .run(JSON.stringify(accessories), id);
+        return this.guestById(id);
+      })
+      .immediate();
+  }
+  unlockAccessory(id: string, input: CatAccessoryId): PointsState {
+    const accessory = catAccessoryIdSchema.parse(input);
+    return this.sql
+      .transaction(() => {
+        const { date } = beijingDay(Date.now());
+        if (this.unlockedAccessories(id).includes(accessory))
+          return this.readPoints(id, date);
+        if (this.pointsBalance(id).balance < ACCESSORY_UNLOCK_COST)
+          throw new InsufficientPointsError();
+        this.insertPointsEntry(
+          id,
+          'accessory_unlock',
+          accessory,
+          -ACCESSORY_UNLOCK_COST,
+        );
+        this.sql
+          .prepare(
+            'INSERT INTO accessory_unlocks (guest_id,accessory_id) VALUES (?,?)',
+          )
+          .run(id, accessory);
         return this.readPoints(id, date);
       })
       .immediate();
@@ -477,6 +552,15 @@ export class Store {
         .get(id, pattern),
     );
   }
+  private unlockedAccessories(id: string): CatAccessoryId[] {
+    if (!this.accessoriesEnabled) return [];
+    return this.sql
+      .prepare(
+        'SELECT accessory_id FROM accessory_unlocks WHERE guest_id=? ORDER BY accessory_id',
+      )
+      .pluck()
+      .all(id) as CatAccessoryId[];
+  }
   private dailyDjTime(id: string, date: string) {
     return this.sql
       .prepare(
@@ -494,9 +578,11 @@ export class Store {
       .pluck()
       .all(id) as CatPresetPattern[];
     const playedMs = this.dailyDjTime(id, date)?.playedMs ?? 0;
+    const unlockedAccessories = this.unlockedAccessories(id);
     return {
       ...balance,
       unlockedPresets,
+      ...(unlockedAccessories.length ? { unlockedAccessories } : {}),
       daily: { date, playedMs, awarded: playedMs === DAILY_DJ_REWARD_AT_MS },
       ...(this.options.freeSpecialCoats ? { freeSpecialCoats: true } : {}),
     };

@@ -9,6 +9,7 @@ import { createTrackVoteEffects } from './track-reaction-effects';
 import { emoteCatalog, emoteUrl, loadEmoteCatalog } from './emote-catalog';
 import { createPlaylistReceiver, swapPlaylistTracks } from './playlist-view';
 import type { Direction } from './keyboard-movement';
+import type { CatAccessories, CatAccessoryId } from '../shared/accessories';
 import type { CatAppearance, CatPresetPattern } from '../shared/appearance';
 import type { PointsAwarded, PointsState } from '../shared/points';
 import { stageSeatXs } from '../shared/contracts';
@@ -324,6 +325,7 @@ export const useRoom = defineStore('room', () => {
           ...guest.value,
           nickname: own.nickname,
           appearance: own.appearance ?? guest.value.appearance,
+          accessories: own.accessories ?? guest.value.accessories,
         };
     }
   }
@@ -1003,7 +1005,7 @@ export const useRoom = defineStore('room', () => {
     applyPlaylist(result, context);
     return result;
   }
-  function appearanceContext() {
+  function wardrobeContext() {
     const auth = authRequest;
     const generation = roomGeneration.value;
     const id = guest.value?.id;
@@ -1014,7 +1016,7 @@ export const useRoom = defineStore('room', () => {
       generation === roomGeneration.value;
   }
   async function updatePoints(path: string, init: RequestInit) {
-    const isCurrent = appearanceContext();
+    const isCurrent = wardrobeContext();
     if (!isCurrent()) return false;
     try {
       const state = await request<PointsState>(path, init);
@@ -1036,22 +1038,39 @@ export const useRoom = defineStore('room', () => {
     });
     return updated && !!points.value?.unlockedPresets.includes(pattern);
   }
-  async function setAppearance(appearance: CatAppearance) {
-    const isCurrent = appearanceContext();
+  async function unlockAccessory(id: CatAccessoryId) {
+    const updated = await updatePoints('/api/me/accessories/unlocks', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    });
+    return updated && !!points.value?.unlockedAccessories?.includes(id);
+  }
+  async function updateCatProfile<Key extends 'appearance' | 'accessories'>(
+    key: Key,
+    value: NonNullable<AccountProfile[Key]>,
+    fallback?: AccountProfile[Key],
+  ) {
+    const isCurrent = wardrobeContext();
     if (!isCurrent()) return false;
     try {
       const { guest: saved } = await request<{ guest: AccountProfile }>(
-        '/api/me/appearance',
-        { method: 'PATCH', body: JSON.stringify(appearance) },
+        `/api/me/${key}`,
+        { method: 'PATCH', body: JSON.stringify(value) },
       );
       if (!isCurrent() || !guest.value || guest.value.id !== saved.id)
         return false;
-      guest.value = { ...guest.value, appearance: saved.appearance };
+      guest.value = { ...guest.value, [key]: saved[key] ?? fallback };
       return true;
     } catch (cause) {
       if (!isCurrent()) return false;
       throw cause;
     }
+  }
+  function setAppearance(appearance: CatAppearance) {
+    return updateCatProfile('appearance', appearance);
+  }
+  function setAccessories(accessories: CatAccessories) {
+    return updateCatProfile('accessories', accessories, {});
   }
   async function setNickname(nickname: string): Promise<boolean> {
     const version = authRequest;
@@ -1251,10 +1270,12 @@ export const useRoom = defineStore('room', () => {
     enter,
     enterFromNetease,
     setAppearance,
+    setAccessories,
     points,
     pointsReward,
     loadPoints,
     unlockAppearance,
+    unlockAccessory,
     setNickname,
     connect,
     cancelPendingEntry,

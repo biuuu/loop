@@ -10,9 +10,10 @@ import {
 import { CAT_PACKED_ROWS, createAppearanceSheet } from './cat-appearance';
 import {
   CAT_ACCESSORY_SAMPLES,
-  drawCatAccessory,
-  type CatAccessorySample,
-} from './cat-accessories';
+  equippedAccessoryChoices,
+  type CatAccessories,
+} from '../shared/accessories';
+import { drawCatAccessory } from './cat-accessories';
 import {
   CAT_ANIMATIONS,
   CAT_CELL_SIZE,
@@ -25,10 +26,10 @@ import {
 const props = defineProps<{
   appearance: CatAppearance;
   portrait?: boolean;
+  accessories?: CatAccessories;
   accessoryPreview?: {
     animation: CatAnimation;
     flipX: boolean;
-    samples: readonly CatAccessorySample[];
   };
 }>();
 const canvas = ref<HTMLCanvasElement>();
@@ -39,9 +40,12 @@ const label = computed(() => {
   const coat =
     preset?.label ??
     `${CAT_COATS.find((coat) => coat.id === props.appearance.coat)?.label}，${CAT_PATTERNS.find((pattern) => pattern.id === props.appearance.pattern)?.label}`;
-  const names = CAT_ACCESSORY_SAMPLES.filter(({ id }) =>
-    props.accessoryPreview?.samples.includes(id),
-  ).map(({ label }) => label);
+  const names = props.portrait
+    ? []
+    : equippedAccessoryChoices(props.accessories).map(
+        ({ id }) =>
+          CAT_ACCESSORY_SAMPLES.find((sample) => sample.id === id)?.label,
+      );
   return [coat, ...names].join('，');
 });
 watch(
@@ -70,14 +74,25 @@ watch(
   { flush: 'post', immediate: true },
 );
 watch(
-  [canvas, sheet, () => props.portrait, () => props.accessoryPreview],
-  ([target, appearance, portrait, accessoryPreview], _, onCleanup) => {
+  [
+    canvas,
+    sheet,
+    () => props.portrait,
+    () => props.accessoryPreview,
+    () => props.accessories,
+  ],
+  (
+    [target, appearance, portrait, accessoryPreview, accessories],
+    _,
+    onCleanup,
+  ) => {
     if (!target || !appearance) return;
     const context = target.getContext('2d');
     unavailable.value = !context;
     if (!context) return;
     context.imageSmoothingEnabled = false;
     const pose = portrait ? undefined : accessoryPreview;
+    const choices = portrait ? [] : equippedAccessoryChoices(accessories);
     const animation = pose?.animation ?? 'idle';
     const offsetY = CAT_ANIMATIONS.idle.footY - CAT_ANIMATIONS[animation].footY;
     // The header portrait samples the idle head directly.
@@ -100,10 +115,8 @@ watch(
         CAT_CELL_SIZE,
         CAT_CELL_SIZE,
       );
-      for (const { id } of CAT_ACCESSORY_SAMPLES) {
-        if (pose?.samples.includes(id))
-          drawCatAccessory(context, id, animation, column);
-      }
+      for (const { id, color } of choices)
+        drawCatAccessory(context, id, animation, column, color);
       context.restore();
     };
     draw(pose ? 0 : CAT_IDLE_UP_COLUMN);

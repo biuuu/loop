@@ -28,6 +28,7 @@ import {
   type TrackReaction,
 } from '../shared/contracts.js';
 import type { PointsAwarded } from '../shared/points.js';
+import type { CatAccessories } from '../shared/accessories.js';
 import { catSleepDelay } from '../shared/cat-activity.js';
 import type { Store } from './db.js';
 import { EmoteCatalog } from './emote-catalog.js';
@@ -477,8 +478,10 @@ export class Room {
     clearTimeout(this.grace.get(guest.id)?.timer);
     this.grace.delete(guest.id);
     const existing = this.users.get(guest.id);
-    if (existing) Object.assign(existing, guest, { connected: true });
-    else {
+    if (existing) {
+      Object.assign(existing, guest, { connected: true });
+      if (guest.accessories === undefined) delete existing.accessories;
+    } else {
       const { x, y } = this.spawnPosition();
       this.users.set(guest.id, {
         ...guest,
@@ -507,6 +510,12 @@ export class Room {
     const user = this.users.get(id);
     if (this.closed || !user) return;
     user.appearance = catAppearanceSchema.parse(appearance);
+    this.publish();
+  }
+  updateAccessories(id: string, accessories: CatAccessories) {
+    const user = this.users.get(id);
+    if (this.closed || !user) return;
+    user.accessories = accessories;
     this.publish();
   }
   updateNickname(id: string, nickname: string) {

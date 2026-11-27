@@ -1,20 +1,15 @@
-import { CAT_ANIMATIONS, type CatAnimation } from './cat-sprite';
+import type {
+  CatAccessoryChoice,
+  CatAccessoryColor,
+  CatAccessoryId,
+} from '../shared/accessories';
+import { CAT_ANIMATIONS, CAT_CELL_SIZE, type CatAnimation } from './cat-sprite';
+import {
+  CAT_APPEARANCE_HEIGHT,
+  CAT_APPEARANCE_WIDTH,
+  CAT_PACKED_ROWS,
+} from './cat-appearance';
 
-export const CAT_ACCESSORY_SAMPLES = [
-  { id: 'beret', label: '小贝雷帽', slot: 'head' },
-  { id: 'daisy', label: '小雏菊', slot: 'head' },
-  { id: 'sprout', label: '双叶芽', slot: 'head' },
-  { id: 'headphones', label: '迷你耳机', slot: 'head' },
-  { id: 'bell', label: '胸前铃铛', slot: 'chest' },
-  { id: 'bow', label: '短蝴蝶结', slot: 'chest' },
-  { id: 'scarf', label: '小领巾', slot: 'chest' },
-  { id: 'star-pin', label: '星形胸针', slot: 'chest' },
-  { id: 'ribbon', label: '尾巴丝带', slot: 'tail' },
-  { id: 'streamer', label: '短飘带', slot: 'tail' },
-  { id: 'tail-ring', label: '珠扣尾环', slot: 'tail' },
-  { id: 'tail-flower', label: '尾尖花结', slot: 'tail' },
-] as const;
-export type CatAccessorySample = (typeof CAT_ACCESSORY_SAMPLES)[number]['id'];
 type Paint = Pick<CanvasRenderingContext2D, 'fillStyle' | 'fillRect'>;
 type TailKnot = readonly [x: number, y: number, sideways?: true];
 
@@ -131,6 +126,33 @@ const chestSamples = {
     sleep: { x: 26, rows: ['.LD', 'DMD'] },
   },
 };
+const chestColorVariants: Partial<
+  Record<
+    CatAccessoryId,
+    Partial<Record<CatAccessoryColor, Record<string, string>>>
+  >
+> = {
+  bow: {
+    rose: {
+      D: '#714457',
+      M: '#b46d84',
+      L: '#f1b5c1',
+      K: '#ffe0a4',
+      J: '#d9af72',
+    },
+    sage: {
+      D: '#405947',
+      M: '#67865f',
+      L: '#b5ce9f',
+      K: '#ffe0a4',
+      J: '#d9af72',
+    },
+  },
+  scarf: {
+    blue: { D: '#3e6278', M: '#5d8da6', L: '#afd4e6' },
+    sage: { D: '#52694a', M: '#7b966a', L: '#c0d6a2' },
+  },
+};
 const ribbonColors = { D: '#8b4c60', L: '#ffd0c2', M: '#d88291' };
 const ribbon = ['D...D', 'DMLMD', '.DLD.', '.D.D.'];
 const ribbonFlat = ['..DD', '.DM.', '..LL', '.DM.', '..DD'];
@@ -230,9 +252,10 @@ const tailTips = {
 
 export function drawCatAccessory(
   context: Paint,
-  sample: CatAccessorySample,
+  sample: CatAccessoryId,
   animation: CatAnimation,
   column: number,
+  color: CatAccessoryColor = 'default',
 ) {
   const head = headY[animation][column]!;
   if (sample === 'beret') {
@@ -291,7 +314,7 @@ export function drawCatAccessory(
     drawPixels(
       context,
       pose.rows,
-      colors,
+      chestColorVariants[sample]?.[color] ?? colors,
       pose.x,
       head + (pose === upright ? 11 : 10),
     );
@@ -330,6 +353,23 @@ export function drawCatAccessory(
     x - 2,
     y - (sideways ? 2 : 1),
   );
+}
+
+/** Use the same frame coordinates as the coat atlas. Each item is cached on its own. */
+export function createAccessorySheet(choice: CatAccessoryChoice) {
+  const canvas = document.createElement('canvas');
+  canvas.width = CAT_APPEARANCE_WIDTH;
+  canvas.height = CAT_APPEARANCE_HEIGHT;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Cat accessory canvas is unavailable');
+  for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
+    const y = CAT_PACKED_ROWS[animation] * CAT_CELL_SIZE;
+    for (let column = 0; column < CAT_ANIMATIONS[animation].frames; column++) {
+      context.setTransform(1, 0, 0, 1, column * CAT_CELL_SIZE, y);
+      drawCatAccessory(context, choice.id, animation, column, choice.color);
+    }
+  }
+  return canvas;
 }
 
 function drawPixels(

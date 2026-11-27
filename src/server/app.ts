@@ -19,6 +19,11 @@ import {
   catAppearanceSchema,
 } from '../shared/appearance.js';
 import {
+  catAccessoriesSchema,
+  catAccessoryIdSchema,
+} from '../shared/accessories.js';
+import {
+  AccessoryLockedError,
   AppearanceLockedError,
   EmptyPlaylistImportError,
   InsufficientPointsError,
@@ -54,6 +59,7 @@ const appearanceUnlockBody = z
     ),
   })
   .strict();
+const accessoryUnlockBody = z.object({ id: catAccessoryIdSchema }).strict();
 const playlistSlotSchema = z.number().int().min(1).max(PLAYLIST_COUNT_LIMIT);
 const playlistTargetQuery = z
   .object({
@@ -184,7 +190,10 @@ export async function createServer(
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof z.ZodError)
       return reply.code(400).send({ error: '请求格式无效' });
-    if (error instanceof AppearanceLockedError)
+    if (
+      error instanceof AppearanceLockedError ||
+      error instanceof AccessoryLockedError
+    )
       return reply.code(403).send({ error: error.message });
     if (error instanceof InsufficientPointsError)
       return reply.code(409).send({ error: error.message });
@@ -343,6 +352,19 @@ export async function createServer(
     const current = identity(request);
     const { pattern } = appearanceUnlockBody.parse(request.body);
     return db.unlockAppearance(current.id, pattern);
+  });
+  app.patch('/api/me/accessories', async (request) => {
+    const current = identity(request);
+    const accessories = catAccessoriesSchema.parse(request.body);
+    const guest = db.updateAccessories(current.id, accessories);
+    registry.updateAccessories(current.id, accessories);
+    return { guest: auth.profile(guest) };
+  });
+  app.post('/api/me/accessories/unlocks', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const current = identity(request);
+    const { id } = accessoryUnlockBody.parse(request.body);
+    return db.unlockAccessory(current.id, id);
   });
   app.post('/api/guest', async (request, reply) => {
     if (!guestLimit.allow(request.ip))

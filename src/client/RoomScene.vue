@@ -30,6 +30,12 @@ import {
   type CatAnimation,
 } from './cat-sprite';
 import { CAT_PACKED_ROWS, createAppearanceSheet } from './cat-appearance';
+import { createAccessorySheet } from './cat-accessories';
+import {
+  CAT_ACCESSORY_SLOTS,
+  type CatAccessoryChoice,
+  type CatAccessorySlot,
+} from '../shared/accessories';
 import {
   catAppearanceKey,
   DEFAULT_CAT_APPEARANCE,
@@ -317,7 +323,7 @@ watch(stageCapacity, () => {
 });
 const ink = 0x464c40;
 const catTextures = new Map<string, Texture>();
-const appearanceSheets = new Map<string, Texture>();
+const catSheets = new Map<string, Texture>();
 let originalCatImage: CanvasImageSource | undefined;
 const emoteImages = new Map<string, HTMLImageElement>();
 const voteBubbles = new Map<string, HTMLDivElement>();
@@ -335,44 +341,56 @@ function appearanceTexture(
 ) {
   const preset = appearance ?? DEFAULT_CAT_APPEARANCE;
   const key = catAppearanceKey(preset);
-  if (!appearanceSheets.has(key)) {
-    const canvas = createAppearanceSheet(originalCatImage!, preset);
-    const sheet = new Texture({
-      source: new CanvasSource({ resource: canvas, scaleMode: 'nearest' }),
-    });
-    appearanceSheets.set(key, sheet);
-    for (const [name, sequence] of Object.entries(CAT_ANIMATIONS)) {
-      for (let frame = 0; frame < sequence.frames; frame++) {
-        catTextures.set(
-          `${key}:${name}:${frame}`,
-          new Texture({
-            source: sheet.source,
-            frame: new Rectangle(
-              frame * CAT_CELL_SIZE,
-              CAT_PACKED_ROWS[name as CatAnimation] * CAT_CELL_SIZE,
-              CAT_CELL_SIZE,
-              CAT_CELL_SIZE,
-            ),
-          }),
-        );
-      }
+  if (!catSheets.has(key))
+    cacheCatSheet(key, createAppearanceSheet(originalCatImage!, preset));
+  return catTextures.get(`${key}:${animation}:${column}`)!;
+}
+function accessoryTexture(
+  choice: CatAccessoryChoice,
+  animation: CatAnimation,
+  column: number,
+) {
+  const key = `accessory:${choice.id}:${choice.color ?? 'default'}`;
+  if (!catSheets.has(key)) cacheCatSheet(key, createAccessorySheet(choice));
+  return catTextures.get(`${key}:${animation}:${column}`)!;
+}
+function cacheCatSheet(key: string, canvas: HTMLCanvasElement) {
+  const sheet = new Texture({
+    source: new CanvasSource({ resource: canvas, scaleMode: 'nearest' }),
+  });
+  catSheets.set(key, sheet);
+  for (const animation of Object.keys(CAT_ANIMATIONS) as CatAnimation[]) {
+    for (let frame = 0; frame < CAT_ANIMATIONS[animation].frames; frame++) {
+      catTextures.set(
+        `${key}:${animation}:${frame}`,
+        new Texture({
+          source: sheet.source,
+          frame: new Rectangle(
+            frame * CAT_CELL_SIZE,
+            CAT_PACKED_ROWS[animation] * CAT_CELL_SIZE,
+            CAT_CELL_SIZE,
+            CAT_CELL_SIZE,
+          ),
+        }),
+      );
     }
   }
-  return catTextures.get(`${key}:${animation}:${column}`)!;
 }
 function disposeCatTextures() {
   // Release generated frame views and canvases; Assets retains the original image.
   for (const texture of catTextures.values()) texture.destroy(false);
   catTextures.clear();
-  for (const sheet of appearanceSheets.values()) sheet.destroy(true);
-  appearanceSheets.clear();
+  for (const sheet of catSheets.values()) sheet.destroy(true);
+  catSheets.clear();
   originalCatImage = undefined;
 }
 const cats = new Map<
   string,
   {
     root: Container;
+    art: Container;
     body: Sprite;
+    accessorySprites: Partial<Record<CatAccessorySlot, Sprite>>;
     label: Text;
     notes: { layer: Container; glyphs: Graphics[] };
     likeCycle?: { roundId: string; startedAt: number; seed: number };
@@ -389,6 +407,8 @@ const catVisualBounds: Bounds = {
   right: 58,
   bottom: 30,
 };
+const catHitArea = new Rectangle(-45, -60, 90, 72);
+const accessorizedCatHitArea = new Rectangle(-45, -78, 90, 90);
 let safeArea: Bounds = { left: 18, top: 18, right: 982, bottom: 602 };
 function measureSafeArea() {
   if (!host.value) return;
@@ -417,7 +437,7 @@ function makeCat(user: Participant) {
   const root = new Container();
   // Only the local cat and an owner's guests become interactive in the ticker.
   root.eventMode = 'none';
-  root.hitArea = new Rectangle(-45, -60, 90, 72);
+  root.hitArea = catHitArea;
   root.on('pointertap', (event) => {
     event.stopPropagation();
     if (pinch.suppressesTap(event)) return;
@@ -436,9 +456,11 @@ function makeCat(user: Participant) {
   const body = new Sprite(
     appearanceTexture(user.appearance, 'idle', CAT_IDLE_UP_COLUMN),
   );
-  body.pivot.set(32, CAT_ANIMATIONS.idle.footY);
-  body.scale.set(CAT_SCALE);
-  root.addChild(body);
+  const art = new Container();
+  art.pivot.set(32, CAT_ANIMATIONS.idle.footY);
+  art.scale.set(CAT_SCALE);
+  art.addChild(body);
+  root.addChild(art);
   const label = new Text({
     text: user.nickname,
     resolution: 1,
@@ -455,7 +477,9 @@ function makeCat(user: Participant) {
   root.addChild(label);
   return {
     root,
+    art,
     body,
+    accessorySprites: {} as Partial<Record<CatAccessorySlot, Sprite>>,
     label,
     notes,
     fullLabel: '',
@@ -608,7 +632,7 @@ onMounted(async () => {
           next,
           instance.renderer.resolution,
         );
-        cat.body.position.set(pixelOffset.x, pixelOffset.y);
+        cat.art.position.set(pixelOffset.x, pixelOffset.y);
         if (cat.label.resolution !== textResolution)
           cat.label.resolution = textResolution;
       }
@@ -762,8 +786,30 @@ onMounted(async () => {
           frame.animation,
           frame.column,
         );
-        cat.body.pivot.y = frame.footY;
-        cat.body.scale.set(frame.flipX ? -CAT_SCALE : CAT_SCALE, CAT_SCALE);
+        cat.art.pivot.y = frame.footY;
+        cat.art.scale.set(frame.flipX ? -CAT_SCALE : CAT_SCALE, CAT_SCALE);
+        cat.root.hitArea = user.accessories?.head
+          ? accessorizedCatHitArea
+          : catHitArea;
+        for (const slot of CAT_ACCESSORY_SLOTS) {
+          const choice = user.accessories?.[slot];
+          let overlay = cat.accessorySprites[slot];
+          if (!choice) {
+            if (overlay) overlay.visible = false;
+            continue;
+          }
+          if (!overlay) {
+            overlay = new Sprite();
+            cat.accessorySprites[slot] = overlay;
+            cat.art.addChild(overlay);
+          }
+          overlay.texture = accessoryTexture(
+            choice,
+            frame.animation,
+            frame.column,
+          );
+          overlay.visible = true;
+        }
         cat.root.alpha = user.connected ? 1 : 0.45;
         const playing = activeDjPlayback(user.id, playback, now);
         const likedRound =
@@ -872,8 +918,9 @@ onMounted(async () => {
           imageBubble.hidden = !!voteBubble;
         const bubble = voteBubble ?? imageBubble;
         if (!bubble) continue;
+        const bubbleHeight = cat.accessorySprites.head?.visible ? 85 : 61;
         const point = worldToScreen(
-          { x: cat.root.x, y: cat.root.y - 61 },
+          { x: cat.root.x, y: cat.root.y - bubbleHeight },
           view,
         );
         if (voteBubble) {
