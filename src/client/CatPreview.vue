@@ -8,7 +8,11 @@ import {
   type CatAppearance,
 } from '../shared/appearance';
 import { CAT_PACKED_ROWS, createAppearanceSheet } from './cat-appearance';
-import { drawCatBeret } from './cat-beret';
+import {
+  CAT_ACCESSORY_SAMPLES,
+  drawCatAccessory,
+  type CatAccessorySample,
+} from './cat-accessories';
 import {
   CAT_ANIMATIONS,
   CAT_CELL_SIZE,
@@ -21,7 +25,11 @@ import {
 const props = defineProps<{
   appearance: CatAppearance;
   portrait?: boolean;
-  beretPose?: { animation: CatAnimation; flipX: boolean };
+  accessoryPreview?: {
+    animation: CatAnimation;
+    flipX: boolean;
+    samples: readonly CatAccessorySample[];
+  };
 }>();
 const canvas = ref<HTMLCanvasElement>();
 const sheet = shallowRef<HTMLCanvasElement>();
@@ -31,7 +39,10 @@ const label = computed(() => {
   const coat =
     preset?.label ??
     `${CAT_COATS.find((coat) => coat.id === props.appearance.coat)?.label}，${CAT_PATTERNS.find((pattern) => pattern.id === props.appearance.pattern)?.label}`;
-  return props.beretPose ? `${coat}，戴贝雷帽` : coat;
+  const names = CAT_ACCESSORY_SAMPLES.filter(({ id }) =>
+    props.accessoryPreview?.samples.includes(id),
+  ).map(({ label }) => label);
+  return [coat, ...names].join('，');
 });
 watch(
   [canvas, () => props.appearance.coat, () => props.appearance.pattern],
@@ -59,14 +70,14 @@ watch(
   { flush: 'post', immediate: true },
 );
 watch(
-  [canvas, sheet, () => props.portrait, () => props.beretPose],
-  ([target, appearance, portrait, beretPose], _, onCleanup) => {
+  [canvas, sheet, () => props.portrait, () => props.accessoryPreview],
+  ([target, appearance, portrait, accessoryPreview], _, onCleanup) => {
     if (!target || !appearance) return;
     const context = target.getContext('2d');
     unavailable.value = !context;
     if (!context) return;
     context.imageSmoothingEnabled = false;
-    const pose = portrait ? undefined : beretPose;
+    const pose = portrait ? undefined : accessoryPreview;
     const animation = pose?.animation ?? 'idle';
     const offsetY = CAT_ANIMATIONS.idle.footY - CAT_ANIMATIONS[animation].footY;
     // The header portrait samples the idle head directly.
@@ -89,7 +100,10 @@ watch(
         CAT_CELL_SIZE,
         CAT_CELL_SIZE,
       );
-      if (pose) drawCatBeret(context, animation, column);
+      for (const { id } of CAT_ACCESSORY_SAMPLES) {
+        if (pose?.samples.includes(id))
+          drawCatAccessory(context, id, animation, column);
+      }
       context.restore();
     };
     draw(pose ? 0 : CAT_IDLE_UP_COLUMN);

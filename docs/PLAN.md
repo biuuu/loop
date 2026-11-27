@@ -47,6 +47,7 @@
 - Separate ordinary colors and patterns from point-unlocked presets into two tabs in 我的小猫.
 - Add a 修改花色 button to 我的账号 that opens the same wardrobe used by the room cat menu.
 - Try a beret sample in 我的小猫, using the active coat preview and the existing idle, walking and sleep frames. The sage palette and placement are implementation defaults for visual review. Decide on permanent equipment, points prices and room display after reviewing the sample.
+- The user approved the head sample across poses and asked to consider chest and tail accessories. Preview a chest bell and a tail ribbon in the same wardrobe, individually or together. Use a small partially hidden bell in sleep and front-walk frames, hide it in rear-view frames, and attach the ribbon to each visible tail pose.
 - Show the points balance in 我的账号. Put an info icon on the right of the points displays to explain how to earn points on hover, focus or tap. Keep wardrobe actions visible at the bottom of the dialog while its content scrolls, following the room settings layout.
 - Allow direct use of special coats in development mode without spending points.
 - Idle cats should usually keep their tails raised, moving them only occasionally. After the independent eye overlay showed residual pixels, the user accepted keeping the original blink/tail animation together and adding a pause between full loops.

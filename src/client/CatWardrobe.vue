@@ -11,6 +11,10 @@ import {
   type CatPresetPattern,
 } from '../shared/appearance';
 import { COAT_UNLOCK_COST, DAILY_DJ_THRESHOLD_MS } from '../shared/points';
+import {
+  CAT_ACCESSORY_SAMPLES,
+  type CatAccessorySample,
+} from './cat-accessories';
 import CatPreview from './CatPreview.vue';
 import PointsRules from './PointsRules.vue';
 import { useRoom } from './room';
@@ -32,7 +36,7 @@ const appearanceDraft = computed(() =>
     ? basicAppearance.value
     : specialAppearance.value,
 );
-const beretPoses = [
+const previewPoses = [
   { animation: 'idle', flipX: false, label: '待机' },
   { animation: 'side', flipX: false, label: '向左走' },
   { animation: 'side', flipX: true, label: '向右走' },
@@ -40,7 +44,18 @@ const beretPoses = [
   { animation: 'down', flipX: false, label: '向下走' },
   { animation: 'sleep', flipX: false, label: '睡觉' },
 ] as const;
-const beretPose = shallowRef<(typeof beretPoses)[number]>();
+const previewPose = shallowRef<(typeof previewPoses)[number]>(previewPoses[0]);
+const accessorySamples = ref<CatAccessorySample[]>([]);
+const accessoryPreview = computed(() =>
+  accessorySamples.value.length
+    ? { ...previewPose.value, samples: accessorySamples.value }
+    : undefined,
+);
+function toggleAccessory(sample: CatAccessorySample) {
+  accessorySamples.value = accessorySamples.value.includes(sample)
+    ? accessorySamples.value.filter((selected) => selected !== sample)
+    : [...accessorySamples.value, sample];
+}
 
 function hasPreset(pattern: CatPresetPattern) {
   return (
@@ -112,7 +127,8 @@ watch(
 function hideDialog() {
   const focus = opening.value?.returnFocus;
   opening.value = null;
-  beretPose.value = undefined;
+  accessorySamples.value = [];
+  previewPose.value = previewPoses[0];
   error.value = '';
   if (dialog.value?.open) dialog.value.close();
   if (focus?.isConnected) focus.focus({ preventScroll: true });
@@ -264,31 +280,42 @@ function time(ms: number) {
           </button>
         </div>
         <div class="cat-preview-card">
-          <CatPreview :appearance="appearanceDraft" :beret-pose="beretPose" />
+          <CatPreview
+            :appearance="appearanceDraft"
+            :accessory-preview="accessoryPreview"
+          />
         </div>
-        <div class="beret-preview">
-          <button
-            class="outline"
-            type="button"
-            :aria-pressed="!!beretPose"
-            @click="beretPose = beretPose ? undefined : beretPoses[0]"
+        <div class="accessory-preview">
+          <div
+            class="segmented-tabs accessory-options"
+            role="group"
+            aria-label="试戴饰品"
           >
-            试戴小贝雷帽
-          </button>
-          <template v-if="beretPose">
-            <span class="beret-preview-hint">样品仅供预览</span>
+            <button
+              v-for="sample in CAT_ACCESSORY_SAMPLES"
+              :key="sample.id"
+              type="button"
+              :class="{ selected: accessorySamples.includes(sample.id) }"
+              :aria-pressed="accessorySamples.includes(sample.id)"
+              @click="toggleAccessory(sample.id)"
+            >
+              {{ sample.label }}
+            </button>
+          </div>
+          <template v-if="accessoryPreview">
+            <span class="accessory-preview-hint">样品仅供预览</span>
             <div
-              class="segmented-tabs beret-poses"
+              class="segmented-tabs accessory-poses"
               role="group"
               aria-label="试戴姿势"
             >
               <button
-                v-for="pose in beretPoses"
+                v-for="pose in previewPoses"
                 :key="pose.label"
                 type="button"
-                :class="{ selected: beretPose === pose }"
-                :aria-pressed="beretPose === pose"
-                @click="beretPose = pose"
+                :class="{ selected: previewPose === pose }"
+                :aria-pressed="previewPose === pose"
+                @click="previewPose = pose"
               >
                 {{ pose.label }}
               </button>
@@ -462,31 +489,25 @@ function time(ms: number) {
 .wardrobe-over-account::backdrop {
   backdrop-filter: none;
 }
-.beret-preview {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
+.accessory-preview {
+  display: grid;
+  gap: 8px;
   margin-top: 12px;
 }
-.beret-preview > button {
-  font-size: 13px;
+.accessory-options button {
+  padding-inline: 4px;
 }
-.beret-preview > button[aria-pressed='true'] {
-  background: #e9eddf;
-  border-color: #bbc4ad;
-}
-.beret-preview-hint {
+.accessory-preview-hint {
   color: var(--muted);
   font-size: 12px;
 }
-.beret-poses {
+.accessory-poses {
   width: 100%;
   grid-auto-flow: row;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 @media (min-width: 520px) {
-  .beret-poses {
+  .accessory-poses {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
