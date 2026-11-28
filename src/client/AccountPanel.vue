@@ -13,6 +13,7 @@ import {
 } from '../shared/contracts';
 import NeteaseUserSearch from './NeteaseUserSearch.vue';
 import PointsRules from './PointsRules.vue';
+import SignupVerification from './SignupVerification.vue';
 import { useRoom } from './room';
 const emit = defineEmits<{
   close: [];
@@ -58,6 +59,9 @@ const selectedSource = ref<{
 } | null>(null);
 const importedNickname = ref('');
 const importedNicknameInput = ref<HTMLInputElement | null>(null);
+type Verification = InstanceType<typeof SignupVerification>;
+const nicknameVerification = ref<Verification | null>(null);
+const neteaseVerification = ref<Verification | null>(null);
 const busy = ref(false);
 const error = useTimedMessage();
 const notice = useTimedMessage();
@@ -152,15 +156,38 @@ function saveNickname() {
     void nextTick(() => nicknameDisplay.value?.focus());
   });
 }
-function temporary() {
+function createIdentity(
+  verification: Verification | null,
+  name: string,
+  nicknameError: string,
+  create: (name: string, token?: string) => Promise<RoomInfo | undefined>,
+) {
+  if (room.guest || !verification?.ready) return;
   void act(async () => {
-    const valid = nicknameSchema.safeParse(nickname.value);
+    const valid = nicknameSchema.safeParse(name);
     if (!valid.success)
-      throw new Error(valid.error.issues[0]?.message || '请输入昵称');
-    const createdRoom = await room.enter(valid.data);
+      throw new Error(valid.error.issues[0]?.message || nicknameError);
+    const submission = verification.takeToken();
+    if (!submission) return;
+    let createdRoom: RoomInfo | undefined;
+    try {
+      createdRoom = await create(valid.data, submission.token);
+    } catch (cause) {
+      verification.reset();
+      throw cause;
+    }
     emit('changed', createdRoom);
     emit('close');
   });
+}
+function temporary() {
+  if (entryMode.value !== 'nickname') return;
+  createIdentity(
+    nicknameVerification.value,
+    nickname.value,
+    '请输入昵称',
+    (name, token) => room.enter(name, token),
+  );
 }
 function selectNeteasePlaylist(
   user: NeteaseUser,
@@ -173,21 +200,21 @@ function selectNeteasePlaylist(
   void nextTick(() => importedNicknameInput.value?.focus());
 }
 function createFromNetease() {
-  void act(async () => {
-    const source = selectedSource.value;
-    if (!source) throw new Error('请先选择一份网易云歌单');
-    const valid = nicknameSchema.safeParse(importedNickname.value);
-    if (!valid.success)
-      throw new Error(valid.error.issues[0]?.message || '请调整昵称后重试');
-    const createdRoom = await room.enterFromNetease(
-      source.user.id,
-      source.playlist.id,
-      valid.data,
-      source.offset,
-    );
-    emit('changed', createdRoom);
-    emit('close');
-  });
+  const source = selectedSource.value;
+  if (entryMode.value !== 'netease' || !source) return;
+  createIdentity(
+    neteaseVerification.value,
+    importedNickname.value,
+    '请调整昵称后重试',
+    (name, token) =>
+      room.enterFromNetease(
+        source.user.id,
+        source.playlist.id,
+        name,
+        source.offset,
+        token,
+      ),
+  );
 }
 function logout(all = false) {
   void act(async () => {
@@ -368,7 +395,11 @@ function logout(all = false) {
             <Shuffle aria-hidden="true" />随机
           </button>
         </div>
-        <button class="primary" :disabled="busy">
+        <SignupVerification ref="nicknameVerification" />
+        <button
+          class="primary"
+          :disabled="busy || !nicknameVerification?.ready"
+        >
           {{ busy ? '正在进入…' : '以临时身份进入' }}
         </button>
         <small
@@ -417,7 +448,11 @@ function logout(all = false) {
               默认使用网易云昵称。若昵称超过 16
               字或含不支持的符号，请调整后创建；这不会绑定网易云账号。
             </small>
-            <button class="primary" :disabled="busy">
+            <SignupVerification ref="neteaseVerification" />
+            <button
+              class="primary"
+              :disabled="busy || !neteaseVerification?.ready"
+            >
               {{ busy ? '正在创建并导入…' : '创建身份并导入歌单' }}
             </button>
             <small>

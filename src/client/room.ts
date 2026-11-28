@@ -89,20 +89,25 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  const data = await response.json();
   if (!response.ok) {
-    const message = data.error || '请求失败，请稍后重试';
+    const data = (await response.json().catch(() => null)) as {
+      error?: unknown;
+      nicknameChangeAvailableAt?: unknown;
+    } | null;
+    const limited = response.status === 429;
+    const message =
+      (typeof data?.error === 'string' && data.error) ||
+      (limited ? '请求过于频繁，请稍后重试' : '请求失败，请稍后重试');
+    const availableAt = data?.nicknameChangeAvailableAt;
     if (
-      response.status === 429 &&
-      Number.isSafeInteger(data.nicknameChangeAvailableAt)
+      limited &&
+      typeof availableAt === 'number' &&
+      Number.isSafeInteger(availableAt)
     )
-      throw new NicknameChangeCooldownError(
-        message,
-        data.nicknameChangeAvailableAt,
-      );
+      throw new NicknameChangeCooldownError(message, availableAt);
     throw new Error(message);
   }
-  return data as T;
+  return (await response.json()) as T;
 }
 export const useRoom = defineStore('room', () => {
   const guest = ref<AccountProfile | null>(null);
@@ -942,14 +947,14 @@ export const useRoom = defineStore('room', () => {
     setGuest(value);
     if (guest.value) await loadPlaylist();
   }
-  async function enter(nickname: string) {
+  async function enter(nickname: string, turnstileToken?: string) {
     const version = ++authRequest;
     const data = await request<{
       guest: AccountProfile;
       createdRoom?: RoomInfo;
     }>('/api/guest', {
       method: 'POST',
-      body: JSON.stringify({ nickname }),
+      body: JSON.stringify({ nickname, turnstileToken }),
     });
     if (version !== authRequest) return;
     close();
@@ -963,6 +968,7 @@ export const useRoom = defineStore('room', () => {
     playlistId: string,
     nickname: string,
     playlistOffset: number,
+    turnstileToken?: string,
   ) {
     const version = ++authRequest;
     const data = await request<{
@@ -970,7 +976,13 @@ export const useRoom = defineStore('room', () => {
       createdRoom: RoomInfo;
     }>('/api/guest/from-netease', {
       method: 'POST',
-      body: JSON.stringify({ userId, playlistId, nickname, playlistOffset }),
+      body: JSON.stringify({
+        userId,
+        playlistId,
+        nickname,
+        playlistOffset,
+        turnstileToken,
+      }),
     });
     if (version !== authRequest) return;
     close();

@@ -23,3 +23,15 @@ test('playlist deletion sends no JSON content type without a body', async () => 
     globalThis.fetch = originalFetch;
   }
 });
+
+test('a Cloudflare HTML 429 gets the localized rate-limit message', async (context) => {
+  context.mock.method(
+    globalThis,
+    'fetch',
+    async () => new Response('<html>Too many requests</html>', { status: 429 }),
+  );
+  await assert.rejects(
+    request('/api/guest', { method: 'POST' }),
+    /请求过于频繁，请稍后重试/,
+  );
+});

@@ -100,7 +100,7 @@ export function roomRoutes(
   });
   app.post('/api/rooms', async (request) => {
     const user = auth.identity(request.cookies[COOKIE]);
-    if (!allow(`create:${user.id}:${request.ip}`))
+    if (!allow(`create:${user.id}:${request.clientIp}`))
       throw new HttpError(429, '创建房间太快，请稍后重试');
     const { name, environmentId, stageCapacity } = z
       .object({

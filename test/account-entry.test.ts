@@ -52,16 +52,27 @@ test('nickname entry exposes only the new room response after applying the creat
   });
   const createdRoom = home('cat', 12);
   let creations = 0;
-  context.mock.method(globalThis, 'fetch', async (input: unknown) => {
-    if (input === '/api/guest')
-      return Response.json({
-        guest: { id: 'cat', nickname: 'cat' },
-        ...(creations++ === 0 ? { createdRoom } : {}),
-      });
-    assert.equal(input, '/api/playlist');
-    return Response.json({ slot: 1, count: 1, tracks: [], revision: 0 });
-  });
-  assert.deepEqual(await room.enter('cat'), createdRoom);
+  context.mock.method(
+    globalThis,
+    'fetch',
+    async (input: unknown, init?: RequestInit) => {
+      if (input === '/api/guest') {
+        assert.deepEqual(
+          JSON.parse(String(init?.body)),
+          creations === 0
+            ? { nickname: 'cat', turnstileToken: 'verified-nickname' }
+            : { nickname: 'renamed' },
+        );
+        return Response.json({
+          guest: { id: 'cat', nickname: 'cat' },
+          ...(creations++ === 0 ? { createdRoom } : {}),
+        });
+      }
+      assert.equal(input, '/api/playlist');
+      return Response.json({ slot: 1, count: 1, tracks: [], revision: 0 });
+    },
+  );
+  assert.deepEqual(await room.enter('cat', 'verified-nickname'), createdRoom);
   assert.equal(room.guest!.id, 'cat');
   assert.deepEqual(room.playlist, []);
   assert.equal(
@@ -101,6 +112,7 @@ test('Netease entry sends the selected user and playlist, then loads the importe
           playlistId: '99',
           nickname: '云朵猫',
           playlistOffset: 20,
+          turnstileToken: 'verified-netease',
         });
         return Response.json({
           guest: { id: 'netease-cat', nickname: '云朵猫' },
@@ -117,7 +129,7 @@ test('Netease entry sends the selected user and playlist, then loads the importe
     },
   );
   assert.deepEqual(
-    await room.enterFromNetease('88', '99', '云朵猫', 20),
+    await room.enterFromNetease('88', '99', '云朵猫', 20, 'verified-netease'),
     createdRoom,
   );
   assert.equal(room.guest?.nickname, '云朵猫');

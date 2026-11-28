@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { Server } from 'socket.io';
@@ -37,6 +37,13 @@ import { smtpMail, type SendMail } from './mail.js';
 import { RoomRegistry } from './room-registry.js';
 import { EmoteCatalog, EmoteConflictError } from './emote-catalog.js';
 import { roomRoutes } from './room-routes.js';
+import { effectiveClientIp } from './request-ip.js';
+import {
+  readSignupSettings,
+  SignupGuard,
+  signupTokenSchema,
+  type SignupSettings,
+} from './signup.js';
 import { assertTextAllowed, type TextFilter } from './text-filter.js';
 import { createMusicService } from './music.js';
 import {
@@ -52,6 +59,7 @@ import {
 
 const ApiError = HttpError;
 const nicknameBody = z.object({ nickname: nicknameSchema }).strict();
+const signupBody = nicknameBody.extend({ turnstileToken: signupTokenSchema });
 const appearanceUnlockBody = z
   .object({
     pattern: z.enum(
@@ -131,10 +139,23 @@ export async function createServer(
     neteaseQrFetch?: NeteaseFetch;
     neteaseMusicFetch?: NeteaseFetch;
     neteaseNow?: () => number;
+    signupSettings?: SignupSettings;
+    signupFetch?: typeof fetch;
+    signupNow?: () => number;
+    trustCloudflareTunnel?: boolean;
   } = {},
 ) {
   const { textFilter } = options;
-  const app = Fastify({ logger: false, bodyLimit: 16_384 });
+  const signup = new SignupGuard(
+    options.signupSettings ?? readSignupSettings(),
+    options.signupFetch,
+    options.signupNow,
+  );
+  const trustCloudflareTunnel =
+    options.trustCloudflareTunnel ??
+    process.env.TRUST_CLOUDFLARE_TUNNEL === 'true';
+  const app = Fastify({ logger: false, bodyLimit: 16_384, trustProxy: false });
+  app.decorateRequest('clientIp', '');
   const db = new Store(options.dbPath, undefined, {
     freeSpecialCoats:
       options.buildId === undefined && options.freeSpecialCoats === true,
@@ -179,6 +200,7 @@ export async function createServer(
     adminEmoteReadLimit = new Limiter(60, 60_000),
     adminEmoteWriteLimit = new Limiter(20, 60_000);
   app.addHook('onRequest', async (request, reply) => {
+    request.clientIp = effectiveClientIp(request, trustCloudflareTunnel);
     if (request.url.startsWith('/api/admin/'))
       reply.header('Cache-Control', 'no-store');
     if (
@@ -230,14 +252,18 @@ export async function createServer(
     reply.header('Cache-Control', 'no-store');
     return { version: options.buildId ?? null };
   });
+  app.get('/api/signup/config', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    return { turnstileSiteKey: signup.siteKey };
+  });
   const adminGuard =
     (limit: Limiter) =>
     async (
-      request: { headers: Record<string, unknown>; ip: string },
+      request: Pick<FastifyRequest, 'headers' | 'clientIp'>,
       reply: { header: (name: string, value: string) => unknown },
     ) => {
       reply.header('Cache-Control', 'no-store');
-      if (!limit.allow(request.ip))
+      if (!limit.allow(request.clientIp))
         throw new ApiError(429, '操作太快，请稍后重试');
       if (
         !validAdminKey(
@@ -312,7 +338,10 @@ export async function createServer(
     },
   );
   app.addHook('preHandler', async (request) => {
-    if (request.url.startsWith('/api/auth/') && !authLimit.allow(request.ip))
+    if (
+      request.url.startsWith('/api/auth/') &&
+      !authLimit.allow(request.clientIp)
+    )
       throw new ApiError(429, '操作太快，请稍后重试');
   });
   authRoutes(app, auth);
@@ -367,18 +396,22 @@ export async function createServer(
     return db.unlockAccessory(current.id, id);
   });
   app.post('/api/guest', async (request, reply) => {
-    if (!guestLimit.allow(request.ip))
+    if (!guestLimit.allow(request.clientIp))
       throw new ApiError(429, '操作太快，请稍后重试');
-    const { nickname } = nicknameBody.parse(request.body);
+    const { nickname, turnstileToken } = signupBody.parse(request.body);
     const existing = db.guest(request.cookies[COOKIE]);
     if (existing) return rename(existing, nickname);
     assertTextAllowed(textFilter, '昵称', nickname);
-    const { guest, token, createdRoom } = db.createUser(nickname);
+    const { guest, token, createdRoom } = await signup.create(
+      request.clientIp,
+      turnstileToken,
+      () => db.createUser(nickname),
+    );
     setSession(reply, token);
     return { guest: auth.profile(guest), createdRoom };
   });
   app.post('/api/guest/from-netease', async (request, reply) => {
-    const { userId, playlistId, playlistOffset, nickname } = z
+    const { userId, playlistId, playlistOffset, nickname, turnstileToken } = z
       .object({
         userId: trackIdSchema,
         playlistId: trackIdSchema,
@@ -389,42 +422,51 @@ export async function createServer(
           .max(Number.MAX_SAFE_INTEGER - 20)
           .refine((offset) => offset % 20 === 0),
         nickname: nicknameSchema,
+        turnstileToken: signupTokenSchema,
       })
       .strict()
       .parse(request.body);
     if (db.guest(request.cookies[COOKIE]))
       throw new ApiError(409, '当前已有身份，请先退出再创建新身份');
-    if (!guestLimit.allow(request.ip) || !neteaseSignupLimit.allow(request.ip))
+    if (
+      !guestLimit.allow(request.clientIp) ||
+      !neteaseSignupLimit.allow(request.clientIp)
+    )
       throw new ApiError(429, '操作太快，请稍后重试');
     assertTextAllowed(textFilter, '昵称', nickname);
-    if (!music.userPlaylists || !music.playlist)
+    const { userPlaylists, playlist } = music;
+    if (!userPlaylists || !playlist)
       throw new ApiError(503, '网易云歌单导入暂时不可用');
-    // Verify the selected playlist against the same user-list page shown by
-    // the signup UI. This does not prove ownership of the upstream account.
-    let userPage;
-    try {
-      userPage = await music.userPlaylists(userId, playlistOffset);
-    } catch {
-      throw new ApiError(502, '网易云用户歌单暂时不可用');
-    }
-    if (!userPage.playlists.some((item) => item.id === playlistId))
-      throw new ApiError(400, '该歌单不在所选网易云用户的当前页中');
-    let source;
-    try {
-      source = await music.playlist(playlistId, 0, PLAYLIST_LIMIT);
-    } catch {
-      throw new ApiError(502, '网易云歌单资料暂时不可用');
-    }
-    if (source.playlist.id !== playlistId)
-      throw new ApiError(502, '网易云歌单资料无效');
-    let created;
-    try {
-      created = db.createUserFromPlaylist(nickname, source.tracks);
-    } catch (error) {
-      if (error instanceof EmptyPlaylistImportError)
-        throw new ApiError(400, '该网易云歌单没有可导入的歌曲');
-      throw error;
-    }
+    const created = await signup.create(
+      request.clientIp,
+      turnstileToken,
+      async () => {
+        // Verify the selection against the user-list page shown by the signup UI.
+        let userPage;
+        try {
+          userPage = await userPlaylists.call(music, userId, playlistOffset);
+        } catch {
+          throw new ApiError(502, '网易云用户歌单暂时不可用');
+        }
+        if (!userPage.playlists.some((item) => item.id === playlistId))
+          throw new ApiError(400, '该歌单不在所选网易云用户的当前页中');
+        let source;
+        try {
+          source = await playlist.call(music, playlistId, 0, PLAYLIST_LIMIT);
+        } catch {
+          throw new ApiError(502, '网易云歌单资料暂时不可用');
+        }
+        if (source.playlist.id !== playlistId)
+          throw new ApiError(502, '网易云歌单资料无效');
+        try {
+          return db.createUserFromPlaylist(nickname, source.tracks);
+        } catch (error) {
+          if (error instanceof EmptyPlaylistImportError)
+            throw new ApiError(400, '该网易云歌单没有可导入的歌曲');
+          throw error;
+        }
+      },
+    );
     setSession(reply, created.token);
     return {
       guest: auth.profile(created.guest),
@@ -569,7 +611,7 @@ export async function createServer(
   });
   app.get('/api/search', async (request) => {
     identity(request);
-    if (!searchLimit.allow(request.ip))
+    if (!searchLimit.allow(request.clientIp))
       throw new ApiError(429, '搜索太快，请稍后重试');
     const { q } = z
       .object({ q: z.string().trim().min(1).max(100) })
@@ -584,13 +626,13 @@ export async function createServer(
   const metadataAccess = (
     request: Parameters<typeof identity>[0] & {
       headers: { origin?: string; host?: string };
-      ip: string;
+      clientIp: string;
     },
   ) => {
     identity(request);
     if (!sameOrigin(request.headers.origin, request.headers.host))
       throw new ApiError(403, '请求来源无效');
-    if (!searchLimit.allow(request.ip))
+    if (!searchLimit.allow(request.clientIp))
       throw new ApiError(429, '查询太快，请稍后重试');
   };
   const publicUserMetadataAccess = (
@@ -598,7 +640,7 @@ export async function createServer(
   ) => {
     if (!sameOrigin(request.headers.origin, request.headers.host))
       throw new ApiError(403, '请求来源无效');
-    if (!searchLimit.allow(request.ip))
+    if (!searchLimit.allow(request.clientIp))
       throw new ApiError(429, '查询太快，请稍后重试');
   };
   const offsetQuery = z

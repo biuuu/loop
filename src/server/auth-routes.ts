@@ -33,7 +33,12 @@ export function authRoutes(app: FastifyInstance, auth: Auth) {
       })
       .strict()
       .parse(request.body);
-    return auth.request(email, purpose, request.cookies[COOKIE], request.ip);
+    return auth.request(
+      email,
+      purpose,
+      request.cookies[COOKIE],
+      request.clientIp,
+    );
   });
   app.post('/api/auth/email/verify', async (request, reply) => {
     const { challengeId, code } = z

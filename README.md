@@ -56,6 +56,35 @@ PM2 会启动一个名为 `loop` 的进程并读取项目的 `.env`。更新代�
 
 需要开机自动恢复时，运行 `pm2 startup` 并按它的提示设置系统服务，再运行 `pm2 save`。
 
+### Cloudflare Tunnel 和注册防护
+
+1. 已经用同机的 Tunnel 发布时，进入 Cloudflare 的 **Networking → Tunnels → 当前 Tunnel → Routes**，确认 LOOP 的公网域名对应的 **Service URL** 是 `http://127.0.0.1:3003`。服务器上将 LOOP 绑定到同一个回环地址，并确保云防火墙没有放行公网访问 LOOP 端口。Tunnel 继续使用公网原始 `Host`。 [Tunnel 路由说明](https://developers.cloudflare.com/tunnel/get-started/)
+2. 在 Cloudflare 帐户的 **Turnstile → Add widget** 创建组件。名称可用 `LOOP Signup`，普通全球版选 **Rest of World**，模式选 **Managed**，Hostname 填玩家访问的完整域名，例如 `loop.example.com`。保持 Pre-clearance 关闭。创建后复制 Site key 和 Secret key。 [Turnstile 控制台说明](https://developers.cloudflare.com/turnstile/get-started/widget-management/dashboard/)
+3. 在服务器项目目录的 `.env` 中加入以下配置，替换域名和两把 key。Secret key 只保存在服务端。两把 key 和 hostname 要一起配置。建号配额默认是每个 IP 滚动一小时成功创建 5 个账号，计数由当前服务进程保存。
+
+   ```dotenv
+   HOST=127.0.0.1
+   PORT=3003
+   COOKIE_SECURE=true
+   TRUST_CLOUDFLARE_TUNNEL=true
+   SIGNUP_MAX_PER_HOUR=5
+   TURNSTILE_SITE_KEY=替换为SiteKey
+   TURNSTILE_SECRET_KEY=替换为SecretKey
+   TURNSTILE_HOSTNAME=loop.example.com
+   ```
+
+   更新代码后运行 `npm run build` 和 `pm2 reload loop --update-env`。用无痕窗口从公网域名试一次新建身份，再用原窗口确认现有身份能进房。Linux 上可用 `ss -ltn 'sport = :3003'` 确认监听在 `127.0.0.1:3003`。接口 `/api/signup/config` 只返回公开 Site key，便于确认配置已生效。
+
+4. 在 LOOP 所在站点的 **Security rules → Create rule → Rate limiting rules** 创建一条注册限流规则。切到表达式编辑器，匹配两个路径。
+
+   ```text
+   http.request.uri.path in {"/api/guest" "/api/guest/from-netease"}
+   ```
+
+   **With the same characteristics** 选 **IP**，频率填 **5 requests per 10 seconds**，动作选 **Block**，持续 **10 seconds**，点击 **Deploy**。这组起始值适用 Free 套餐。Cloudflare 规则只覆盖这两个路径，应用另行统计成功创建的账号。 [限流设置步骤](https://developers.cloudflare.com/waf/rate-limiting-rules/create-zone-dashboard/) · [套餐限制](https://developers.cloudflare.com/waf/rate-limiting-rules/#availability)
+
+5. 如需给管理页加一层登录，在 **Zero Trust → Access controls → Applications → Create new application → Self-hosted and private** 中添加两个 Public hostname 路径。都使用 LOOP 的公网域名，Path 分别填 `/admin/*` 和 `/api/admin/*`。添加 **Allow → Include → Emails**，填管理员自己的邮箱，选择可用的登录方式并保存。打开相应管理页面验证 Access，然后用现有的 LOOP 管理密钥操作。 [Access 应用设置](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/) · [路径匹配](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/)
+
 ### 文本审核
 
 将词库放在已被 Git 忽略的 `data/sensitive-words.txt`，或将 `LOOP_SENSITIVE_WORDS_FILE` 指向部署环境中的私有文件。文件用 UTF-8 编码，每行一条词或短语，空行和以 `#` 开头的行会被忽略。服务在启动时读取词库，更新文件后需要重启。默认文件不存在时，词库检查关闭。显式配置的文件必须可读。
