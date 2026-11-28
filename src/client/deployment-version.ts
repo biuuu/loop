@@ -1,7 +1,4 @@
-import { createDirectoryPoller } from './room-directory';
-
 const RELOAD_ATTEMPTS_KEY = 'loop.deployment-reloads';
-const CHECK_INTERVAL_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 interface VersionBrowser extends Pick<Window, 'fetch'> {
@@ -21,10 +18,11 @@ export function watchDeploymentVersion(
 
   let request: AbortController | undefined;
   let requestTimeout: ReturnType<typeof setTimeout> | undefined;
+  let closed = false;
   let reloading = false;
 
-  async function refresh() {
-    if (reloading) return;
+  async function check() {
+    if (closed || reloading || browser.document.hidden || request) return;
     const active = new AbortController();
     request = active;
     requestTimeout = setTimeout(() => active.abort(), REQUEST_TIMEOUT_MS);
@@ -70,26 +68,18 @@ export function watchDeploymentVersion(
     }
   }
 
-  const poller = createDirectoryPoller({
-    refresh,
-    visible: () => !browser.document.hidden,
-    intervalMs: CHECK_INTERVAL_MS,
-  });
-  browser.document.addEventListener('visibilitychange', poller.visibility);
-  browser.addEventListener('online', poller.refresh);
-  poller.start();
+  browser.document.addEventListener('visibilitychange', check);
+  browser.addEventListener('online', check);
+  void check();
 
   return {
-    check: poller.refresh,
+    check,
     close() {
-      poller.close();
+      closed = true;
       request?.abort();
       clearTimeout(requestTimeout);
-      browser.document.removeEventListener(
-        'visibilitychange',
-        poller.visibility,
-      );
-      browser.removeEventListener('online', poller.refresh);
+      browser.document.removeEventListener('visibilitychange', check);
+      browser.removeEventListener('online', check);
     },
   };
 }

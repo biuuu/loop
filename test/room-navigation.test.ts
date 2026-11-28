@@ -91,13 +91,12 @@ test('room links stay stable and history back delivers its explicit route', () =
 });
 
 test('directory polling stops when hidden or closed and coalesces overlapping reads', async (context) => {
-  context.mock.timers.enable({ apis: ['setInterval'] });
+  context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
   let visible = true;
   let calls = 0;
   let release!: () => void;
   const poller = createDirectoryPoller({
     visible: () => visible,
-    intervalMs: 10,
     refresh: async () => {
       calls++;
       await new Promise<void>((resolve) => {
@@ -107,22 +106,65 @@ test('directory polling stops when hidden or closed and coalesces overlapping re
   });
   poller.start();
   assert.equal(calls, 1);
-  context.mock.timers.tick(25);
+  context.mock.timers.tick(25_000);
   assert.equal(calls, 1);
   release();
   await Promise.resolve();
   await Promise.resolve();
   visible = false;
   poller.visibility();
-  context.mock.timers.tick(25);
+  poller.activity();
+  context.mock.timers.tick(240_000);
   assert.equal(calls, 1);
   visible = true;
   poller.visibility();
   assert.equal(calls, 2);
   poller.close();
   release();
-  context.mock.timers.tick(25);
+  context.mock.timers.tick(25_000);
   assert.equal(calls, 2);
+});
+
+test('a visible directory increases its interval as it sits idle and promptly resumes on activity', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  const calls: number[] = [];
+  const poller = createDirectoryPoller({
+    visible: () => true,
+    refresh: async () => {
+      calls.push(Date.now() / 1000);
+    },
+  });
+  context.after(poller.close);
+  poller.start();
+  async function advance(seconds: number) {
+    await Promise.resolve();
+    context.mock.timers.tick(seconds * 1000);
+  }
+  for (let i = 0; i < 4; i++) await advance(15);
+  assert.deepEqual(calls, [0, 15, 30, 45]);
+  await advance(15);
+  for (let i = 0; i < 4; i++) await advance(30);
+  assert.deepEqual(calls, [0, 15, 30, 45, 75, 105, 135, 165]);
+  await advance(30);
+  for (let i = 0; i < 7; i++) await advance(60);
+  assert.deepEqual(calls.slice(8), [225, 285, 345, 405, 465, 525, 585]);
+  await advance(59);
+  assert.equal(calls.at(-1), 585);
+  await advance(1);
+  assert.equal(calls.at(-1), 705);
+
+  await advance(60);
+  assert.equal(calls.at(-1), 705);
+  poller.activity();
+  await advance(0);
+  assert.equal(calls.at(-1), 765);
+  await advance(15);
+  for (let i = 0; i < 5; i++) {
+    await advance(10);
+    poller.activity();
+    await advance(5);
+  }
+  assert.deepEqual(calls.slice(-6), [780, 795, 810, 825, 840, 855]);
 });
 
 async function waitFor(predicate: () => boolean) {

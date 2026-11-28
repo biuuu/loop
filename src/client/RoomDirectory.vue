@@ -128,9 +128,18 @@ async function refresh(): Promise<void> {
   }
 }
 const poller = createDirectoryPoller({
-  refresh,
+  refresh: async () => {
+    if (!loading.value) await refresh();
+  },
   visible: () => !document.hidden,
 });
+const activityEvents = [
+  'pointerdown',
+  'pointermove',
+  'keydown',
+  'wheel',
+  'focus',
+] as const;
 function changePage(value: number) {
   page.value = value;
   void refresh();
@@ -183,12 +192,16 @@ watch(
 onMounted(() => {
   poller.start();
   document.addEventListener('visibilitychange', visibility);
+  for (const event of activityEvents)
+    window.addEventListener(event, poller.activity, { passive: true });
 });
 onBeforeUnmount(() => {
   closed = true;
   generation++;
   poller.close();
   document.removeEventListener('visibilitychange', visibility);
+  for (const event of activityEvents)
+    window.removeEventListener(event, poller.activity);
 });
 </script>
 <template>

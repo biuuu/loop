@@ -106,9 +106,9 @@ test('an unavailable or unwritable session store prevents a reload loop', async 
   }
 });
 
-test('foreground polling coalesces checks from the timer, network and socket', async (context) => {
-  context.mock.timers.enable({ apis: ['setInterval'] });
-  const { browser, page, server, requests } = browserFixture();
+test('version checks use visibility, network and socket events without periodic polling', async (context) => {
+  context.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+  const { browser, page, server, requests, reloads } = browserFixture();
   page.hidden = true;
   let send!: (response: Response) => void;
   server.reply = () =>
@@ -124,29 +124,27 @@ test('foreground polling coalesces checks from the timer, network and socket', a
   page.dispatchEvent(new Event('visibilitychange'));
   browser.dispatchEvent(new Event('online'));
   await watcher.check();
-  context.mock.timers.tick(30_000);
   assert.equal(requests.length, 1);
   send(Response.json({ version: 'a' }));
   await setImmediate();
 
   server.reply = async () => Response.json({ version: 'a' });
-  context.mock.timers.tick(30_000);
+  context.mock.timers.tick(180_000);
+  assert.equal(requests.length, 1);
+  browser.dispatchEvent(new Event('online'));
   assert.equal(requests.length, 2);
   await setImmediate();
-  browser.dispatchEvent(new Event('online'));
-  assert.equal(requests.length, 3);
-  await setImmediate();
+  server.reply = async () => Response.json({ version: 'b' });
   await watcher.check();
-  assert.equal(requests.length, 4);
-
+  assert.equal(requests.length, 3);
+  assert.equal(reloads.length, 1);
   page.hidden = true;
   page.dispatchEvent(new Event('visibilitychange'));
-  context.mock.timers.tick(30_000);
-  assert.equal(requests.length, 4);
+  assert.equal(requests.length, 3);
 });
 
-test('closing the watcher aborts the current check and removes its listeners and timer', async (context) => {
-  context.mock.timers.enable({ apis: ['setInterval'] });
+test('closing the watcher aborts the current check and removes its listeners', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
   const { browser, page, server, requests, reloads } = browserFixture();
   let send!: (response: Response) => void;
   server.reply = () =>
