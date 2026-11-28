@@ -75,13 +75,27 @@ PM2 会启动一个名为 `loop` 的进程并读取项目的 `.env`。更新代�
 
    更新代码后运行 `npm run build` 和 `pm2 reload loop --update-env`。用无痕窗口从公网域名试一次新建身份，再用原窗口确认现有身份能进房。Linux 上可用 `ss -ltn 'sport = :3003'` 确认监听在 `127.0.0.1:3003`。接口 `/api/signup/config` 只返回公开 Site key，便于确认配置已生效。
 
-4. 在 LOOP 所在站点的 **Security rules → Create rule → Rate limiting rules** 创建一条注册限流规则。切到表达式编辑器，匹配两个路径。
+4. 在根域名站点的 **Security rules → Create rule → Rate limiting rules** 创建注册限流规则。规则建在 Zone 内，匹配的主机名是玩家访问的公网子域名。Pro 及以上套餐可在表达式中加 `http.host`，将下面的域名替换成自己的 LOOP 子域名。 [主机名字段](https://developers.cloudflare.com/ruleset-engine/rules-language/fields/reference/http.host/) · [套餐限制](https://developers.cloudflare.com/waf/rate-limiting-rules/#availability)
+
+   ```text
+   http.host eq "loop.example.com" and
+   http.request.uri.path in {"/api/guest" "/api/guest/from-netease"}
+   ```
+
+   Free 套餐的限流表达式只能用路径等受支持字段。下面的表达式会匹配 Zone 内各子域上的这两个路径。
 
    ```text
    http.request.uri.path in {"/api/guest" "/api/guest/from-netease"}
    ```
 
-   **With the same characteristics** 选 **IP**，频率填 **5 requests per 10 seconds**，动作选 **Block**，持续 **10 seconds**，点击 **Deploy**。这组起始值适用 Free 套餐。Cloudflare 规则只覆盖这两个路径，应用另行统计成功创建的账号。 [限流设置步骤](https://developers.cloudflare.com/waf/rate-limiting-rules/create-zone-dashboard/) · [套餐限制](https://developers.cloudflare.com/waf/rate-limiting-rules/#availability)
+   Free 套餐若要严格限定到 LOOP 子域，先在同一 Zone 的 **Create rule → Custom rules** 创建以下规则。动作选 **Skip**，只勾选 **All rate limiting rules**。这会跳过其他子域上这两个路径的限流阶段。 [自定义规则套餐](https://developers.cloudflare.com/waf/custom-rules/#availability) · [Skip 选项](https://developers.cloudflare.com/waf/custom-rules/skip/options/#skip-phases)
+
+   ```text
+   http.host ne "loop.example.com" and
+   http.request.uri.path in {"/api/guest" "/api/guest/from-netease"}
+   ```
+
+   限流规则的 **With the same characteristics** 选 **IP**，频率填 **5 requests per 10 seconds**，动作选 **Block**，持续 **10 seconds**，点击 **Deploy**。应用另行统计成功创建的账号。 [限流设置步骤](https://developers.cloudflare.com/waf/rate-limiting-rules/create-zone-dashboard/)
 
 5. 如需给管理页加一层登录，在 **Zero Trust → Access controls → Applications → Create new application → Self-hosted and private** 中添加两个 Public hostname 路径。都使用 LOOP 的公网域名，Path 分别填 `/admin/*` 和 `/api/admin/*`。添加 **Allow → Include → Emails**，填管理员自己的邮箱，选择可用的登录方式并保存。打开相应管理页面验证 Access，然后用现有的 LOOP 管理密钥操作。 [Access 应用设置](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/) · [路径匹配](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/)
 
